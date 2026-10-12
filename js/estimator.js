@@ -16,6 +16,7 @@
 
   var servicesBound = false;
   var mountedHome = false, calculationRequest = 0, calculationStartedAt = 0;
+  var lastRenderedScreen = 0;
   /* Minimum time the calculating screen stays up so its three stages are
      readable even when the data comes back in a few milliseconds. It never
      delays a slow calculation: the result is shown as soon as both the work
@@ -1686,12 +1687,21 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
     else out = screen4Html();
     var card = getCard();
     if (card) {
+      /* The whole card is re-rendered on many in-screen interactions, so the
+         entrance class is only added when the SCREEN changes - a fade on every
+         chip tap would flicker. */
+      var screenChanged = est.screen !== lastRenderedScreen;
+      lastRenderedScreen = est.screen;
       var stage = est.screen === 3 ? 3 : est.screen;
       /* Three steps, matching the reference's Location -> Details -> Report
          progression. There is no review screen and the calculating screen is
          not a step: Details advances straight to the calculation. */
       var progress = '<ol class="sf-est-progress" aria-label="Value guide progress">' + ["Location", "Details", "Report"].map(function (label, i) { return '<li' + (stage === i + 1 ? ' aria-current="step"' : "") + '><b>' + (i + 1) + '</b><span>' + label + '</span></li>'; }).join("") + '</ol>';
       card.innerHTML = progress + out; bindCard(card);
+      if (screenChanged) {
+        var step = card.querySelector(".sf-est-step");
+        if (step) step.classList.add("sf-est-enter");
+      }
       if (est.validationIssue && (est.screen === 1 || est.screen === 2)) showErr(card, est.validationIssue);
     }
   }
