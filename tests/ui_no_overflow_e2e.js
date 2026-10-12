@@ -50,15 +50,21 @@ const ROUTES = ["#/home", "#/search", "#/property-value", "#/project-bt"];
           chk("search-filter-form-present-" + tag, false, "no .sf-search-form");
         } else {
           const tracks = getComputedStyle(form).gridTemplateColumns.trim().split(/\s+/).length;
-          const expected = vw <= 600 ? 1 : (vw <= 900 ? 2 : 5);
+          /* Wide screens: five fields + the action share one row (the action is
+             inline at the end, so the sticky bar stays short). Tablet: two
+             columns with a full-width action row. Phone: one column. */
+          const expected = vw <= 600 ? 1 : (vw <= 900 ? 2 : 6);
           chk("search-filter-columns-" + tag, tracks === expected,
             "tracks=" + tracks + " expected=" + expected + " template=" + getComputedStyle(form).gridTemplateColumns);
           const button = form.querySelector("button[type=submit]");
           const cs = getComputedStyle(form);
           const contentWidth = form.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-          const buttonWidth = button ? button.getBoundingClientRect().width : 0;
-          chk("search-filter-action-full-row-" + tag, !!button && buttonWidth >= contentWidth - 4,
-            "button=" + Math.round(buttonWidth) + " content=" + Math.round(contentWidth));
+          const buttonBox = button ? button.getBoundingClientRect() : { width: 0, height: 0 };
+          const stacked = vw <= 900;
+          chk("search-filter-action-" + tag,
+            !!button && buttonBox.height >= 44 &&
+              (stacked ? buttonBox.width >= contentWidth - 4 : (buttonBox.width >= 120 && buttonBox.width <= contentWidth + 1)),
+            "button=" + Math.round(buttonBox.width) + "x" + Math.round(buttonBox.height) + " content=" + Math.round(contentWidth));
         }
       }
 

@@ -297,11 +297,6 @@
   background: var(--sf-accent);
   animation: sf-cs-pulse 2.4s var(--sf-ease) infinite;
 }
-@keyframes sf-cs-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: .35; }
-}
-
 .sf-cs h1 {
   margin: 0 0 1.15rem;
   font-size: var(--sf-display);
@@ -476,90 +471,195 @@
   color: var(--sf-ink);
 }
 
-/* What happens: three cards on wide screens, one column on phones. */
-.sf-pv-steps-list {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-@media (min-width: 900px) {
-  .sf-pv-steps-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-.sf-pv-steps-list li {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: .95rem;
-  padding: 1.25rem;
-  border: 1px solid var(--sf-line);
-  border-radius: var(--sf-r);
-  background: var(--sf-paper);
-}
-.sf-pv-steps-list li > span {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--sf-accent-soft);
-  color: var(--sf-accent-hover);
-  font-size: 12px;
-  font-weight: 800;
-}
-.sf-pv-steps-list b {
-  display: block;
-  margin-bottom: .3rem;
-  font-size: var(--sf-h3);
-  font-weight: 700;
-  letter-spacing: -.01em;
-  color: var(--sf-ink);
-}
-.sf-pv-steps-list p {
-  margin: 0;
+/* What happens: the journey ------------------------------------------------
+   Copy beside one sticky stage. bindPvJourney flips data-active as a step
+   crosses the middle of the viewport; CSS swaps the stage's vignette and
+   lights that step's rail. Each vignette is a small animated picture of the
+   step - the form filling itself in, the call, the service pick - so the
+   section shows the process, not just the words. Without JS or with reduced
+   motion the first vignette shows statically and all copy is complete. */
+.sf-pv-steps-sub,
+.sf-pv-faq-sub {
+  margin: -.75rem 0 2.1rem;
   max-width: 44rem;
   font-size: var(--sf-body);
   line-height: 1.6;
   color: var(--sf-ink-soft);
 }
 
+.sf-pv-journey {
+  --sf-stage-h: 270px;
+  display: block;
+}
+@media (min-width: 900px) {
+  .sf-pv-journey {
+    --sf-stage-h: 430px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.02fr) minmax(330px, .98fr);
+    gap: clamp(2rem, 4.5vw, 4.5rem);
+    align-items: start;
+  }
+  .sf-pv-steps-list { grid-column: 1; grid-row: 1; }
+  .sf-pv-stage { grid-column: 2; grid-row: 1; }
+}
+
+/* The stage -------------------------------------------------------------- */
+.sf-pv-stage {
+  position: sticky;
+  top: 76px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: .9rem;
+  height: var(--sf-stage-h);
+  margin-bottom: 1.6rem;
+  padding: 1rem 1.05rem 1.1rem;
+  border-radius: 18px;
+  background: #16202E;
+  color: #F2ECE4;
+  overflow: hidden;
+  box-shadow: 0 26px 60px -36px rgba(22, 32, 46, .6);
+}
+@media (min-width: 900px) { .sf-pv-stage { margin-bottom: 0; top: 96px; } }
+
+.sf-pv-stage-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: -.4rem; }
+.sf-pv-bars { display: flex; align-items: center; }
+.sf-pv-bar { padding: 15px 9px 15px 0; border: 0; background: none; cursor: pointer; }
+.sf-pv-bar i { display: block; width: 26px; height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .22); transition: width .35s var(--sf-ease), background .35s var(--sf-ease); }
+.sf-pv-bar:hover i { background: rgba(255, 255, 255, .45); }
+.sf-pv-bar:focus-visible { outline: 2px solid #E8975E; outline-offset: 2px; border-radius: 8px; }
+.sf-pv-journey[data-active="1"] .sf-pv-bar:nth-child(1) i,
+.sf-pv-journey[data-active="2"] .sf-pv-bar:nth-child(2) i,
+.sf-pv-journey[data-active="3"] .sf-pv-bar:nth-child(3) i { width: 46px; background: #E8975E; }
+.sf-pv-stage-count { font-size: 12px; font-weight: 700; letter-spacing: .1em; color: rgba(255, 255, 255, .62); }
+.sf-pv-stage-count b { color: #F2C98C; font-weight: 700; }
+
+.sf-pv-stage-body { position: relative; flex: 1; min-height: 0; }
+.sf-pv-vig { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: safe center; gap: .65rem; opacity: 0; visibility: hidden; }
+.sf-pv-journey[data-active="1"] .sf-pv-vig[data-vig="1"],
+.sf-pv-journey[data-active="2"] .sf-pv-vig[data-vig="2"],
+.sf-pv-journey[data-active="3"] .sf-pv-vig[data-vig="3"] { opacity: 1; visibility: visible; }
+.sf-pv-journey--motion .sf-pv-vig { transform: translateY(14px) scale(.985); transition: opacity .45s var(--sf-ease), transform .45s var(--sf-ease), visibility 0s linear .45s; }
+.sf-pv-journey--motion[data-active="1"] .sf-pv-vig[data-vig="1"],
+.sf-pv-journey--motion[data-active="2"] .sf-pv-vig[data-vig="2"],
+.sf-pv-journey--motion[data-active="3"] .sf-pv-vig[data-vig="3"] { transform: none; transition-delay: 0s, 0s, 0s; }
+
+.sf-pv-vig-kick { font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #F2C98C; }
+@media (max-width: 899px) { .sf-pv-vig-kick, .sf-pv-vig-stamp { display: none; } }
+
+/* Vignette 1: the filled-in request */
+.sf-pv-vig-card { display: flex; flex-direction: column; gap: .5rem; padding: .85rem .9rem; border-radius: 14px; background: #FBF7F1; box-shadow: 0 20px 44px -30px rgba(0, 0, 0, .65); }
+.sf-pv-vig-row { display: flex; align-items: center; gap: .65rem; min-height: 38px; padding: .25rem .35rem .25rem .75rem; border-radius: 10px; background: #FFFFFF; border: 1px solid #EFE8DE; }
+@media (min-width: 900px) { .sf-pv-vig-row { min-height: 44px; } }
+.sf-pv-vig-lbl { flex: none; width: 58px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8A7A6B; }
+.sf-pv-vig-val { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: #14110F; }
+.sf-pv-vig-ok { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #E9F4EC; color: #2F7D4F; }
+.sf-pv-vig-stamp { align-self: flex-start; padding: .34rem .66rem; border-radius: 999px; border: 1px dashed rgba(242, 201, 140, .55); color: #F2C98C; font-size: 12px; font-weight: 700; letter-spacing: .05em; }
+
+/* Vignette 2: the call */
+.sf-pv-vig-call { display: flex; flex-direction: column; gap: .6rem; padding: .85rem .9rem; border-radius: 14px; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .12); }
+.sf-pv-vig-person { display: flex; align-items: center; gap: .7rem; }
+.sf-pv-vig-avatar { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #F2C98C; color: #16202E; font-size: 12px; font-weight: 800; letter-spacing: .04em; }
+.sf-pv-vig-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .1rem; }
+.sf-pv-vig-who b { font-size: 13px; font-weight: 700; color: #FFFFFF; }
+.sf-pv-vig-who i { font-size: 12px; font-style: normal; color: #9FB0C0; }
+.sf-pv-vig-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: #5BC98B; box-shadow: 0 0 0 4px rgba(91, 201, 139, .18); }
+.sf-pv-vig-wave { display: flex; align-items: center; gap: 4px; height: 42px; }
+.sf-pv-vig-wave i { flex: 1; height: calc(9px + var(--i, 0) * .7px); border-radius: 999px; background: rgba(242, 201, 140, .8); }
+.sf-pv-vig-agenda { display: flex; flex-wrap: wrap; gap: .45rem .95rem; margin: 0; padding: 0; list-style: none; }
+.sf-pv-vig-agenda li { display: inline-flex; align-items: center; gap: .45rem; font-size: 13px; font-weight: 600; color: #D8D2C8; }
+.sf-pv-vig-agenda li::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: #E8975E; }
+
+/* Vignette 3: the service pick */
+.sf-pv-vig-chips { display: flex; flex-wrap: wrap; gap: .45rem; }
+.sf-pv-vig-chip { padding: .4rem .72rem; border-radius: 999px; background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .15); color: #E9E2D8; font-size: 12.5px; font-weight: 600; }
+.sf-pv-vig-deal { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding-top: .2rem; }
+.sf-pv-vig-deal span { font-size: 12.5px; color: rgba(255, 255, 255, .72); }
+.sf-pv-vig-deal b { flex: none; padding: .32rem .6rem; border: 2px solid #E8975E; border-radius: 8px; color: #E8975E; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; transform: rotate(-4deg); }
+
+/* The steps -------------------------------------------------------------- */
+.sf-pv-steps-list { margin: 0; padding: 0; list-style: none; }
+.sf-pv-steps-list li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 1.15rem;
+  padding: 0 0 2.3rem 1.15rem;
+  border-left: 2px solid var(--sf-line);
+}
+.sf-pv-steps-list li:last-child { padding-bottom: .5rem; }
+.sf-pv-step-no {
+  align-self: start;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--sf-line);
+  background: var(--sf-paper);
+  color: var(--sf-ink-mute);
+  font-size: 13px;
+  font-weight: 800;
+  transition: background .35s var(--sf-ease), border-color .35s var(--sf-ease), color .35s var(--sf-ease);
+}
+.sf-pv-step-copy { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+.sf-pv-step-role { align-self: flex-start; padding: .22rem .6rem; border-radius: 999px; background: var(--sf-accent-soft); color: var(--sf-accent-hover); font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.sf-pv-steps-list b { font-size: var(--sf-h3); font-weight: 700; letter-spacing: -.01em; color: var(--sf-ink); }
+.sf-pv-steps-list p { margin: 0; max-width: 44rem; font-size: var(--sf-body); line-height: 1.6; color: var(--sf-ink-soft); }
+.sf-pv-journey[data-active="1"] .sf-pv-steps-list li:nth-child(1),
+.sf-pv-journey[data-active="2"] .sf-pv-steps-list li:nth-child(2),
+.sf-pv-journey[data-active="3"] .sf-pv-steps-list li:nth-child(3) { border-left-color: var(--sf-accent); }
+.sf-pv-journey[data-active="1"] .sf-pv-steps-list li:nth-child(1) .sf-pv-step-no,
+.sf-pv-journey[data-active="2"] .sf-pv-steps-list li:nth-child(2) .sf-pv-step-no,
+.sf-pv-journey[data-active="3"] .sf-pv-steps-list li:nth-child(3) .sf-pv-step-no { background: var(--sf-accent); border-color: var(--sf-accent); color: #FFFFFF; }
+
 /* Common questions (FAQ) ------------------------------------------------- */
-/* Native details/summary so the disclosure works with no JS at all; the
-   summary is the full 48px row, and the chevron matches the report
-   accordions' rotate gesture. */
-.sf-pv-faq-item { border-bottom: 1px solid var(--sf-line); }
+/* Native details/summary so the disclosure works with no JS at all. Rows
+   lift into a soft card while open, the icon tile fills with the accent, and
+   the answer animates its height in where the engine supports it. */
+.sf-pv-faq-item { border-bottom: 1px solid var(--sf-line); border-radius: 12px; transition: background .35s var(--sf-ease), box-shadow .35s var(--sf-ease); }
 .sf-pv-faq-item:first-of-type { border-top: 1px solid var(--sf-line); }
 .sf-pv-faq-item summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: .95rem;
   min-height: 48px;
-  padding: .95rem 0;
+  padding: .95rem 1rem;
   cursor: pointer;
   list-style: none;
+  border-radius: 12px;
 }
 .sf-pv-faq-item summary::-webkit-details-marker { display: none; }
-.sf-pv-faq-item summary h3 {
-  margin: 0;
-  font-size: var(--sf-h3);
-  font-weight: 700;
-  letter-spacing: -.01em;
-  color: var(--sf-ink);
+.sf-pv-faq-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--sf-accent-soft);
+  color: var(--sf-accent-hover);
+  transition: background .35s var(--sf-ease), color .35s var(--sf-ease);
 }
-.sf-pv-faq-item summary:focus-visible { outline: 3px solid rgba(23, 100, 124, .35); outline-offset: 2px; border-radius: 4px; }
+.sf-pv-faq-ico svg { width: 21px; height: 21px; }
+.sf-pv-faq-item summary h3 { flex: 1; margin: 0; font-size: var(--sf-h3); font-weight: 700; letter-spacing: -.01em; color: var(--sf-ink); }
+.sf-pv-faq-item summary:focus-visible { outline: 3px solid rgba(23, 100, 124, .35); outline-offset: 2px; }
+.sf-pv-faq-item summary:hover { background: rgba(180, 82, 31, .05); }
 .sf-pv-faq-chev {
   flex: none;
   width: 10px;
   height: 10px;
+  margin-right: .35rem;
   border-right: 2px solid var(--sf-ink-mute);
   border-bottom: 2px solid var(--sf-ink-mute);
   transform: rotate(45deg) translateY(-2px);
-  transition: transform .2s var(--sf-ease);
+  transition: transform .25s var(--sf-ease);
 }
 .sf-pv-faq-item[open] .sf-pv-faq-chev { transform: rotate(225deg) translate(-2px, -2px); }
-.sf-pv-faq-body { padding: 0 0 1.1rem; }
+.sf-pv-faq-item[open] { background: var(--sf-paper); box-shadow: 0 18px 44px -34px rgba(22, 32, 46, .5); border-bottom-color: transparent; }
+.sf-pv-faq-item[open] .sf-pv-faq-ico { background: var(--sf-accent); color: #FFFFFF; }
+.sf-pv-faq-body { padding: 0 1rem 1.15rem; padding-left: calc(1rem + 40px + .95rem); }
+@media (max-width: 600px) { .sf-pv-faq-body { padding-left: .9rem; padding-right: .9rem; } }
 .sf-pv-faq-body p {
   margin: 0;
   max-width: 46rem;
@@ -568,6 +668,68 @@
   color: var(--sf-ink-soft);
 }
 .sf-pv-faq-body a { color: #174b5e; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.sf-pv-faq-more { margin: 1.5rem 0 0; font-size: var(--sf-body); line-height: 1.6; color: var(--sf-ink-soft); }
+.sf-pv-faq-more a { color: #174b5e; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+
+/* Smooth answer reveal where the engine supports it; elsewhere it is the
+   native snap. Content stays readable in both paths. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports selector(::details-content) {
+    .sf-pv-faq { interpolate-size: allow-keywords; }
+    .sf-pv-faq-item::details-content {
+      block-size: 0;
+      overflow: clip;
+      opacity: 0;
+      transition-property: block-size, opacity, content-visibility;
+      transition-duration: .38s, .3s, .38s;
+      transition-timing-function: var(--sf-ease);
+      transition-behavior: allow-discrete;
+    }
+    .sf-pv-faq-item[open]::details-content { block-size: auto; opacity: 1; }
+  }
+}
+
+/* Choreography -------------------------------------------------------------
+   While a vignette is live its parts rise in sequence (per-part --d), the
+   call waveform loops, and the "No commitment" stamp lands. Keyed off
+   data-active, so each vignette replays whenever the reader returns to it.
+   The section headings unblur word by word and the FAQ rows sharpen as they
+   cross the viewport - all progressive: the base state is the finished page
+   for reduced motion and engines without scroll timelines. */
+.sf-pv-journey--motion .sf-pv-a { opacity: 0; }
+.sf-pv-journey--motion[data-active="1"] .sf-pv-vig[data-vig="1"] .sf-pv-a,
+.sf-pv-journey--motion[data-active="2"] .sf-pv-vig[data-vig="2"] .sf-pv-a,
+.sf-pv-journey--motion[data-active="3"] .sf-pv-vig[data-vig="3"] .sf-pv-a {
+  animation: sf-pv-pop .6s var(--sf-ease) both;
+  animation-delay: var(--d, 0s);
+}
+.sf-pv-journey--motion[data-active="2"] .sf-pv-vig[data-vig="2"] .sf-pv-vig-wave i { animation: sf-pv-wave 1.1s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -.09s); }
+.sf-pv-journey--motion[data-active="3"] .sf-pv-vig-deal b { animation: sf-pv-stamp .45s var(--sf-ease) both; animation-delay: .85s; }
+@keyframes sf-pv-pop { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes sf-pv-wave { 0%, 100% { transform: scaleY(.4); } 50% { transform: scaleY(1.6); } }
+@keyframes sf-pv-stamp { from { opacity: .4; transform: rotate(6deg) scale(1.45); } to { opacity: 1; transform: rotate(-4deg) scale(1); } }
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .sf-blur span { display: inline-block; animation: sf-pv-blur-word linear both; animation-timeline: view(); animation-range: entry 15% cover 30%; }
+    .sf-blur span:nth-child(2) { animation-range: entry 25% cover 40%; }
+    .sf-blur span:nth-child(3) { animation-range: entry 30% cover 45%; }
+    .sf-blur span:nth-child(4) { animation-range: entry 34% cover 49%; }
+    .sf-blur span:nth-child(5) { animation-range: entry 38% cover 53%; }
+    .sf-blur span:nth-child(6) { animation-range: entry 42% cover 57%; }
+    .sf-pv-steps-list li { animation: sf-pv-sharpen linear both; animation-timeline: view(); animation-range: entry 0% cover 38%; }
+    .sf-pv-steps-list li:nth-child(2) { animation-range: entry 12% cover 50%; }
+    .sf-pv-steps-list li:nth-child(3) { animation-range: entry 24% cover 62%; }
+
+    .sf-pv-faq-item { animation: sf-pv-sharpen linear both; animation-timeline: view(); animation-range: cover 0% cover 40%; }
+    .sf-pv-faq-item:nth-child(3) { animation-range: cover 8% cover 48%; }
+    .sf-pv-faq-item:nth-child(4) { animation-range: cover 16% cover 56%; }
+    .sf-pv-faq-item:nth-child(5) { animation-range: cover 24% cover 64%; }
+    .sf-pv-faq-item:nth-child(6) { animation-range: cover 32% cover 72%; }
+  }
+}
+@keyframes sf-pv-sharpen { from { opacity: .35; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes sf-pv-blur-word { from { opacity: 0; filter: blur(8px); transform: translateY(12px); } to { opacity: 1; filter: blur(0); transform: none; } }
 
 /* Closing CTA ------------------------------------------------------------ */
 .sf-pv-close {
@@ -694,8 +856,6 @@
 .sf-pv-hero-copy > .sf-reveal:nth-child(4) { --d: .21s; }
 .sf-pv-hero-copy > .sf-reveal:nth-child(5) { --d: .28s; }
 .sf-pv-hero-form { --d: .16s; }
-.sf-pv-steps-list > .sf-reveal:nth-child(2) { --d: .07s; }
-.sf-pv-steps-list > .sf-reveal:nth-child(3) { --d: .14s; }
 
 /* Subtle motion tier for the landing (design-system guidance): a short
    fade-up instead of the site-wide 30px / .7-.85s entrance, so the page
@@ -727,11 +887,6 @@
   .sf-pv .sf-form-status.success { animation: sf-pv-status-in .3s var(--sf-ease) both; }
 }
 .sf-pv .sf-form-status.success::before { content: "✓ "; font-weight: 900; color: var(--sf-accent); }
-@keyframes sf-pv-status-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
-}
-
 /* ---------------------------------------------------------------------
    Consent + status text
    ---------------------------------------------------------------------
@@ -847,12 +1002,12 @@
  * single column so labels and options stay readable. */
 .sf-search-form {
   display: grid;
-  grid-template-columns: 1.35fr 1fr 1fr .75fr auto;
+  grid-template-columns: 1.35fr 1fr 1fr .75fr auto auto;
   align-items: end;
   gap: 0;
   row-gap: 12px;
-  max-width: 900px;
-  padding: clamp(14px, 1.3vw, 18px);
+  max-width: 1100px;
+  padding: clamp(12px, 1.1vw, 16px);
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-r-lg);
   background: var(--sf-paper);
@@ -878,7 +1033,7 @@
 .sf-search-form select {
   width: 100%;
   min-width: 0;
-  height: 40px;
+  height: 44px;
   padding: .5rem .7rem;
   border: 1px solid var(--sf-line);
   border-radius: var(--sf-r-sm);
@@ -893,16 +1048,21 @@
   border-color: var(--sf-accent);
   box-shadow: 0 0 0 3px var(--sf-accent-soft);
 }
+/* The action sits inline at the end of the field row on wide screens, so the
+   sticky bar stays short and never covers the results it filters. */
 .sf-search-form button {
-  grid-column: 1 / -1;
-  width: 100%;
-  min-height: 52px;
-  height: 52px;
+  grid-column: auto;
+  align-self: end;
+  width: auto;
+  min-width: 148px;
+  height: 46px;
+  min-height: 46px;
+  padding: 0 20px;
   box-sizing: border-box;
   font-size: 1rem;
-  white-space: normal;
+  white-space: nowrap;
 }
-body .sf-search-form button { min-height: 52px !important; height: 52px !important; }
+body .sf-search-form button { min-height: 46px !important; height: 46px !important; }
 .sf-search-form label:last-of-type { border-right: 0; }
 .sf-search-more[hidden] { display: none !important; }
 .sf-search-more { grid-column: 1 / -1; min-width: 0; border-top: 1px solid var(--sf-line); }
@@ -931,7 +1091,7 @@ body .sf-search-form button { min-height: 52px !important; height: 52px !importa
   .sf-search-form label span { margin: 0; font-size: 13px; }
   .sf-search-form input,
   .sf-search-form select { height: 48px; min-height: 48px; }
-  .sf-search-form button { grid-column: 1 / -1; }
+  .sf-search-form button { grid-column: 1 / -1; width: 100%; }
 }
 
 @media (max-width: 600px) {
@@ -970,6 +1130,95 @@ body .sf-search-form button { min-height: 52px !important; height: 52px !importa
   .sf-empty-actions .sf-outline-btn,
   .sf-empty-actions .sf-primary-btn { flex: 1 1 100%; justify-content: center; }
 }
+
+/* =====================================================================
+   Properties page upgrade
+   ---------------------------------------------------------------------
+   The browse page is the working surface: results first, chrome quiet.
+   The intro is compressed, the result card reads like a listing (title
+   and address left, the asking price as a pill on the right, facts as a
+   divided stat row), and the results bar and compare tray become one
+   slim line each. Card internals are reordered with CSS grid only, so
+   the DOM - and every test hook - stays exactly as it was.
+   ===================================================================== */
+.sf-site .sf-search-page { padding-top: 44px; }
+.sf-site .sf-search-intro { margin-bottom: 26px; }
+.sf-site .sf-search-intro h1 { font-size: clamp(34px, 4.6vw, 54px); }
+
+/* Result cards --------------------------------------------------------- */
+.sf-site .sf-property-card { border-color: var(--sf-line); border-radius: 16px; }
+.sf-site .sf-card-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: start;
+  padding: 18px;
+}
+.sf-site .sf-card-type { grid-column: 1 / -1; margin: 0 0 6px; }
+.sf-site .sf-card-copy h3 {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  align-self: start;
+  margin: 0;
+  padding: 6px 13px;
+  border: 1px solid var(--sf-accent-line);
+  border-radius: 999px;
+  background: var(--sf-accent-soft);
+  color: var(--sf-accent-hover);
+  font-family: var(--sf-font);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -.01em;
+  white-space: nowrap;
+}
+.sf-site .sf-card-copy h4 { grid-column: 1; grid-row: 2; margin: 0 0 4px; font-size: 17px; }
+.sf-site .sf-card-location { grid-column: 1; grid-row: 3; }
+.sf-site .sf-card-meta {
+  grid-column: 1 / -1;
+  grid-row: 4;
+  flex-wrap: wrap;
+  gap: 0;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--sf-line);
+  font-size: 13px;
+}
+.sf-site .sf-card-meta span {
+  padding: 0 12px;
+  border-left: 1px solid var(--sf-line);
+  color: var(--sf-ink-mute);
+}
+.sf-site .sf-card-meta span:first-child { padding-left: 0; border-left: 0; }
+.sf-site .sf-card-meta .sf-facts-pending { padding: 0; border-left: 0; }
+.sf-site .sf-card-meta b { color: var(--sf-ink); font-size: 15px; }
+.sf-site .sf-compare-toggle {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 12px;
+  border-radius: 999px;
+}
+
+/* Results bar and compare tray ----------------------------------------- */
+.sf-site .sf-results-bar { margin-bottom: 18px; }
+.sf-site .sf-results-bar > p { margin: 0; font-size: 16px; color: var(--sf-ink-soft); }
+.sf-site .sf-results-bar > p b { color: var(--sf-ink); font-size: 18px; }
+.sf-site .sf-results-bar select,
+.sf-site .sf-results-bar button { border-color: var(--sf-line); border-radius: 999px; padding: 0 14px; }
+.sf-site .sf-results-bar button.active,
+.sf-site .sf-results-bar button[aria-pressed="true"] {
+  border-color: var(--sf-ink);
+  background: var(--sf-ink);
+  color: #fff;
+}
+.sf-site .sf-compare-tray {
+  align-items: center;
+  padding: 12px 16px;
+  margin: 0 0 18px;
+  border-radius: var(--sf-r);
+}
+.sf-site .sf-compare-tray h2 { margin: 0 0 2px; font-size: 15px; }
+.sf-site .sf-compare-tray p { font-size: 16px; }
+.sf-site .sf-compare-tray .sf-compare-actions { margin-left: auto; }
 
 /* =====================================================================
    Button primitives used on the new pages
@@ -1081,13 +1330,7 @@ body .sf-search-form button { min-height: 52px !important; height: 52px !importa
 }
 
 /* Kill the serif display face everywhere it was applied. */
-.sf-site h1, .sf-site h2, .sf-site h3, .sf-site h4, .sf-site h5, .sf-site h6,
-.sf-site b, .sf-site strong, .sf-site em, .sf-site i, .sf-site small,
-.sf-site blockquote, .sf-site legend, .sf-site th, .sf-site figcaption,
-.sf-site .sf-brand-mark, .sf-site .sf-hero-frame span, .sf-site .sf-image-empty,
-.sf-site .sf-empty > div, .sf-site .sf-est-step-no, .sf-site .sf-est-thumb-empty,
-.sf-site .bt-hero-stamp, .sf-site .bt-contact-mark, .sf-site .bt-image-caption,
-.sf-site .bt-card-index, .sf-site .bt-hero-copy em, .sf-site .bt-thanks em {
+.sf-site h1, .sf-site h2, .sf-site h3, .sf-site h4, .sf-site h5, .sf-site h6, .sf-site b, .sf-site strong, .sf-site em, .sf-site i, .sf-site small, .sf-site blockquote, .sf-site legend, .sf-site th, .sf-site figcaption, .sf-site .sf-brand-mark, .sf-site .sf-image-empty, .sf-site .sf-empty > div, .sf-site .sf-est-step-no, .sf-site .sf-est-thumb-empty {
   font-family: var(--sf-font);
 }
 
@@ -1241,10 +1484,20 @@ body .sf-search-form button { min-height: 52px !important; height: 52px !importa
 .sf-est-project-record a { display: inline-flex; align-items: center; min-height: 44px; font-size: 16px; }
 .sf-est-asking-indication { padding: 16px; border: 1px solid var(--sf-line); background: var(--sf-paper-warm); border-radius: 10px; }
 @media (max-width: 600px) { .sf-est-decision-grid { grid-template-columns: minmax(0, 1fr); } }
-.sf-est-progress { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; list-style: none; margin: 0 0 28px; padding: 0; }
-.sf-est-progress li { display: flex; align-items: center; gap: 8px; padding: 10px; font-size: 14px; color: var(--sf-ink-soft); border-bottom: 2px solid var(--sf-line); }
-.sf-est-progress li[aria-current="step"] { color: var(--sf-accent); border-color: var(--sf-accent); font-weight: 700; }
-.sf-est-progress b { flex: none; }
+/* Numbered-circle stepper with a connector rail (the previous tab-underline
+   row read as navigation, not progress). Centered: each step's circle and
+   label sit on the column's centre line. The rail is drawn as two in-box
+   halves - the right half from this step, the left half from the next - so no
+   pseudo-element extends past its own li (an overflowing child made the row
+   fail the no-clipped-labels audit). */
+.sf-est-progress { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; list-style: none; margin: 0 0 28px; padding: 0; }
+.sf-est-progress li { position: relative; display: grid; justify-items: center; gap: 6px; padding: 0; font-size: 14px; color: var(--sf-ink-mute); text-align: center; }
+.sf-est-progress li:not(:last-child)::after { content: ""; position: absolute; top: 15px; left: calc(50% + 20px); right: 0; height: 2px; margin-top: -1px; background: var(--sf-line); }
+.sf-est-progress li + li::before { content: ""; position: absolute; top: 15px; left: 0; right: calc(50% + 20px); height: 2px; margin-top: -1px; background: var(--sf-line); }
+.sf-est-progress b { position: relative; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; border: 1.5px solid var(--sf-line); border-radius: 50%; background: var(--sf-paper); color: var(--sf-ink-mute); font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.sf-est-progress span { position: relative; z-index: 1; font-weight: 600; }
+.sf-est-progress li[aria-current="step"] { color: var(--sf-ink); font-weight: 800; }
+.sf-est-progress li[aria-current="step"] b { border-color: var(--sf-accent); background: var(--sf-accent); color: #fff; }
 .sf-est-street-fallback { border: 1px solid var(--sf-accent-line); background: var(--sf-accent-soft); color: var(--sf-accent-hover); border-radius: 8px; padding: 12px; min-height: 48px; text-align: left; font-size: 16px; }
 .sf-est-step { scroll-margin-top: 96px; }
 .sf-est-site-review { padding: 16px 0; }
@@ -1270,11 +1523,19 @@ body .sf-search-form button { min-height: 52px !important; height: 52px !importa
 .sf-site .sf-est-chip.active, .sf-site .sf-est-ownership-option.active { background: var(--sf-accent-soft); color: var(--sf-ink); border-color: var(--sf-accent); }
 .sf-est-chips[data-t="type"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .sf-est-chips[data-t="type"] button { min-height: 64px; font-size: 16px; }
-@media (max-width: 360px) { .sf-est-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) {
   .sf-est-step { scroll-margin-top: 80px; }
-  .sf-est-progress li { display: block; padding: 8px 4px; font-size: 12px; }
-  .sf-est-progress span { display: block; }
+  /* Phones get a vertical stepper: three horizontal items below ~460px
+     collapse into a run-on ("Location2Details3") with no room for the rail.
+     The block is centred as a unit so the circle column sits mid-card. */
+  .sf-est-progress { grid-template-columns: minmax(0, 1fr); gap: 12px; width: fit-content; margin-left: auto; margin-right: auto; }
+  .sf-est-progress li { display: grid; grid-auto-flow: column; align-items: center; justify-content: start; justify-items: start; gap: 10px; font-size: 13px; text-align: left; }
+  .sf-est-progress b { width: 28px; height: 28px; font-size: 12px; }
+  .sf-est-progress li + li::before { display: none; }
+  .sf-est-progress li:not(:last-child)::after {
+    top: 32px; bottom: -8px; left: 13px; right: auto;
+    width: 2px; height: auto; margin: 0;
+  }
 }
 .sf-compare-toggle { position: relative; z-index: 3; margin-top: 12px; min-height: 44px; padding: 8px 14px; border: 1px solid var(--sf-accent-line); border-radius: 8px; background: var(--sf-paper); color: var(--sf-accent); font-size: 16px; cursor: pointer; }
 .sf-compare-toggle[aria-pressed="true"] { background: var(--sf-accent-soft); border-color: var(--sf-accent); font-weight: 700; }
@@ -1678,7 +1939,6 @@ body.sf-menu-open .sf-sticky { display: none; }
    panel is now controlled solely by --sf-nav-bp in .sf-mnav. */
 
 @media (max-width: 640px) {
-  .sf-pv-steps-list li { grid-template-columns: 2.4rem 1fr; }
   .sf-cs-actions .sf-primary-btn,
   .sf-cs-actions .sf-outline-btn,
   .sf-pv-actions .sf-primary-btn,
@@ -1717,3 +1977,281 @@ body.sf-menu-open .sf-sticky { display: none; }
    * like every other reveal. */
   .sf-reveal.sf-reveal-right { transform: translateY(30px); }
 }
+
+@keyframes sf-cs-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .35; }
+}
+
+@keyframes sf-pv-status-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* =====================================================================
+   HOME REDESIGN (2026-10) - animated, modern editorial pass.
+   All of it is additive and scoped to home-only section classes:
+   - hero: aurora wash (pseudo, off the element tree), highlight sweep
+     under the headline, staggered copy rise, proof chips
+   - guide-summary + services: bento tiles with stroke icon tiles that
+     fill on hover; ghost index numbers stay out of the copy
+   - process: circular step badges on the serif cards
+   - Project B.T.: full-bleed dark band with a drifting warm glow and a
+     pulsing availability dot
+   Motion is progressive: prefers-reduced-motion renders every end state
+   statically, and no audited element leaves its box. */
+
+/* --- Hero: aurora, headline sweep, staggered copy, proof chips --------- */
+.sf-est-hero { position: relative; overflow: hidden; }
+.sf-est-hero::before {
+  content: "";
+  position: absolute;
+  inset: -30% -12%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 44% at 20% 28%, rgba(180, 82, 31, .12), transparent 70%),
+    radial-gradient(36% 42% at 80% 20%, rgba(242, 201, 140, .38), transparent 72%),
+    radial-gradient(44% 48% at 64% 84%, rgba(154, 109, 58, .14), transparent 70%),
+    radial-gradient(30% 36% at 10% 80%, rgba(23, 100, 124, .07), transparent 70%);
+  filter: blur(8px);
+  animation: sf-home-aurora 26s ease-in-out infinite alternate;
+}
+@keyframes sf-home-aurora {
+  from { transform: rotate(0deg) scale(1); }
+  to { transform: rotate(6deg) scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) { .sf-est-hero::before { animation: none; } }
+.sf-est-hero > * { position: relative; z-index: 1; }
+
+.sf-est-hero-copy.in > * { animation: sf-home-rise .8s var(--sf-ease) both; }
+.sf-est-hero-copy.in > :nth-child(1) { animation-delay: .02s; }
+.sf-est-hero-copy.in > :nth-child(2) { animation-delay: .1s; }
+.sf-est-hero-copy.in > :nth-child(3) { animation-delay: .2s; }
+.sf-est-hero-copy.in > :nth-child(4) { animation-delay: .3s; }
+.sf-est-hero-copy.in > :nth-child(5) { animation-delay: .42s; }
+.sf-est-hero-copy.in > :nth-child(6) { animation-delay: .55s; }
+@keyframes sf-home-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+
+.sf-est-hero h1 em {
+  background-image: linear-gradient(180deg, transparent 62%, rgba(180, 82, 31, .22) 62%, rgba(180, 82, 31, .22) 94%, transparent 94%);
+  background-repeat: no-repeat;
+  background-size: 0% 100%;
+  transition: background-size 1s var(--sf-ease) .45s;
+}
+.sf-est-hero-copy.in h1 em { background-size: 100% 100%; }
+
+.sf-est-hero .sf-est-proof { gap: .5rem .6rem; }
+.sf-est-hero .sf-est-proof span {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .42rem .82rem;
+  border: 1px solid var(--sf-accent-line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .72);
+  font-size: 14px;
+}
+.sf-est-hero .sf-est-proof span::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 11px;
+  margin-top: -4px;
+  border-right: 2px solid var(--sf-accent);
+  border-bottom: 2px solid var(--sf-accent);
+  transform: rotate(40deg);
+}
+.sf-est-hero-actions .sf-hero-btn {
+  transition: transform .25s var(--sf-ease), box-shadow .25s var(--sf-ease);
+  box-shadow: 0 16px 34px -18px rgba(180, 82, 31, .6);
+}
+.sf-est-hero-actions .sf-hero-btn:hover { transform: translateY(-2px); box-shadow: 0 20px 40px -18px rgba(180, 82, 31, .7); }
+
+/* --- Eyebrow chips (home sections only) -------------------------------- */
+.sf-est-hero .sf-eyebrow,
+.sf-guide-summary .sf-eyebrow,
+.sf-featured .sf-eyebrow,
+.sf-services .sf-eyebrow,
+.sf-process .sf-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: 14px;
+  padding: .38rem .78rem;
+  border: 1px solid var(--sf-accent-line);
+  border-radius: 999px;
+  background: var(--sf-accent-soft);
+}
+.sf-est-hero .sf-eyebrow::before,
+.sf-guide-summary .sf-eyebrow::before,
+.sf-featured .sf-eyebrow::before,
+.sf-services .sf-eyebrow::before,
+.sf-process .sf-eyebrow::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sf-accent);
+}
+
+/* --- Guide summary: bento tiles ---------------------------------------- */
+.sf-site .sf-guide-summary-card {
+  position: relative;
+  padding: 1.35rem 1.3rem 1.4rem;
+  border: 1px solid var(--sf-line);
+  border-radius: 16px;
+  background: var(--sf-paper);
+  transition: transform .3s var(--sf-ease), box-shadow .3s var(--sf-ease), border-color .3s var(--sf-ease);
+}
+.sf-site .sf-guide-summary-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 24px 48px -28px rgba(20, 30, 48, .28);
+  border-color: var(--sf-accent-line);
+}
+.sf-gsum-ico {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  background: var(--sf-accent-soft);
+  color: var(--sf-accent-hover);
+  transition: background .3s var(--sf-ease), color .3s var(--sf-ease);
+}
+.sf-gsum-ico svg { width: 21px; height: 21px; }
+.sf-site .sf-guide-summary-card:hover .sf-gsum-ico { background: var(--sf-accent); color: #FFFFFF; }
+.sf-site .sf-guide-summary-card b {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.35rem;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  color: var(--sf-ink-mute);
+}
+
+/* --- Services: separated tiles with stroke icons ----------------------- */
+.sf-site .sf-services-grid {
+  grid-template-columns: 1fr;
+  gap: 14px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+@media (min-width: 640px) { .sf-site .sf-services-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .sf-site .sf-services-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.sf-site .sf-service-card {
+  padding: 1.4rem 1.3rem 1.3rem;
+  border: 1px solid var(--sf-line);
+  border-radius: 16px;
+  background: var(--sf-paper);
+  transition: transform .3s var(--sf-ease), box-shadow .3s var(--sf-ease), border-color .3s var(--sf-ease);
+}
+.sf-site .sf-service-card:hover,
+.sf-site .sf-service-card:focus-visible {
+  transform: translateY(-5px);
+  box-shadow: 0 24px 48px -28px rgba(20, 30, 48, .28);
+  border-color: var(--sf-accent-line);
+  background: var(--sf-paper);
+}
+.sf-service-ico {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: .45rem;
+  border-radius: 13px;
+  background: var(--sf-accent-soft);
+  color: var(--sf-accent-hover);
+  transition: background .3s var(--sf-ease), color .3s var(--sf-ease), transform .3s var(--sf-ease);
+}
+.sf-service-ico svg { width: 22px; height: 22px; }
+.sf-service-card:hover .sf-service-ico,
+.sf-service-card:focus-visible .sf-service-ico { background: var(--sf-accent); color: #FFFFFF; transform: rotate(-4deg) scale(1.05); }
+.sf-service-num {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.3rem;
+  font-size: 12px;
+  color: var(--sf-ink-mute);
+}
+
+/* --- Process: circular step badges ------------------------------------- */
+.sf-site .sf-process-step { border-radius: 16px; }
+.sf-site .sf-process-step b {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--sf-accent-soft);
+  color: var(--sf-accent-hover);
+  font-size: 13px;
+}
+
+/* --- Project B.T.: full-bleed dark band -------------------------------- */
+.sf-site .sf-home-project {
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  max-width: none;
+  border: 0;
+  padding: clamp(2.5rem, 1.6rem + 3vw, 4rem) clamp(22px, 6vw, 92px);
+  background: #16202E;
+  border-radius: 0;
+  color: #F2ECE4;
+}
+.sf-home-project::before {
+  content: "";
+  position: absolute;
+  top: -55%;
+  right: -10%;
+  width: min(46rem, 70%);
+  aspect-ratio: 1 / 1;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgba(242, 201, 140, .26), rgba(242, 201, 140, 0) 70%);
+  animation: sf-home-glow 10s ease-in-out infinite alternate;
+}
+@keyframes sf-home-glow {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(-7%, 9%, 0) scale(1.18); }
+}
+@media (prefers-reduced-motion: reduce) { .sf-home-project::before { animation: none; } }
+.sf-home-project > * { position: relative; z-index: 1; }
+.sf-home-project .sf-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: 14px;
+  padding: .38rem .78rem;
+  border: 1px solid rgba(242, 201, 140, .35);
+  border-radius: 999px;
+  background: rgba(242, 201, 140, .1);
+  color: #D4A66E;
+}
+.sf-home-project .sf-eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #F2C98C; }
+.sf-site .sf-home-project p:not(.sf-eyebrow) { color: #C5CDD6; }
+.sf-site .sf-home-project-status {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  color: #F2C98C;
+  border-color: rgba(242, 201, 140, .45);
+  background: rgba(242, 201, 140, .08);
+}
+.sf-home-project-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5BC98B;
+  animation: sf-home-pulse 2.2s ease-in-out infinite;
+}
+@keyframes sf-home-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.78); } }
+@media (prefers-reduced-motion: reduce) { .sf-home-project-status::before { animation: none; } }
+.sf-home-project .sf-outline-btn { color: #F2ECE4; border-color: rgba(255, 255, 255, .4); }
+.sf-home-project .sf-outline-btn:hover { color: #F2C98C; border-color: rgba(242, 201, 140, .8); }

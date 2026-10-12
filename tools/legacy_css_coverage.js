@@ -113,7 +113,8 @@ function bareSelector(sel) {
      cannot render. */
   const parkedFns = (() => {
     const start = storeSrcOf().indexOf("function shophousePage");
-    return storeSrcOf().slice(start);
+    /* The parked cluster has been deleted, so there is nothing to exclude. */
+    return start < 0 ? "" : storeSrcOf().slice(start);
   })();
   const parkedClasses = new Set();
   const clsRe = /class="([^"]+)"/g;
