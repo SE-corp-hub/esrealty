@@ -12109,15 +12109,25 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       }).catch(keep);
     });
   }
-  async   function lsUploadPhotos(files) {
+  async function lsUploadPhotos(files) {
     const list = Array.from(files || []).filter(f => /^image\//.test(f.type || ""));
     if (!list.length) { toast("Choose a JPG, PNG or WebP image", "err"); return; }
+    /* Cameras produce multi-MB originals, so the checks run against what will
+       actually be stored: the photo is optimized first (<=1280px JPEG), then
+       held to the 2 MB cap. The old 2 MB pre-check rejected a 3 MB photo that
+       compresses to 300 KB, which forced manual conversion for no reason; the
+       high pre-limit now only guards against decoding absurd files. */
+    const RAW_LIMIT = 15 * 1024 * 1024;
+    const OUT_LIMIT = 2 * 1024 * 1024;
     // Local fallback (no cloud session): attach images as data URLs so demo/offline drafts keep photos.
     if (!SB || !SB.storage || !currentUser || !currentUser.id) {
       const status = $("#ls-photo-status");
       let done = 0;
       for (const file of list) {
-        if (file.size > 2 * 1024 * 1024) { toast(esc(file.name) + " is larger than 2 MB", "err"); done += 1; continue; }
+        if (file.size > RAW_LIMIT) { toast(esc(file.name) + " is too large (max 15 MB)", "err"); done += 1; continue; }
+        let optimized;
+        try { optimized = await lsOptimizeImage(file); } catch (e) { toast("Could not process " + esc(file.name), "err"); done += 1; continue; }
+        if (optimized.blob.size > OUT_LIMIT) { toast(esc(file.name) + " is larger than 2 MB", "err"); done += 1; continue; }
         const rd = new FileReader();
         rd.onload = () => {
           const ta = $("#ls-photos");
@@ -12131,7 +12141,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
           done += 1;
           if (status) status.textContent = done < list.length ? ("Attached " + done + "/" + list.length + "…") : "Photos attached locally";
         };
-        rd.readAsDataURL(file);
+        rd.readAsDataURL(optimized.blob);
         if (done >= 12) break; // sanity cap per batch
       }
       return;
@@ -12140,9 +12150,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (status) status.textContent = "Uploading " + list.length + " photo" + (list.length === 1 ? "" : "s") + "…";
     let done = 0;
     for (const file of list) {
-      if (file.size > 2 * 1024 * 1024) { toast(esc(file.name) + " is larger than 2 MB", "err"); done += 1; continue; }
+      if (file.size > RAW_LIMIT) { toast(esc(file.name) + " is too large (max 15 MB)", "err"); done += 1; continue; }
       let optimized;
       try { optimized = await lsOptimizeImage(file); } catch (e) { toast("Could not process " + esc(file.name), "err"); done += 1; continue; }
+      if (optimized.blob.size > OUT_LIMIT) { toast(esc(file.name) + " is larger than 2 MB", "err"); done += 1; continue; }
       const path = currentUser.id + "/" + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.floor(Math.random() * 1e9)) + "." + optimized.ext;
       try {
         const { error } = await SB.storage.from("listing-photos").upload(path, optimized.blob, { contentType: optimized.contentType, upsert: false, cacheControl: "31536000" });
