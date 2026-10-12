@@ -21,7 +21,7 @@
  * Deploy note: bump VERSION when you ship. The activate handler deletes every
  * cache not named here, so a bump evicts the previous generation.
  */
-const VERSION = "esrealty-pages-v20";
+const VERSION = "esrealty-pages-v21";
 const SHELL_CACHE = VERSION + "-shell";
 const ASSET_CACHE = VERSION + "-asset";
 const VENDOR_CACHE = VERSION + "-vendor";
@@ -30,12 +30,11 @@ const IMG_CACHE = VERSION + "-img";
 const SHELL = [
   "./",
   "./index.html",
+  "./css/reboot-shim.css",
   "./css/styles.css",
   "./css/storefront-legacy.css",
   "./css/estimator.css",
   "./css/storefront.css",
-  "./css/bootstrap.min.css",
-  "./css/bootstrap-fallback.css",
   "./js/supabase-config.js",
   "./js/util.js",
   "./js/listings-api.js",

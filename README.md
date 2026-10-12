@@ -59,8 +59,8 @@ storefront with property listings and two-property comparison.
 ## Tech
 
 - Plain HTML/CSS/JS (ES2017+). No front-end framework.
-- [Bootstrap 5.3.3](https://getbootstrap.com/) with a local fallback stylesheet, plus
-  project CSS in `css/`.
+- Project CSS in `css/`; `reboot-shim.css` carries the base typography rules the
+  design was built on (Bootstrap was removed from the eager payload).
 - One build step, and it is enforced. `js/app.js` is the source; `index.html` loads the
   committed bundle `js/app.min.js`. `node build_app.js` regenerates it and
   `node build_app.js --check` fails when the two disagree, so a stale bundle cannot ship.
@@ -94,8 +94,7 @@ storefront with property listings and two-property comparison.
 │   ├── storefront.css      # Public storefront
 │   ├── storefront-legacy.css
 │   ├── estimator.css       # Value Guide
-│   ├── bootstrap.min.css
-│   └── bootstrap-fallback.css
+│   └── reboot-shim.css     # Base typography (formerly supplied by Bootstrap)
 ├── js/
 │   ├── app.js              # Admin app source: views, bindings, role access
 │   ├── app.min.js          # Committed build of app.js (generated — do not edit)

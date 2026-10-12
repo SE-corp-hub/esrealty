@@ -21,24 +21,7 @@
 <link rel="preconnect" href="https://mrngaqtbaseewzcsogqi.supabase.co">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&display=swap"></noscript>
-<link rel="stylesheet" href="css/bootstrap.min.css">
-<script>
-  // Bootstrap detection: pin the local Bootstrap build; if it ever fails to
-  // load, mark the document so css/bootstrap-fallback.css supplies the core
-  // layout utilities and the app stays usable.
-  (function () {
-    var doc = document.documentElement;
-    var link = document.querySelector('link[href="css/bootstrap.min.css"]');
-    if (!link) { doc.setAttribute("data-bootstrap", "fallback"); return; }
-    function ok() { doc.removeAttribute("data-bootstrap"); doc.removeAttribute("data-bs-loading"); }
-    function miss() { doc.setAttribute("data-bootstrap", "fallback"); doc.removeAttribute("data-bs-loading"); }
-    doc.setAttribute("data-bs-loading", "");
-    link.addEventListener("load", ok);
-    link.addEventListener("error", miss);
-    setTimeout(function () { if (doc.hasAttribute("data-bs-loading")) miss(); }, 4000);
-  })();
-</script>
-<link rel="stylesheet" href="css/bootstrap-fallback.css">
+  <link rel="stylesheet" href="css/reboot-shim.css">
   <link rel="stylesheet" href="css/storefront-legacy.css">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="stylesheet" href="css/estimator.css">
