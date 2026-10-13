@@ -14,6 +14,9 @@ param(
 #   powershell -File tests\run_all.ps1 -Mobile      # mobile viewport pass
 
 $ErrorActionPreference = "Continue"
+# Re-launch the PowerShell that is running this script: "powershell" on
+# Windows, "pwsh" on Linux CI (where a bare "powershell" does not exist).
+$ps = (Get-Process -Id $PID).Path
 
 # Always use the driver committed in this repo. The previous version preferred
 # %TEMP%\opencode\cdp_driver.ps1 when it existed, which let a stray file on a
@@ -62,7 +65,7 @@ foreach ($name in $browser) {
     $t = Join-Path $PSScriptRoot "$name.js"
     Write-Host "== $name ==" -ForegroundColor Cyan
     $waitFlag = if ($shellStableTests -contains $name) { "-WaitShellStable" } else { "" }
-    $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $driver -TestFile $t -Url $BaseUrl -NavDelayMs $NavDelayMs -WindowSize $WindowSize $waitFlag 2>&1
+    $out = & $ps -NoProfile -ExecutionPolicy Bypass -File $driver -TestFile $t -Url $BaseUrl -NavDelayMs $NavDelayMs -WindowSize $WindowSize $waitFlag 2>&1
     try { $json = ($out -join "") | ConvertFrom-Json } catch { $json = $null }
     $pass = $json -and $json.ok
     $results += [pscustomobject]@{ Test = $name; Pass = [bool]$pass }

@@ -16,6 +16,9 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
+# Re-launch the PowerShell that is running this script: "powershell" on
+# Windows, "pwsh" on Linux CI (where a bare "powershell" does not exist).
+$ps = (Get-Process -Id $PID).Path
 # $PSScriptRoot is reliable under `powershell -File`; $MyInvocation.MyCommand.Path
 # is not, and silently yields an empty path.
 $here = $PSScriptRoot
@@ -50,7 +53,7 @@ $widths = @(
 $results = @()
 foreach ($row in $widths) {
   $size = "$($row.w),$($row.h)"
-  $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $driver -TestFile $test -Url ($BaseUrl + "#/home") -NavDelayMs $NavDelayMs -WindowSize $size 2>&1
+  $out = & $ps -NoProfile -ExecutionPolicy Bypass -File $driver -TestFile $test -Url ($BaseUrl + "#/home") -NavDelayMs $NavDelayMs -WindowSize $size 2>&1
   $json = $null
   try { $json = ($out -join "") | ConvertFrom-Json } catch { $json = $null }
   $pass = $json -and $json.ok
