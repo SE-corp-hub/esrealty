@@ -13,13 +13,19 @@
 # contain an XSS or injection: object-src and base-uri kill base-tag/script
 # gadget chains, frame-ancestors stops clickjacking, form-action stops credential
 # exfiltration via injected forms.
+#
+# img-src must include https://*.supabase.co: uploaded listing photos are served
+# from the Supabase Storage public bucket (listing-photos). Without it every
+# uploaded photo downloads but is refused by the browser and shows as broken.
+# tradersgag6.github.io covers listings whose photos still point at the old
+# GitHub Pages host.
 
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://images.unsplash.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; connect-src 'self' https://*.supabase.co https://esrealty-market-scan.vercel.app; frame-src https://www.google.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co https://tradersgag6.github.io https://images.unsplash.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; connect-src 'self' https://*.supabase.co https://esrealty-market-scan.vercel.app; frame-src https://www.google.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
 
 # Fingerprinted, immutable-ish assets. The app shell must never be cached stale.
 /index.html
