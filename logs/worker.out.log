@@ -1,0 +1,6 @@
+Market Scan worker listening on http://localhost:8932
+  /api/ping
+  /api/market-scan?city=&type=&mode=&maxResults=&live=
+  /api/market-scan/bench
+  /api/fb/login           (one-time Facebook login, needs Playwright)
+  playwright: installed
