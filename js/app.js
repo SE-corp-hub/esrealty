@@ -12229,7 +12229,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         '<span class="field-hint" id="ls-photo-status" style="align-self:center"></span></div>' +
         '<div id="ls-photo-previews" class="ls-photo-previews">' + (l.photos || []).map(lsPhotoThumb).join("") + "</div>" +
         '<textarea class="input mt-8" id="ls-photos" rows="3" placeholder="https://… or use the upload button">' + esc((l.photos || []).join("\n")) + "</textarea>" +
-        '<div class="field-hint">JPG, PNG or WebP · up to 4 MB each · uploads are public.</div></div>' +
+        '<div class="field-hint">JPG, PNG or WebP - photos are compressed automatically, so any camera photo works. The first photo is the cover shown on listings and cards. Uploads are public.</div></div>' +
       '<div class="field col-full mt-8"><label>Virtual tour / video URL</label>' + lsTxt("ls-video", l.videoUrl) + "</div>" +
       '<div class="field col-full mt-8"><label>Featured listing</label><label class="ms-chk"><input type="checkbox" id="ls-feat"' + (l.featured ? " checked" : "") + "> Show as featured</label><div class='field-hint'>Featured slots require at least one photo.</div></div>" +
       '<div class="field col-full mt-8"><label>Publication</label><label class="ms-chk"><input type="checkbox" id="ls-published"' + (l.isPublished ? " checked" : "") + '> Publish on the public property website</label><div class="field-hint">Leave unchecked to keep this listing as a private draft.</div></div>' +
