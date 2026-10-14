@@ -1,0 +1,20 @@
+[
+  {
+    "source": "bdo",
+    "page": "batangas.pdf",
+    "ok": false,
+    "error": "fetch failed"
+  },
+  {
+    "source": "bpi",
+    "page": "luzon.html",
+    "ok": true,
+    "bytes": 817296
+  },
+  {
+    "source": "securitybank",
+    "page": "properties.html",
+    "ok": false,
+    "error": "https://securitybank.com/personal/loans/repossessed-assets/properties-for-sale/ -> HTTP 403"
+  }
+]
