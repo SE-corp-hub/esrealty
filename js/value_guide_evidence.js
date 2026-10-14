@@ -106,5 +106,52 @@
       policy: "Provisional: at least 3 identified listings, matching locality/type/context/corner, prices within 180 days and 0.5–2× area similarity",
       status: indication ? "asking-indication-available" : context.length ? "context-only-insufficient-evidence" : "no-comparable-data" };
   }
-  return { normalize: normalize, summary: summary, median: median, place: place };
+  /* Bank listings near the subject, from data/comparables/batangas-latest.json
+     (refreshed monthly by .github/workflows/comparables-monthly.yml). DISPLAY
+     ONLY: bank "as is, where is" prices are not resale prices, so they are shown
+     beside the estimate and never enter computeEstimate().
+     subject: { municipality, barangay, type: "vacant_lot"|"house_lot", area,
+                landPerSqm, total, valuationDate }
+     Ranking: same barangay first, then the same kind (vacant / built), then the
+     closest lot size. "Tightly aligned" is LandValuePH's measure: the smallest
+     band around the median (5-40%) that holds at least 60% of the records. */
+  function bankNearby(snapshot, subject, limit) {
+    var all = (snapshot && Array.isArray(snapshot.records)) ? snapshot.records : [];
+    var town = norm(subject && subject.municipality), brgy = norm(subject && subject.barangay);
+    var vacantSubject = subject && subject.type === "vacant_lot";
+    var isVacant = function (r) { return r.kind === "vacant_lot" || r.kind === "industrial_lot"; };
+    var pool = all.filter(function (r) { return norm(r.municipality) === town && r.pricePerSqmLot > 0; });
+    var sameKind = pool.filter(function (r) { return isVacant(r) === vacantSubject && r.kind !== "industrial_lot"; });
+    var area = positive(subject && subject.area);
+    var ranked = pool.slice().sort(function (a, b) {
+      var ka = (norm(a.barangay) === brgy ? 0 : 2) + (isVacant(a) === vacantSubject ? 0 : 1);
+      var kb = (norm(b.barangay) === brgy ? 0 : 2) + (isVacant(b) === vacantSubject ? 0 : 1);
+      if (ka !== kb) return ka - kb;
+      if (area) return Math.abs(Math.log(a.lotArea / area)) - Math.abs(Math.log(b.lotArea / area));
+      return a.price - b.price;
+    });
+    var rates = sameKind.map(function (r) { return r.pricePerSqmLot; });
+    var med = rates.length >= 3 ? Math.round(median(rates)) : null;
+    var cluster = null;
+    if (med) {
+      for (var pct = 5; pct <= 40; pct += 5) {
+        var inBand = rates.filter(function (v) { return Math.abs(v / med - 1) <= pct / 100; }).length;
+        if (inBand / rates.length >= 0.6) { cluster = { pct: pct, count: inBand }; break; }
+      }
+    }
+    var newest = pool.reduce(function (m, r) { return r.observedOn > m ? r.observedOn : m; }, "");
+    var subjectRate = vacantSubject ? positive(subject && subject.landPerSqm) : (area ? positive(subject && subject.total) / area : 0);
+    return {
+      municipality: town, total: pool.length, sameKind: sameKind.length,
+      inBarangay: pool.filter(function (r) { return norm(r.barangay) === brgy; }).length,
+      medianPricePerSqm: med, cluster: cluster, newest: newest || null,
+      generatedOn: (snapshot && snapshot.generatedOn) || null,
+      sources: pool.map(function (r) { return r.source; }).filter(function (v, i, a) { return a.indexOf(v) === i; }),
+      subjectPricePerSqm: subjectRate ? Math.round(subjectRate) : null,
+      subjectVsMedian: med && subjectRate ? Math.round((subjectRate / med - 1) * 1000) / 1000 : null,
+      records: ranked.slice(0, limit || 6)
+    };
+  }
+
+  return { normalize: normalize, summary: summary, median: median, place: place, bankNearby: bankNearby };
 });

@@ -93,10 +93,16 @@ async function pickStreet(text, key) {
     chk("asking-price-is-estimate-plus-7", r && r.recommendedAskingPrice === Math.round(r.total * 1.07), "");
     chk("report-lists-adjustments", /Adjustments from your answers/.test(document.body.textContent) && /\(suggested\)/.test(document.body.textContent), "");
 
+    const bank = q('[data-est-bank]');
+    chk("bank-listings-section", !!bank && /bank-acquired/i.test(bank.textContent) && /Bank listings near you/.test(document.body.textContent), bank ? bank.textContent.slice(0, 80) : "missing");
+
     window.__msOk = window.__msChecks.every(c => c.ok) && window.__msChecks.length > 0;
     window.__msDone = true;
   } catch (err) {
     window.__msChecks.push({ name: "run-error", ok: false, detail: (err && err.message || String(err)) });
+    const bank = q('[data-est-bank]');
+    chk("bank-listings-section", !!bank && /bank-acquired/i.test(bank.textContent) && /Bank listings near you/.test(document.body.textContent), bank ? bank.textContent.slice(0, 80) : "missing");
+
     window.__msOk = false;
     window.__msDone = true;
   }

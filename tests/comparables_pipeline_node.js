@@ -229,6 +229,33 @@ test("build: nothing usable leaves the previous snapshot untouched", async () =>
   assert.ok(!fs.existsSync(path.join(ws.out, "batangas-latest.json")));
 });
 
+test("result page: bank listings near the subject, ranked and summarised (display only)", () => {
+  const E = require(path.join(ROOT, "js/value_guide_evidence.js"));
+  const rec = (brgy, kind, lot, price, extra) => Object.assign({ source: "bdo", priceType: "advertised", municipality: "LIPA CITY", barangay: brgy, kind, lotArea: lot, price, pricePerSqmLot: Math.round(price / lot), observedOn: "2026-10-10" }, extra);
+  const snap = { generatedOn: "2026-10-14", records: [
+    rec("CUMBA", "vacant_lot", 200, 1200000), rec("CUMBA", "vacant_lot", 150, 870000), rec("TIBIG", "vacant_lot", 210, 1300000),
+    rec("CUMBA", "house_lot", 100, 3000000), rec("TIBIG", "vacant_lot", 1000, 9000000, { source: "bpi", observedOn: "2026-10-14" }),
+    rec("POBLACION", "vacant_lot", 200, 1000000, { municipality: "TAAL" }) ] };
+  const n = E.bankNearby(snap, { municipality: "Lipa City", barangay: "Cumba", type: "vacant_lot", area: 200, landPerSqm: 6300 });
+  assert.strictEqual(n.total, 5, "only the subject's town");
+  assert.strictEqual(n.inBarangay, 3);
+  assert.strictEqual(n.sameKind, 4, "houses are not in the vacant-lot median");
+  assert.strictEqual(n.medianPricePerSqm, 6095);
+  assert.deepStrictEqual(n.records.slice(0, 3).map(r => [r.barangay, r.kind, r.lotArea]), [["CUMBA", "vacant_lot", 200], ["CUMBA", "vacant_lot", 150], ["CUMBA", "house_lot", 100]],
+    "same barangay and kind first, closest size first");
+  assert.strictEqual(n.newest, "2026-10-14");
+  assert.deepStrictEqual(n.sources.sort(), ["bdo", "bpi"]);
+  assert.strictEqual(n.subjectVsMedian, +(6300 / 6095 - 1).toFixed(3));
+  assert.ok(n.cluster && n.cluster.count / n.sameKind >= 0.6);
+  const few = E.bankNearby(snap, { municipality: "TAAL", barangay: "BULI", type: "house_lot", area: 100, total: 3e6 });
+  assert.deepStrictEqual([few.total, few.sameKind, few.medianPricePerSqm], [1, 0, null], "no median under 3 records");
+  assert.strictEqual(E.bankNearby({ records: [] }, { municipality: "LIPA CITY" }).total, 0);
+  /* never an estimator input */
+  const src = fs.readFileSync(path.join(ROOT, "js/estimator.js"), "utf8");
+  const compute = src.slice(src.indexOf("function computeEstimate("), src.indexOf("function ownershipRiskPct("));
+  assert.ok(!/bankComparables|bankNearby/.test(compute), "computeEstimate must not read bank listings");
+});
+
 test("helpers: property kinds and lot/block keys", () => {
   assert.strictEqual(BUILD.kindOf("Residential - House & Lot"), "house_lot");
   assert.strictEqual(BUILD.kindOf("Residential - Vacant Lot"), "vacant_lot");

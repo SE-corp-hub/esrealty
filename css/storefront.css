@@ -1483,6 +1483,16 @@ body .sf-search-form button { min-height: 46px !important; height: 46px !importa
 .sf-est-project-record h5 { font-size: 18px; margin: 0 0 10px; }
 .sf-est-project-record a { display: inline-flex; align-items: center; min-height: 44px; font-size: 16px; }
 .sf-est-asking-indication { padding: 16px; border: 1px solid var(--sf-line); background: var(--sf-paper-warm); border-radius: 10px; }
+/* Bank listings near you (market-scan/comparables snapshot) */
+.sf-est-bank-lead { margin: 0 0 6px; font-size: 16px; color: var(--sf-ink); }
+.sf-est-bank-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; margin: 14px 0; }
+.sf-est-bank-record { border: 1px solid var(--sf-line); border-radius: 10px; padding: 14px; background: var(--sf-paper); min-width: 0; }
+.sf-est-bank-record h5 { font-size: 16px; margin: 0 0 6px; overflow-wrap: anywhere; }
+.sf-est-bank-price { margin: 0 0 6px; }
+.sf-est-bank-price b { font-size: 18px; color: var(--sf-ink); }
+.sf-est-bank-price span { color: var(--sf-ink-mute); font-size: 14px; }
+.sf-est-bank-src { margin: 8px 0 0; font-size: 13px; color: var(--sf-ink-mute); }
+.sf-est-bank-src a { display: inline-flex; align-items: center; min-height: 44px; }
 @media (max-width: 600px) { .sf-est-decision-grid { grid-template-columns: minmax(0, 1fr); } }
 /* Numbered-circle stepper with a connector rail (the previous tab-underline
    row read as navigation, not progress). Centered: each step's circle and

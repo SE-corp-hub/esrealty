@@ -324,7 +324,7 @@ First snapshot (2026-10-14): 108 parsed (BDO 96 as of 10 Oct, BPI 12),
 | A. BDO + BPI collectors, build script, manual run | **done 2026-10-14**: 107 records, 100% barangay match, no personal data. Security Bank: manual rows only (403) |
 | B. Monthly workflow + failure issues | built 2026-10-14; done when two monthly runs have committed snapshots |
 | C. Accuracy test on live snapshot | replaces the fixed fixture; per-town report committed each month |
-| D. Evidence card on the result page | shows nearby records with source, price type, date and link |
+| D. Evidence card on the result page | **done 2026-10-14**: "Bank listings near you" in the Market evidence group - town count, barangay count, median per sqm with the ±% cluster, this guide's per-sqm against it, and up to 6 nearest records with source, price type, date, tag and link. Display only (`ESREALTY_EVIDENCE.bankNearby`); a test asserts computeEstimate never reads it |
 | E. SSS + Pag-IBIG (incl. winning bids) | completed-price records tracked separately |
 | F. Calibration PRs | first reviewed calibration merged for a town with ≥10 lot records |
 

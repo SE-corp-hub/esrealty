@@ -630,7 +630,7 @@
 
   function updateGuideSettings(guide) {
     if (!DATA || !guide || !guide.approvedBy || !guide.approvedAt) return;
-    DATA = { config: applyGuideSettings(DATA.config, { valueGuide: guide }), index: DATA.index, manifest: DATA.manifest, projectEvidence: DATA.projectEvidence };
+    DATA = Object.assign({}, DATA, { config: applyGuideSettings(DATA.config, { valueGuide: guide }) });
     dataPromise = Promise.resolve(DATA);
   }
 
@@ -647,11 +647,16 @@
          result screen cites next to the estimate - the reader sees what asking
          evidence exists and how it compares to the street's BIR rate. They never
          enter computeEstimate(), exactly as market_benchmarks_node.js asserts. */
-      loadJSON("data/market-benchmarks.json").catch(function () { return { records: [], unavailable: true }; })
+      loadJSON("data/market-benchmarks.json").catch(function () { return { records: [], unavailable: true }; }),
+      /* Bank-acquired listings, refreshed monthly (market-scan/comparables).
+         DISPLAY ONLY, like the benchmarks above: bankListingsHtml() shows them
+         beside the estimate; they never enter computeEstimate(). */
+      loadJSON("data/comparables/batangas-latest.json").catch(function () { return { records: [], unavailable: true }; })
     ]).then(function (parts) {
       DATA = { config: applyGuideSettings(parts[0], parts[2]), index: parts[1], manifest: parts[3], projectEvidence: parts[4] };
       DATA.config.governmentReferenceRegister = parts[5];
       DATA.marketBenchmarks = parts[6];
+      DATA.bankComparables = parts[7];
       return DATA;
     });
     return dataPromise;
@@ -1490,6 +1495,43 @@ out += "</div>";
     var sameMuni = here.length ? " This municipality has " + here.length + " researched asking record(s)." : " This municipality has no researched asking record yet; nearby records are shown for context.";
     return '<div class="sf-est-benchmark-context" data-est-benchmark-context><h5>Researched asking prices' + (here.length ? " in " + esc(r.municipality) : " nearby") + '</h5>' + cards + '<p class="sf-est-rdp">Researched asking prices are advertised prices, not achieved sales, and they are context only - they never change the estimate above.' + sameMuni + '</p></div>';
   }
+  /* Bank listings in the subject's town: the evidence LandValuePH puts behind a
+     paywall, shown here with source, price type, date and link. Context only -
+     see ESREALTY_EVIDENCE.bankNearby. */
+  var BANK_LABEL = { bdo: "BDO", bpi: "BPI Buena Mano", securitybank: "Security Bank" };
+  var PRICE_LABEL = { advertised: "advertised price", selling: "selling price", suggested: "suggested price" };
+  function shortDate(d) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || "");
+    return m ? Number(m[3]) + " " + ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m[2]) - 1] + " " + m[1] : "";
+  }
+  function bankListingsHtml(r) {
+    var snap = DATA && DATA.bankComparables;
+    if (!snap || snap.unavailable) return '<p class="sf-est-rdp">The bank listing snapshot could not be loaded.</p>';
+    var n = evidence.bankNearby(snap, { municipality: r.municipality, barangay: r.barangay, type: r.type, area: r.area, landPerSqm: r.landPerSqm, total: r.total });
+    var vacant = r.type === "vacant_lot", town = esc(r.municipality);
+    if (!n.total) return '<div class="sf-est-bank" data-est-bank><p class="sf-est-rdp">No bank-acquired properties are listed for sale in ' + town + ' this month. The list is refreshed monthly from BDO and BPI Buena Mano.</p></div>';
+    var head = '<p class="sf-est-bank-lead"><b>' + n.total + ' bank-acquired propert' + (n.total === 1 ? 'y' : 'ies') + '</b> for sale in ' + town + (n.inBarangay ? ' · <b>' + n.inBarangay + '</b> in ' + esc(r.barangay) : '') + '.</p>';
+    if (n.medianPricePerSqm) {
+      head += '<p class="sf-est-rdp">Median ' + money(n.medianPricePerSqm) + ' per sqm of lot across ' + n.sameKind + ' ' + (vacant ? 'vacant lots' : 'house-and-lot properties (house included)') +
+        (n.cluster ? '; ' + n.cluster.count + ' of ' + n.sameKind + ' are within ±' + n.cluster.pct + '% of it' : '; prices are widely spread') + '.';
+      if (n.subjectVsMedian != null) head += ' This guide works out to ' + money(n.subjectPricePerSqm) + ' per sqm' + (vacant ? ' of land' : ' of lot, house included') + ' (' + (n.subjectVsMedian >= 0 ? '+' : '') + fmt(Math.round(n.subjectVsMedian * 100)) + '% against that median).';
+      head += '</p>';
+    } else head += '<p class="sf-est-rdp">Fewer than 3 ' + (vacant ? 'vacant lots' : 'houses') + ' here, so no median is shown.</p>';
+    var cards = n.records.map(function (rec) {
+      var place = rec.barangay ? "Brgy. " + rec.barangay : rec.municipality;
+      var size = fmt(rec.lotArea) + " sqm lot" + (rec.floorArea > 0 ? " · " + fmt(rec.floorArea) + " sqm floor" : "");
+      var rate = money(rec.pricePerSqmLot) + "/sqm" + (rec.ratioToBir ? " · " + fmt(rec.ratioToBir) + "× BIR" : "");
+      var src = (BANK_LABEL[rec.source] || rec.source) + " · " + (PRICE_LABEL[rec.priceType] || rec.priceType) + " · " + shortDate(rec.observedOn) + (rec.tag ? " · " + rec.tag + " tag" : "") + (rec.carriedOver ? " · from last month" : "");
+      var title = rec.project || String(rec.address || "").split(/,?\s+(?:Barangay|Brgy\.?)\s/i)[0].slice(0, 70) || rec.propertyType;
+      return '<article class="sf-est-bank-record"><h5>' + esc(title) + '</h5>' +
+        '<p class="sf-est-bank-price"><b>' + money(rec.price) + '</b> <span>' + esc(rate) + '</span></p>' +
+        '<p class="sf-est-rdp">' + esc(place + " · " + size + " · " + rec.propertyType) + '</p>' +
+        '<p class="sf-est-bank-src">' + esc(src) + (/^https:\/\//.test(rec.url || "") ? ' · <a href="' + esc(rec.url) + '" target="_blank" rel="noopener noreferrer">bank list</a>' : '') + '</p></article>';
+    }).join("");
+    return '<div class="sf-est-bank" data-est-bank>' + head + '<div class="sf-est-bank-list">' + cards + '</div>' +
+      '<p class="sf-est-rdp">Bank prices are "as is, where is": title, possession or repair issues are common, and these are advertised prices, not completed sales. They are shown for context and do not change the estimate. Refreshed monthly' + (n.generatedOn ? ' (last ' + esc(shortDate(n.generatedOn)) + ')' : '') + '; sold or withdrawn properties are removed.</p></div>';
+  }
+
   function evidenceHtml(r) {
     var c = r.comparableSummary || {}, indication = r.askingIndication;
     var out = '<p class="sf-est-rdp">' + Number(c.count || 0) + ' context record(s); ' + Number(c.eligibleCount || 0) + ' passed the provisional asking screen. ' + esc(c.policy || "") + '</p>';
@@ -1659,12 +1701,13 @@ var displayRange = '';
     s.push({ t: "Professional review", h:
       "<p class=\"sf-est-rdp\"><b>Request a site and document review.</b> A licensed real estate appraiser can review property condition, title, and current local evidence for a formal valuation assignment. The guide itself is a planning estimate.</p>" });
     s.push({ t: "Asking evidence and project sources", h: evidenceHtml(r) });
+    s.push({ t: "Bank listings near you", h: bankListingsHtml(r) });
 
     var groups = [
       { t: "Summary", titles: ["Estimate at a glance", "Pricing strategy", "The property"] },
       { t: "Calculation", titles: ["How this number was built", "Land value build-up", "House value (replacement cost approach)", "House value", "Ownership & title review", "Adjustments from your answers", "Total estimate and range"] },
       { t: "Transaction costs", titles: ["Taxes, fees & commissions"] },
-      { t: "Market evidence", titles: ["Source of land rates", "BIR classification used", "How precise is this match?", "Asking evidence and project sources"] },
+      { t: "Market evidence", titles: ["Bank listings near you", "Source of land rates", "BIR classification used", "How precise is this match?", "Asking evidence and project sources"] },
       { t: "Documents and next steps", titles: ["Professional review"] },
       { t: "Methodology and limitations", titles: ["Methodology", "Coverage and limitations", "Legal"] }
     ];
