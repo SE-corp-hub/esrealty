@@ -59,10 +59,14 @@ foreach ($row in $widths) {
   $pass = $json -and $json.ok
   $results += [pscustomobject]@{ Width = $row.w; Height = $row.h; Pass = [bool]$pass; Json = $json }
   $tag = if ($pass) { "PASS" } else { "FAIL" }
+  if (-not $pass -and -not $json -and $env:GITHUB_ACTIONS) { Write-Host ("::error title=overflow {0}px::no result from driver: {1}" -f $row.w, (($out -join " ") -replace "[\r\n]+", " ").Substring(0, [Math]::Min(400, ($out -join " ").Length))) }
   Write-Host ("  {0,-4} {1,5}x{2,-5} {3}" -f $tag, $row.w, $row.h, $size)
   if (-not $pass -and $json -and $json.checks) {
     foreach ($c in @($json.checks | Where-Object { -not $_.ok })) {
       Write-Host ("        - {0}: {1}" -f $c.name, $c.detail)
+      # Also as a GitHub annotation, so the failing element is visible on the
+      # run page (and through the API) without downloading the full log.
+      if ($env:GITHUB_ACTIONS) { Write-Host ("::error title=overflow {0}px::{1}: {2}" -f $row.w, $c.name, $c.detail) }
     }
   }
 }
