@@ -1,0 +1,8 @@
+[
+  { "id": "bdo", "label": "BDO assets for sale", "priceType": "advertised",
+    "urls": [ { "name": "batangas.pdf", "url": "https://www.bdo.com.ph/content/dam/bdounibank/en-ph/mcg-digital-marketing/asset-for-sale/asset-listings/Luzon_Batangas.pdf" } ] },
+  { "id": "bpi", "label": "BPI Buena Mano", "priceType": "selling",
+    "urls": [ { "name": "luzon.html", "url": "https://www.bpi.com.ph/group/buenamano/properties-for-sale/luzon" } ] },
+  { "id": "securitybank", "label": "Security Bank repossessed assets", "priceType": "suggested",
+    "urls": [ { "name": "properties.html", "url": "https://securitybank.com/personal/loans/repossessed-assets/properties-for-sale/" } ] }
+]
