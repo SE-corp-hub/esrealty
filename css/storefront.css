@@ -1178,6 +1178,15 @@ body .sf-search-form button { min-height: 46px !important; height: 46px !importa
 }
 .sf-site .sf-card-copy h4 { grid-column: 1; grid-row: 2; margin: 0 0 4px; font-size: 17px; }
 .sf-site .sf-card-location { grid-column: 1; grid-row: 3; }
+/* Narrow phones: a long price pill (e.g. ₱12,500,000) next to the title left
+   the title column ~52px wide, so "Caloocan," overflowed its box at 320px.
+   Below 420px the price takes its own row above the title. */
+@media (max-width: 420px) {
+  .sf-site .sf-card-copy h3 { grid-column: 1 / -1; grid-row: 2; justify-self: start; margin-bottom: 8px; }
+  .sf-site .sf-card-copy h4 { grid-column: 1 / -1; grid-row: 3; }
+  .sf-site .sf-card-location { grid-column: 1 / -1; grid-row: 4; }
+  .sf-site .sf-card-copy .sf-card-meta { grid-row: 5; }
+}
 .sf-site .sf-card-meta {
   grid-column: 1 / -1;
   grid-row: 4;
