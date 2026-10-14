@@ -329,7 +329,8 @@ test("calibration: proposals are project-weighted, shrunk, and reach the estimat
   const EST = ACC.loadEstimator(ROOT);
   const base = { purpose: "selling", type: "vacant_lot", municipality: "LIPA CITY", barangay: "CUMBA", streetKey: "", allOther: true,
     classification: "RR", area: 200, saleContext: "private-resale", landMethod: "factor", features: [] };
-  const land = (await EST.estimate(base)).landValue;
+  const live = await EST.estimate(base); /* includes whatever town factor data/calibration.json holds */
+  const land = live.landValue / (live.townCalibration ? live.townCalibration.factor : 1);
   /* every record priced so that price x 1.10 / guide land = 0.80 */
   const price = Math.round(land * 0.8 / 1.1);
   const lot = (project, i, address) => ({ id: "c:" + project + i, source: "bdo", kind: "vacant_lot", municipality: "LIPA CITY", barangay: "CUMBA",
@@ -354,7 +355,7 @@ test("calibration: proposals are project-weighted, shrunk, and reach the estimat
   /* the estimator applies it to residential land only, and shows it */
   const D = await EST.loadData(true);
   const md = await EST.loadMunicipality("lipa-city");
-  const plain = EST.core.computeEstimate(D.config, D.index, md, base);
+  const plain = EST.core.computeEstimate(Object.assign({}, D.config, { townCalibration: null }), D.index, md, base);
   const withCal = EST.core.computeEstimate(Object.assign({}, D.config, { townCalibration: cal }), D.index, md, base);
   assert.strictEqual(withCal.landValue, Math.round(plain.landValue * expected));
   assert.strictEqual(withCal.townCalibration.factor, expected);
@@ -366,7 +367,9 @@ test("calibration: proposals are project-weighted, shrunk, and reach the estimat
 
   /* next month starts from the approved factor; two projects are not enough */
   out = await CAL.calibrate({ root: ROOT, dir: ws.out, calibrationFile: calFile, today: "2026-11-01" });
-  assert.strictEqual(out.towns.find(x => x.town === "LIPA CITY").current, expected);
+  const again = out.towns.find(x => x.town === "LIPA CITY");
+  assert.strictEqual(again.current, expected);
+  assert.strictEqual(again.status, "no change needed", "the same evidence does not walk the approved factor further");
   fs.writeFileSync(path.join(ws.out, "batangas-latest.json"), JSON.stringify({ month: "2026-11", records: recs.filter(r => r.project !== "Gamma Estates") }));
   out = await CAL.calibrate({ root: ROOT, dir: ws.out, calibrationFile: path.join(ws.dir, "none.json"), today: "2026-11-01" });
   assert.strictEqual(out.towns.find(x => x.town === "LIPA CITY").status, "not enough records");

@@ -1498,6 +1498,8 @@ body .sf-search-form button { min-height: 46px !important; height: 46px !importa
 .sf-est-project-record a { display: inline-flex; align-items: center; min-height: 44px; font-size: 16px; }
 .sf-est-asking-indication { padding: 16px; border: 1px solid var(--sf-line); background: var(--sf-paper-warm); border-radius: 10px; }
 /* Bank listings near you (market-scan/comparables snapshot) */
+.sf-est-result-bank { margin: 12px 0 0; padding: 10px 12px; border-left: 3px solid var(--sf-accent-line); background: var(--sf-paper-warm); font-size: 14px; line-height: 1.55; color: var(--sf-ink-soft); }
+.sf-est-result-bank span { color: var(--sf-ink-mute); }
 .sf-est-bank-lead { margin: 0 0 6px; font-size: 16px; color: var(--sf-ink); }
 .sf-est-bank-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; margin: 14px 0; }
 .sf-est-bank-record { border: 1px solid var(--sf-line); border-radius: 10px; padding: 14px; background: var(--sf-paper); min-width: 0; }

@@ -7,13 +7,15 @@
  *
  * For every town with enough vacant residential lots in this month's snapshot:
  *
- *   ratio_i   = price_i x (1 + BANK_GAP) / guide_i
+ *   ratio_i   = price_i x (1 + BANK_GAP) / guide_i  (guide land before any town factor)
  *               bank and Pag-IBIG prices sit below resale; the guide aims at
  *               resale, so each record is lifted by BANK_GAP (10%) first
  *   project   = median ratio of its records      (one project counts once)
  *   town      = median of the project medians
  *   weight    = projects / (projects + 10)       (shrink toward "no change")
- *   proposed  = current x (1 + weight x (town - 1)), capped to 0.75-1.25
+ *   target    = 1 + weight x (town - 1), capped to 0.75-1.25
+ *               (this month's evidence only; compared with the approved
+ *               factor, and proposed when they differ by 3% or more)
  *
  * A town qualifies with >= 10 lot records from >= 3 projects, and a proposal is
  * made only when it moves the factor by 3% or more.
@@ -57,7 +59,11 @@ async function calibrate(opts) {
     if (!e || e.available === false || !(e.landValue > 0)) continue;
     const t = (byTown[r.municipality] = byTown[r.municipality] || {});
     const project = projectKey(r, known);
-    (t[project] = t[project] || []).push(r.price * (1 + RULES.BANK_GAP) / e.landValue);
+    /* against the UNCORRECTED guide land: divide out whatever town factor the
+       live data/calibration.json already applies, so the ratio is the full
+       factor the prices point to, whichever calibration file is in play */
+    const baseLand = e.landValue / (e.townCalibration ? e.townCalibration.factor : 1);
+    (t[project] = t[project] || []).push(r.price * (1 + RULES.BANK_GAP) / baseLand);
   }
 
   const towns = Object.keys(byTown).sort().map(town => {
@@ -68,7 +74,12 @@ async function calibrate(opts) {
     const qualifies = records >= RULES.MIN_RECORDS && projects.length >= RULES.MIN_PROJECTS;
     const townRatio = median(projects.map(p => p.ratio));
     const weight = projects.length / (projects.length + RULES.PRIOR);
-    let proposed = now * (1 + weight * (townRatio - 1));
+    /* this month's evidence alone, shrunk toward "no correction". It is NOT
+       stepped from the approved factor: re-applying the shrink to the same
+       evidence every month would walk the factor all the way to the raw ratio
+       and defeat the shrink. A proposal is made when this target differs from
+       the approved factor by MIN_CHANGE. */
+    let proposed = 1 + weight * (townRatio - 1);
     proposed = r3(Math.min(RULES.CAP[1], Math.max(RULES.CAP[0], proposed)));
     const change = proposed / now - 1;
     return {

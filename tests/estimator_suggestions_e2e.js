@@ -96,6 +96,9 @@ async function pickStreet(text, key) {
     const bank = q('[data-est-bank]');
     chk("bank-listings-section", !!bank && /acquired propert/i.test(bank.textContent) && /Bank & Pag-IBIG listings near you/.test(document.body.textContent), bank ? bank.textContent.slice(0, 80) : "missing");
 
+    const line = q('[data-est-bank-line]');
+    chk("bank-summary-line-or-none", !line || /bank and Pag-IBIG propert/.test(line.textContent), line ? line.textContent.slice(0, 80) : "no records in town");
+
     window.__msOk = window.__msChecks.every(c => c.ok) && window.__msChecks.length > 0;
     window.__msDone = true;
   } catch (err) {

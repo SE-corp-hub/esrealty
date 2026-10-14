@@ -1529,6 +1529,20 @@ out += "</div>";
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || "");
     return m ? Number(m[3]) + " " + ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m[2]) - 1] + " " + m[1] : "";
   }
+  /* One line next to the estimate, so the bank and Pag-IBIG evidence is seen
+     without opening "Market evidence"; the full section stays there. */
+  function bankSummaryLineHtml(r) {
+    var snap = DATA && DATA.bankComparables;
+    if (!snap || snap.unavailable || !r || !r.municipality) return "";
+    var n = evidence.bankNearby(snap, { municipality: r.municipality, barangay: r.barangay, type: r.type, area: r.area, landPerSqm: r.landPerSqm, total: r.total });
+    if (!n.total) return "";
+    var what = r.type === "vacant_lot" ? "vacant lots" : "houses";
+    return '<p class="sf-est-result-bank" data-est-bank-line><b>' + n.total + ' bank and Pag-IBIG propert' + (n.total === 1 ? 'y' : 'ies') + '</b> for sale in ' + esc(r.municipality) +
+      (n.medianPricePerSqm ? ' · median ' + money(n.medianPricePerSqm) + '/sqm of lot for ' + what : '') +
+      (n.subjectVsMedian != null ? ' · this guide ' + (n.subjectVsMedian >= 0 ? '+' : '') + fmt(Math.round(n.subjectVsMedian * 100)) + '%' : '') +
+      '. <span>As-is asking prices and minimum bids; details under Market evidence.</span></p>';
+  }
+
   function bankListingsHtml(r) {
     var snap = DATA && DATA.bankComparables;
     if (!snap || snap.unavailable) return '<p class="sf-est-rdp">The bank listing snapshot could not be loaded.</p>';
@@ -1773,6 +1787,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       '<p class="sf-est-scenario-range">Planning range <b>' + money(r.low) + ' – ' + money(r.high) + '</b><span>85%–130% scenarios, not guaranteed offers or statistical confidence.</span></p>' +
       '<div class="sf-est-result-bir"><span>' + esc(r.birReferenceLabel) + '</span><b>' + money(r.birZonalValue) + '</b><small>' + money(r.birZonalRatePerSqm) + '/sqm · ' + (r.birReferenceConfirmed ? "tax-reference figure, separate from the estimate" : "derived fallback, not confirmed parcel tax FMV") + '</small></div>' +
       multipleHtml +
+      bankSummaryLineHtml(r) +
       '<p class="sf-est-result-context">' + context + '</p>' +
       '<p class="sf-est-result-reference-label"><b>' + esc(r.referenceVerification.label) + '</b> — published values unchanged; indexing is a separate scenario.</p>' +
       '<p class="sf-est-result-bir-note">SEA ESTATES is independent of the BIR. Confirm the applicable schedule with the relevant Revenue District Office.</p>' +
