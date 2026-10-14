@@ -1,8 +1,11 @@
 name: Comparables - fetch raw sources
+# Manual debugging aid: downloads each source and pushes the raw bytes to the
+# throwaway branch "comparables-raw" (force-pushed, single commit), so a parser
+# can be developed or fixed against exactly what the sites served.
 on:
   workflow_dispatch: {}
 permissions:
-  contents: read
+  contents: write
 jobs:
   raw:
     runs-on: ubuntu-latest
@@ -11,9 +14,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - run: node market-scan/comparables/fetch-raw.js raw
-      - uses: actions/upload-artifact@v4
-        with:
-          name: comparables-raw
-          path: raw/
-          retention-days: 7
+      - run: node market-scan/comparables/fetch-raw.js /tmp/raw || true
+      - name: Push raw files to the comparables-raw branch
+        run: |
+          cd /tmp/raw
+          git init -q -b comparables-raw
+          git config user.name "SEA ESTATES Comparables Bot"
+          git config user.email "comparables@esrealty.local"
+          git add -A
+          git commit -q -m "raw sources $(date -u +%F)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" comparables-raw
