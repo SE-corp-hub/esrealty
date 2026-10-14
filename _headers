@@ -45,3 +45,9 @@
 
 /data/*
   Cache-Control: public, max-age=3600
+
+# The calculator's settings (building rates, bands, version). A pricing change must
+# reach every visitor on their next load, not up to an hour later.
+/data/zonal-config.json
+  ! Cache-Control
+  Cache-Control: no-cache
