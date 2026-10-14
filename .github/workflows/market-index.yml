@@ -33,9 +33,13 @@ jobs:
           # The previous value was https://esrealty-market-scan.vercel.app
           MS_API_URL: ${{ vars.MS_API_URL }}
         run: |
+          # Fall back to the public scan API the website itself uses
+          # (js/supabase-config.js ESREALTY_MARKET_SCAN_BASE). The variable was
+          # unset and this step failed every night from early October 2026,
+          # leaving the index frozen at 2026-10-03.
           if [ -z "$MS_API_URL" ]; then
-            echo "MS_API_URL is not set. Add it as an Actions repository variable." >&2
-            exit 1
+            echo "::warning::MS_API_URL repository variable is not set; using https://esrealty-market-scan.vercel.app"
+            export MS_API_URL="https://esrealty-market-scan.vercel.app"
           fi
           node market-scan/build-index.js
 
