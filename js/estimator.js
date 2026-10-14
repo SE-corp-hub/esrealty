@@ -22,6 +22,8 @@
      delays a slow calculation: the result is shown as soon as both the work
      and the cadence are done. */
   var CALCULATING_MIN_MS = 1500, STAGE_STEP_MS = 500;
+  /* Years added to the age-band midpoint for the "Building condition" answer. */
+  var CONDITION_AGE_SHIFT = { "new": -5, good: 0, unknown: 0, repair: 10 };
   var finance = typeof module === "object" && module.exports ? require("./value_guide_finance.js") : window.ESREALTY_FINANCE;
   var evidence = typeof module === "object" && module.exports ? require("./value_guide_evidence.js") : window.ESREALTY_EVIDENCE;
   var referenceTools = typeof module === "object" && module.exports ? require("./value_guide_reference.js") : window.ESREALTY_REFERENCE;
@@ -253,11 +255,15 @@
       floorsMult = (floors && floors.multiplier) || 1;
       var ab = (cfg.ageBands || []).filter(function (b) { return b.key === (opts.ageBand || "0-5"); })[0];
       ageMid = (ab && ab.midpoint) || 2.5;
+      /* The building-condition answer shifts the effective age before
+         depreciation: a new finish reads younger, a house needing repairs reads
+         older. "unknown" and "good" leave the age band as stated. */
+      ageMid = Math.max(0, ageMid + (CONDITION_AGE_SHIFT[opts.condition] || 0));
       var life = (cfg.depreciation && cfg.depreciation.lifeYears) || 40;
       var maxDep = (cfg.depreciation && cfg.depreciation.maxPct) || 0.95;
       depPct = Math.min(ageMid / life, maxDep);
       var cons = cfg.construction ? cfg.construction[(opts.construction || "mixed_chb")] : null;
-      buildCost = (cons && cons.costPerSqm) || 25000;
+      buildCost = (cons && cons.costPerSqm) || 16000;
       featuresTotal = 0;
       featuresUsed = [];
       var feats = cfg.features || {};

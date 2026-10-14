@@ -37,35 +37,28 @@ await check("every fixture resolves against the BIR data", async () => {
   }
 });
 
-await check("the model is the resolved BIR rate times the multiplier, not the p50", async () => {
-  /* Read this before trusting the deviation figure above. The comparison target
-     is the municipality's p50, but the model resolves a specific rate for the
-     chosen location, which may be a street value, a barangay all-other-streets
-     value, or the municipal median as a fallback. So the deviation measures the
-     multiplier AND how far the resolved rate sits from p50 — a property of the
-     fixture, not an accuracy measurement. Bauan RR resolves 6500 against a p50 of
-     3700, so 17.4% for that fixture is mostly the resolution, not the model. */
-  assert.strictEqual(F.MODEL.MARKET_IND, 1.174, "the multiplier under test");
+await check("with no answers the guide is the public estimator's land plus the derived recency net", async () => {
+  /* 2026-10-14: MARKET_IND (1.174) was retired in favour of one engine. The guide
+     now takes the public estimator's land and applies only its question net
+     (with no answers, just the derived zonal-recency row). */
+  assert.strictEqual(F.MODEL.MARKET_IND, undefined, "MARKET_IND is back");
   const e = await EST.estimate(Object.assign({}, baseFor({ municipality: "BAUAN", classification: "RR" })));
   const r = await F.compute(Object.assign({}, baseFor({ municipality: "BAUAN", classification: "RR" }), F.pickInputs({})), EST);
-  assert.strictEqual(r.perSqm, Math.round(e.birZonalRatePerSqm * F.MODEL.MARKET_IND),
-    "with no answers the model is exactly the resolved BIR rate x MARKET_IND");
-  assert.notStrictEqual(e.birZonalRatePerSqm, mun("bauan").byClass.RR.p50,
-    "the resolved rate and the p50 genuinely differ, so the deviation is not the multiplier alone");
+  assert.strictEqual(r.landValue, Math.round(e.landValue * (1 + r.referenceModel.net)),
+    "guide land is not estimator land x (1 + net)");
   assert.ok(/cannot|does not measure/i.test(FIX._what_this_does_not_prove),
     "the fixture file states what the harness cannot prove");
 });
 
-await check("the recorded threshold is a real bound, not a placeholder", () => {
-  assert.ok(FIX.threshold.medianAbsDeviationPct !== null, "threshold recorded");
-  assert.ok(FIX.threshold.shareWithinP25P75 !== null, "threshold recorded");
-  assert.ok(FIX.threshold.medianAbsDeviationPct >= FIX.threshold._measured.medianAbsDeviationPct,
-    "the bound was set from the measurement, not below it");
-  assert.ok(FIX.threshold.shareWithinP25P75 <= FIX.threshold._measured.shareWithinP25P75);
-  assert.ok(FIX.threshold._measuredOn && FIX.threshold._command, "the measurement is dated and reproducible");
+await check("the BIR-distance threshold is retired in favour of market evidence", () => {
+  /* Distance from the BIR p50 measured the multiplier, not accuracy. Accuracy is
+     now asserted against dated Batangas listings in
+     tests/value_guide_market_accuracy_node.js. */
+  assert.strictEqual(FIX.threshold, null, "threshold should be retired (null)");
+  assert.ok(fs.existsSync(path.join(ROOT, "tests/value_guide_market_accuracy_node.js")), "the market accuracy test exists");
 });
 
-await check("the measurement is recorded and reproducible", async () => {
+await check("the BIR-distance measurement still runs (context only)", async () => {
   const devs = [];
   let within = 0, n = 0;
   for (const f of FIX.fixtures) {
@@ -84,14 +77,8 @@ await check("the measurement is recorded and reproducible", async () => {
   const share = within / n;
   console.log("    median |model - p50| = " + (median * 100).toFixed(1) + "%");
   console.log("    within p25-p75       = " + (share * 100).toFixed(1) + "%  (" + within + "/" + n + ")");
-  if (FIX.threshold.medianAbsDeviationPct === null) {
-    console.log("    threshold not recorded yet; the fixture file is the place for it");
-    return;
-  }
-  assert.ok(median * 100 <= FIX.threshold.medianAbsDeviationPct,
-    "median deviation " + (median * 100).toFixed(1) + "% exceeds the recorded " + FIX.threshold.medianAbsDeviationPct + "%");
-  assert.ok(share >= FIX.threshold.shareWithinP25P75,
-    "p25-p75 share " + (share * 100).toFixed(1) + "% below the recorded " + (FIX.threshold.shareWithinP25P75 * 100).toFixed(1) + "%");
+  /* Printed for context only; see the retired-threshold check above. */
+  assert.ok(n > 0, "no fixture was measured");
 });
 
 await check("the fixtures span more than one price band", () => {

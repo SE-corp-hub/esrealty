@@ -1,7 +1,14 @@
 # Value Guide accuracy plan (house & lot first)
 
 Date: 2026-10-14
-Status: proposed — nothing in this plan has been implemented yet.
+Status: steps 1, 2, 3 and 6 implemented 2026-10-14 (calculationVersion 2026.10.6).
+Steps 4, 5 and 7 are still open.
+
+Result on the listing fixture after the change (tests/value_guide_market_accuracy_node.js):
+house & lot median error -2.5%, median absolute error 10.5% (was +18% / 28%);
+vacant lots median error -2.3% (unchanged model, n=9). The back-office guide now
+matches the public calculator's land and building exactly, plus its own question
+net on the land.
 
 ## 1. What was tested
 

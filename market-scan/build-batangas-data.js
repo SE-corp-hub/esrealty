@@ -34,7 +34,7 @@ function check(cond, msg) { if (!cond) errors.push(msg); }
 
 const CONFIG = {
   version: 2,
-  calculationVersion: "2026.10.5",
+  calculationVersion: "2026.10.6",
   riskPolicy: "Evidence-led: unverified occupancy/title/site flags are conditions, not automatic price discounts",
   scenarioRange: { lowFactor: 0.85, highFactor: 1.3, meaning: "Planning scenarios, not statistical accuracy" },
   dataVersion: "bir-2022-rdo58-59",
@@ -53,9 +53,9 @@ const CONFIG = {
      (15000 / 40000) were a stale table; 16000 / 25000 / 32000 is the committed
      SEA ESTATES table the data file already carried. */
   construction: {
-    wood_prefab: { label: "Wood / Pre-fab", costPerSqm: 16000, sourceType: "SEA ESTATES appraisal RCN table (2026 PH mid-range)", sourceDate: "2026" },
-    mixed_chb: { label: "Mixed / CHB", costPerSqm: 25000, sourceType: "SEA ESTATES appraisal RCN table (2026 PH mid-range)", sourceDate: "2026" },
-    rca_steel: { label: "Reinforced Concrete / Steel", costPerSqm: 32000, sourceType: "SEA ESTATES appraisal RCN table (2026 PH mid-range)", sourceDate: "2026" }
+    wood_prefab: { label: "Wood / Pre-fab", costPerSqm: 11000, sourceType: "SEA ESTATES existing-home RCN (PSA permit avg ~12,200/sqm Jan 2025; tested vs 2026-10 Batangas listings)", sourceDate: "2026" },
+    mixed_chb: { label: "Mixed / CHB", costPerSqm: 16000, sourceType: "SEA ESTATES existing-home RCN (PSA permit avg ~12,200/sqm Jan 2025; tested vs 2026-10 Batangas listings)", sourceDate: "2026" },
+    rca_steel: { label: "Reinforced Concrete / Steel", costPerSqm: 22000, sourceType: "SEA ESTATES existing-home RCN (PSA permit avg ~12,200/sqm Jan 2025; tested vs 2026-10 Batangas listings)", sourceDate: "2026" }
   },
   /* Every multiplier is 1. floorArea is one figure entered once, labelled "Total
      built-up area (sqm) / Across all storeys", so a per-storey factor on top of it

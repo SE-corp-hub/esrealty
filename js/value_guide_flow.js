@@ -27,21 +27,23 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
+  /* Land and building now come from the public estimator (js/estimator.js), so
+     the back-office guide and the public Value Guide give the same figure for
+     the same inputs. The guide adds only its question net on the land. The old
+     MARKET_IND (1.174) was copied from one LandValuePH report whose own vacant-lot
+     report valued the same lot at 2.5x; tested against 2026-10 Batangas listings
+     it priced homes ~32% under asking. See
+     docs/plans/2026-10-14-value-guide-accuracy-plan.md. */
   var MODEL = {
-    MARKET_IND: 1.174,
     RANGE_LOW: 0.85,
     RANGE_HIGH: 1.30,
-    DEP_CAP: 0.80,
+    DEP_CAP: 0.95, /* matches data/zonal-config.json depreciation.maxPct */
     /* Bound on the summed net. The published maxima across the land factors add
        up to -24.5%, so without a floor a user who answers every question at its
        worst would take a quarter off the BIR base and the report would have no
        way to say the answer had stopped being credible. */
     NET_FLOOR: -0.15,
-    NET_CAP: 0.15,
-    /* Flat replacement-cost rates, keyed to the construction options that
-       data/zonal-config.json already defines (that file is read-only). */
-    RCN: { wood_prefab: 8000, mixed_chb: 16000, rca_steel: 18000 },
-    USEFUL_LIFE: { wood_prefab: 25, mixed_chb: 40, rca_steel: 50 }
+    NET_CAP: 0.15
   };
 
   var SEC_LAND_TERRAIN = "Land & Terrain";
@@ -288,20 +290,22 @@
        "what we didn't check" and made skippedCount always at least 1. */
     var recency = zonalRecencyBp(opts);
 
-    var landBase = Number(r.birZonalValue) || 0;
-    r.landValue = Math.round(landBase * MODEL.MARKET_IND * (1 + landNet));
+    /* The public estimator's land (BIR base x the SEA ESTATES factor stack) and
+       building (rate x floor area x (1 - depreciation) + features), unchanged.
+       The guide's own question net adjusts the land only. */
+    var marketInd = Number(base.appliedMultiple) || (base.birZonalValue ? (Number(base.landValue) || 0) / base.birZonalValue : 1);
+    r.landValue = Math.round((Number(base.landValue) || 0) * (1 + landNet));
     r.landPerSqm = r.area ? Math.round(r.landValue / r.area) : 0;
 
-    var rcn = MODEL.RCN[opts.construction] != null ? MODEL.RCN[opts.construction] : MODEL.RCN.mixed_chb;
-    var life = MODEL.USEFUL_LIFE[opts.construction] || 40;
+    var rcn = Number(base.buildCostPerSqm) || 0;
+    var life = 40;
     var age = Number(r.ageMidpoint) || 0;
-    var dep = Math.min(age / life, MODEL.DEP_CAP);
+    var dep = (Number(base.depreciatedPct) || 0) / 100;
 
     if ((opts.type || r.type) === "vacant_lot") {
       r.improvement = 0;
     } else {
-      var floor = Number(r.floorArea) || 0;
-      r.improvement = Math.round(floor * rcn * (1 - dep)) + (Number(r.featuresTotal) || 0);
+      r.improvement = Number(base.improvement) || 0;
     }
 
     r.total = r.landValue + r.improvement;
@@ -340,7 +344,7 @@
       value: r.total,
       landValue: r.landValue,
       comparablePricesUsed: false,
-      sourceType: "LandValuePH published reference model"
+      sourceType: "SEA ESTATES factor model"
     });
     var sections = sectionsOf(opts);
     /* Every question the user skipped, named. A report that silently omitted them
@@ -348,8 +352,8 @@
     r.assumptions = sections.filter(function (s) { return !s.assessed; })
       .map(function (s) { return { id: s.id, label: s.label }; });
     r.referenceModel = {
-      name: "LandValuePH reference model",
-      marketInd: MODEL.MARKET_IND,
+      name: "SEA ESTATES factor model",
+      marketInd: marketInd,
       net: landNet,
       netClamped: net.clamped,
       netLimit: MODEL.NET_FLOOR,
@@ -384,8 +388,8 @@
      cannot open without it. */
   var MODEL_CALLOUT =
 "Derived from published BIR zonal values, adjusted for documented property factors. "
-      + "The public site calculator uses a different model (SEA ESTATES factor stack) "
-      + "and returns a higher figure for the same property: 2.14x on a vacant lot in this fixture. "
+      + "Land and building use the same SEA ESTATES factor model as the public site calculator, "
+      + "so both give the same base figure; this guide also applies the answers below to the land. "
       + "Both are planning figures, not a real estate appraisal under RA 9646.";
 
   function esc(v) {
@@ -509,7 +513,7 @@
        prints its own count from a runtime table, so a hard-coded "nine" here
        would drift the moment the list changed. */
     return '<div data-vg-methodology class="mt-16"><h3>Methodology</h3>'
-      + "<p>BIR zonal base × market-indicator factor " + MODEL.MARKET_IND
+      + "<p>BIR zonal base × market-indicator factor " + (Math.round((Number(model.marketInd) || 0) * 1000) / 1000)
       + ", then one additive net of the " + QUESTIONS.length + " published answers below. Every answer is added once and "
       + "the total is applied once; nothing is compounded.</p>"
       + '<table><thead><tr><th>Question</th><th>Section</th><th>Applied</th></tr></thead><tbody>'

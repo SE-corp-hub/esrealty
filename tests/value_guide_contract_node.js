@@ -1,21 +1,17 @@
 "use strict";
 /* One calculation contract for both surfaces.
  *
- * docs/specs/value-guide-calculation-contract.md records what this file asserts and,
- * more usefully, where the two surfaces currently disagree. The plan calls for one
- * shared calculation. Until they are unified, the honest contract is not "they agree"
- * but "the disagreement is measured, decomposed and frozen, so nobody changes one
- * side without the other showing up in a diff".
+ * Unified 2026-10-14 (docs/plans/2026-10-14-value-guide-accuracy-plan.md, step 3):
+ * the back-office guide now takes the public estimator's land and building, and
+ * adds only its own question net on the land. The earlier three-way split this
+ * file used to freeze is gone:
  *
- * Three separate factors produce the gap, not one:
+ *   land        was reference 1.174x vs ramped band  -> both use the ramped band
+ *   building    was 16,000 vs 25,000/sqm             -> both use 16,000 (CHB)
+ *   storeys     was x1.00 vs x1.05                   -> removed earlier (Task 4)
  *
- *   land        reference 1.174x BIR vs flat 2.5x BIR
- *   building    16,000/sqm vs 25,000/sqm
- *   storeys     x1.00 vs x1.05 on a floor area already labelled "across all storeys"
- *
- * Pinning all three matters because they have different standing. The storeys
- * multiplier is a double count and should go. The land multiplier is the open
- * business decision. The rate table is a documented difference in source.
+ * So the contract is now "they agree": same BIR rate, same building, and guide
+ * land = estimator land x (1 + question net).
  */
 const assert = require("assert"), fs = require("fs"), path = require("path");
 const ROOT = process.cwd();
@@ -131,7 +127,7 @@ check("a scenario that the model does not recognise is refused, not silently pri
 
 /* ------------------------------------------------- divergence, decomposed */
 
-checkAsync("the two surfaces agree on BIR, and differ only on land and the rate table", () => {
+checkAsync("the two surfaces agree on BIR, land and building", () => {
   return Promise.all([
     EST.estimate(modelOpts(FORM)),
     FLOW.compute(modelOpts(FORM), EST)
@@ -154,7 +150,8 @@ checkAsync("the two surfaces agree on BIR, and differ only on land and the rate 
       "storefront residential multiplier is not the ramped value (" + s.appliedMultiple + " vs " + expectedMult + ")");
     assert.strictEqual(s.landValue, Math.round(REPORT.birBase * s.appliedMultiple),
       "storefront land is not BIR x the ramped multiplier");
-    assert.ok(g.landValue < s.landValue, "the guide's land is lower than the ramped band");
+    assert.strictEqual(g.landValue, Math.round(s.landValue * (1 + g.referenceModel.net)),
+      "guide land is not the storefront land x (1 + question net)");
     /* A high-BIR street must sit at the ramp floor, not the flat 2.5. */
     const beach = await EST.estimate(modelOpts(Object.assign({}, FORM, {
       municipality: "SAN JUAN", barangay: "LAIYA APLAYA",
@@ -163,19 +160,10 @@ checkAsync("the two surfaces agree on BIR, and differ only on land and the rate 
     assert.ok(Math.abs(beach.appliedMultiple - 1.4) < 1e-6,
       "a 25,000/sqm beachfront street is not at the ramp floor (" + beach.appliedMultiple + ")");
 
-    /* Building: rate table, then the storeys multiplier on top. */
-    assert.strictEqual(g.buildCostPerSqm, 16000, "guide CHB rate moved");
-    assert.strictEqual(s.buildCostPerSqm, 25000, "storefront CHB rate moved");
-
-    /* The building gap must decompose exactly. The storeys factor is gone as of
-       Task 4, so the whole remaining difference is the rate table. If this stops
-       equalling the real difference, a second cause has appeared. */
-    const dep = 1 - (8 / 40);                      /* age band 6-10, midpoint 8, life 40 */
-    const rateGap = 120 * (25000 - 16000) * dep;
-    const actual = s.improvement - g.improvement;
-    assert.strictEqual(Math.round(rateGap), Math.round(actual),
-      "the building gap is no longer explained by the rate table alone (" +
-      Math.round(rateGap) + " != " + Math.round(actual) + ")");
+    /* Building: one rate table (CHB 16,000/sqm), identical result. */
+    assert.strictEqual(s.buildCostPerSqm, 16000, "CHB rate moved");
+    assert.strictEqual(g.buildCostPerSqm, s.buildCostPerSqm, "the two surfaces use different building rates");
+    assert.strictEqual(g.improvement, s.improvement, "the building values disagree");
   });
 });
 
@@ -205,12 +193,10 @@ check("no surface prices storeys twice on an area already measured across all of
 check("the report reconciliation is a separate table, never folded into a multiplier", () => {
   /* docs/plans/... Task 5 acceptance: the benchmark reports a difference, it does
      not tune a global constant to make it zero. The report's implied 1.174 exists in
-     the guide as MARKET_IND, which is fine because the guide IS the reference-aligned
-     model - but it must not leak into the storefront, which has its own band. */
-  assert.strictEqual(FLOW.MODEL.MARKET_IND, 1.174, "the guide's reference indicator moved");
-  assert.notStrictEqual(s_val(), FLOW.MODEL.MARKET_IND,
-    "the storefront band has become the reference multiplier - that is Task 9's decision, not a silent change");
-  function s_val() { return cfg.marketBand.bands.residential.mid; }
+     the guide as MARKET_IND, which is fine because the guide WAS the reference-aligned
+     model until 2026-10-14. */
+  /* 2026-10-14: the reference's 1.174 is no longer a constant anywhere. */
+  assert.strictEqual(FLOW.MODEL.MARKET_IND, undefined, "the reference multiplier is back as a constant");
   /* And the benchmark data must remain non-numerical, in both its homes. */
   const BM = require(path.join(ROOT, "data/market-benchmarks.json"));
   assert.ok(BM.records.every(r => r.numericalAllowed === false));

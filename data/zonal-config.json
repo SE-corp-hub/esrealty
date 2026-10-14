@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "calculationVersion": "2026.10.5",
+  "calculationVersion": "2026.10.6",
   "riskPolicy": "Evidence-led: unverified occupancy/title/site flags are conditions, not automatic price discounts",
   "scenarioRange": { "lowFactor": 0.85, "highFactor": 1.30, "meaning": "Planning scenarios, not statistical accuracy" },
   "dataVersion": "bir-2022-rdo58-59",
@@ -29,20 +29,20 @@
   "construction": {
     "wood_prefab": {
       "label": "Wood / Pre-fab",
-      "costPerSqm": 16000,
-      "sourceType": "SEA ESTATES appraisal RCN table (2026 PH mid-range)",
+      "costPerSqm": 11000,
+      "sourceType": "SEA ESTATES existing-home RCN (PSA permit avg ~12,200/sqm Jan 2025; tested vs 2026-10 Batangas listings)",
       "sourceDate": "2026"
     },
     "mixed_chb": {
       "label": "Mixed / CHB",
-      "costPerSqm": 25000,
-      "sourceType": "SEA ESTATES appraisal RCN table (2026 PH mid-range)",
+      "costPerSqm": 16000,
+      "sourceType": "SEA ESTATES existing-home RCN (PSA permit avg ~12,200/sqm Jan 2025; tested vs 2026-10 Batangas listings)",
       "sourceDate": "2026"
     },
     "rca_steel": {
       "label": "Reinforced Concrete / Steel",
-      "costPerSqm": 32000,
-      "sourceType": "SEA ESTATES appraisal RCN table (2026 PH mid-range)",
+      "costPerSqm": 22000,
+      "sourceType": "SEA ESTATES existing-home RCN (PSA permit avg ~12,200/sqm Jan 2025; tested vs 2026-10 Batangas listings)",
       "sourceDate": "2026"
     }
   },

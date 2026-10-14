@@ -1,3 +1,5 @@
+> **2026-10-14:** the two surfaces were unified. The guide now uses the public estimator's land (ramped band) and building (CHB 16,000/sqm); MARKET_IND 1.174 is retired. The divergence described below is historical. See docs/plans/2026-10-14-value-guide-accuracy-plan.md.
+
 # Value Guide — Calculation Contract
 
 Date: 2026-10-07

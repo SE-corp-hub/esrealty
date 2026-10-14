@@ -142,9 +142,9 @@ eq(hl.floorArea, 120, "hl floorArea");
 eq(hl.floorsMultiplier, 1, "hl storeys multiplier is neutral");
 eq(hl.ageMidpoint, 15, "hl age midpoint 15");
 eq(hl.depreciatedPct, 37.5, "hl dep 15/40 = 37.5%");
-eq(hl.buildCostPerSqm, 32000, "hl RCA 32000");
+eq(hl.buildCostPerSqm, 22000, "hl RCA 22000");
 eq(hl.featuresTotal, 380000, "hl features 180000 + 200000");
-eq(hl.improvement, 2780000, "hl improvement = rate x total floor area x (1 - dep) + features");
+eq(hl.improvement, 2030000, "hl improvement = rate x total floor area x (1 - dep) + features");
 eq(hl.total, hl.landValue + hl.improvement, "hl total = land + improvement");
 eq(core.integrityCheck(hl).ok, true, "hl reconciles");
 

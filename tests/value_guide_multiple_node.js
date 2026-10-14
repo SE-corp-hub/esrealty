@@ -822,15 +822,16 @@ async function checkAsync(name, fn) { await fn(); count++; console.log("[PASS] "
        is the 131.5% gap, read off the rendered HTML rather than the engine. */
     const headline = /class="sf-est-result-value">(₱[\d,]+)</.exec(houseHtml);
     assert.ok(headline, "could not read the headline total off the house and lot result screen");
-    /* 2,352,500 land (11,500 x 100 x the 2.04565 rate-ramped band) + 3,600,000
-       building (25,000 x 180 sqm x 80% remaining) = 5,952,500. The storeys
+    /* 2,352,500 land (11,500 x 100 x the 2.04565 rate-ramped band) + 2,304,000
+       building (16,000 x 180 sqm x 80% remaining; CHB was 25,000 until
+       2026-10-14) = 4,656,500. The storeys
        multiplier was 1.05 until Task 4 removed it, and the flat 2.5x band
        became the rate ramp in 2026.10.5. The headline is read off the rendered
        HTML rather than the engine, so it tracks whatever the model now
        produces; this assertion names the number a reader can reconcile by hand
        from the printed rows. */
-    assert.strictEqual(Number(peso(headline[1])), 5952500,
-      "the rendered headline is " + headline[1] + ", not the 5,952,500 the finding was reproduced on");
+    assert.strictEqual(Number(peso(headline[1])), 4656500,
+      "the rendered headline is " + headline[1] + ", not the 4,656,500 the printed rows reconcile to");
     assert.notStrictEqual(Number(peso(headline[1])), 2352500,
       "the rendered total equals the land product, so this screen is not the vector the finding was reproduced on");
   });

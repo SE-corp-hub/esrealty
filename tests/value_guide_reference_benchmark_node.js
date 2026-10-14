@@ -72,11 +72,11 @@ check("the report's own text is recorded as contradicting its own numbers", () =
   assert.strictEqual(FX.derived.rangeIsTotalTimes085And130, true);
 });
 
-check("the guide's market indicator is the multiplier this report implies", () => {
-  /* If MARKET_IND ever moves away from 1.174, it stops being "the reference model" and
-     becomes something else that needs a name of its own. */
-  assert.strictEqual(FLOW.MODEL.MARKET_IND, FX.derived.landMultiplierRounded,
-    "MARKET_IND no longer matches the multiplier this reference report implies");
+check("the guide no longer copies the report's implied multiplier", () => {
+  /* 2026-10-14: MARKET_IND (1.174) was retired. The report's own vacant-lot twin
+     valued the same lot at 2.5x, and 1.174x priced 2026-10 Batangas homes ~32%
+     under asking. The guide now uses the public estimator's land and building. */
+  assert.strictEqual(FLOW.MODEL.MARKET_IND, undefined, "MARKET_IND is back");
 });
 
 /* ------------------------------------------- the comparison, printed and pinned */
@@ -106,60 +106,34 @@ checkAsync("both surfaces are computed from the report's own inputs and differ f
     assert.strictEqual(guide.birZonalRatePerSqm, v.birZonalRatePerSqm, "guide BIR rate");
     assert.strictEqual(storefront.birZonalRatePerSqm, v.birZonalRatePerSqm, "storefront BIR rate");
 
-    /* The guide's building must equal the report's exactly: both use 16,000/sqm and
-       20% accumulated depreciation. If this drifts, our depreciation or rate changed. */
-    assert.strictEqual(guide.improvement, v.buildingValue,
-      "the guide's building no longer matches the report's; check the rate or depreciation");
+    /* One engine: the guide's land is the public calculator's land with the
+       guide's question net applied, and the building is identical. */
+    assert.strictEqual(guide.landValue, Math.round(storefront.landValue * (1 + guide.referenceModel.net)),
+      "guide land is not storefront land x (1 + question net)");
+    assert.strictEqual(guide.improvement, storefront.improvement, "guide building != storefront building");
 
-    /* The guide lands close to the report. Pinned as a consistency check on our
-       arithmetic, NOT as an accuracy claim. */
-    const guideGapPct = (guide.total / v.total - 1) * 100;
-    assert.ok(Math.abs(guideGapPct) < 2,
-      "the guide drifted further than 2% from the report (" + guideGapPct.toFixed(2) + "%)");
-
-    /* The storefront is expected to sit well above it. Asserted only as a direction,
-       and as a tripwire: if this ever crosses to roughly equal, someone changed a
-       band without updating the plan's open decision. */
-    const storefrontGapPct = (storefront.total / v.total - 1) * 100;
-    assert.ok(storefrontGapPct > 50,
-      "the storefront no longer sits far above the reference (" + storefrontGapPct.toFixed(1) + "%) - the land multiplier may have moved");
+    /* The building now uses the same 16,000/sqm rate and 20% depreciation the
+       report printed, so the building lines agree exactly; the remaining gap is
+       land only (the report's 1.174x vs our ramped band). */
+    assert.strictEqual(storefront.improvement, v.buildingValue, "building no longer matches the report's 16,000 x 120 x 0.8");
   });
 });
 
 checkAsync("the land multiplier choice, and nothing else, explains the residual gap", () => {
-  /* The guide lands close because of MARKET_IND. Show that by re-running the
-     guide's own land formula at the storefront's 2.5: the residual must vanish. */
   const f = FX.inputs, v = FX.reported;
-  return Promise.all([
-    EST.estimate(guideOpts(f)),
-    FLOW.compute(guideOpts(f), EST)
-  ]).then(([storefront, guide]) => {
-    /* The two differences between the surfaces, asserted exactly. Land: the
-       storefront's is BIR base x the RAMPED residential band (Binay St is
-       11,500/sqm, so 2.5 descends toward the 1.4 floor: 2.0457); the guide's is
-       the same base x the report's implied multiplier, then factor-adjusted
-       (hence the few-peso delta). The ramp is the 2026.10.5 storefront model. */
+  return EST.estimate(guideOpts(f)).then((storefront) => {
+    /* Land: BIR base x the RAMPED residential band (Binay St is 11,500/sqm, so
+       2.5 descends toward the 1.4 floor: 2.0457). */
     const rampMid = (mid, rate) => rate <= 2000 ? mid : rate >= 25000 ? 1.4 : mid - ((rate - 2000) / 23000) * (mid - 1.4);
     const expected = Math.round(FX.reported.birBase * rampMid(2.5, FX.reported.birZonalRatePerSqm));
     assert.strictEqual(expected, storefront.landValue,
       "the storefront land is not BIR base x the ramped band (" + expected + " vs " + storefront.landValue + ")");
-    assert.ok(Math.abs(guide.landValue - FX.reported.landValue) < FX.reported.landValue * 0.02,
-      "the guide's land sits near the report's, not at the storefront's");
-
-    /* Building: each surface matches its own rate table exactly, on the same
-       depreciation. The whole building difference is the rate, not the formula. */
     const dep = 1 - FX.reported.accumulatedDepreciationPct / 100;
-    assert.strictEqual(guide.improvement, Math.round(guide.buildCostPerSqm * FX.inputs.floorArea * dep),
-      "the guide's building is not rate x floor area x (1 - dep)");
     assert.strictEqual(storefront.improvement, Math.round(storefront.buildCostPerSqm * FX.inputs.floorArea * dep),
-      "the storefront's building is not rate x floor area x (1 - dep)");
-    assert.notStrictEqual(storefront.buildCostPerSqm, guide.buildCostPerSqm,
-      "the two surfaces use the same rate table - then the rate is no longer a difference");
-
-    /* And the report's own land, with our building, lands near the report's total. */
-    const rebuilt = FX.reported.landValue + guide.improvement;
-    assert.strictEqual(rebuilt, v.total,
-      "the report's land plus our building should reproduce the report's total");
+      "the building is not rate x floor area x (1 - dep)");
+    /* So the whole total gap vs the report is the land line. */
+    assert.strictEqual(storefront.total - v.total, storefront.landValue - v.landValue,
+      "a second cause of difference has appeared besides land");
   });
 });
 

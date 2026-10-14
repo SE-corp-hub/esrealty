@@ -1,14 +1,8 @@
 {
   "_comment": "Calibration fixtures for the value guide. Each fixture pins a location and class that data/batangas-zonal.json can resolve, plus that municipality's p25/p50/p75 for the class, so the model's output can be compared against the BIR distribution rather than against another AVM.",
   "_provenance": "p25/p50/p75 read from data/batangas-zonal.json municipalities[].byClass. effectivityDate is the BIR schedule date recorded for that municipality. Fixtures deliberately span the widest and narrowest p50 spreads available, so a change that only works in one price band shows up.",
-  "_status": "measured 2026-10-07. See _what_this_does_not_prove.",
-  "threshold": {
-    "medianAbsDeviationPct": 20,
-    "shareWithinP25P75": 0.9,
-    "_measuredOn": "2026-10-07",
-    "_command": "node tests/value_guide_calibration_node.js",
-    "_measured": { "medianAbsDeviationPct": 17.4, "shareWithinP25P75": 1.0 }
-  },
+  "_status": "measured 2026-10-07; threshold retired 2026-10-14 when MARKET_IND was replaced by the public estimator's land model. Accuracy is now tested against market listings in tests/value_guide_market_accuracy_node.js.",
+  "threshold": null,
   "_what_this_does_not_prove": "This harness does not measure accuracy and cannot decide whether MARKET_IND 1.174 is correct. The model's land value is the resolved BIR rate for the chosen location times 1.174. The comparison target is the municipality's p50 for that class, and the resolved rate is not the p50: Bauan RR resolves 6500 against a p50 of 3700, Batangas City I resolves 1500 which is the municipal median. So the reported deviation mixes the multiplier with how far each fixture's resolution sits from p50 - a property of the fixture, not evidence about the market. It is worth pinning so neither the multiplier nor the resolution logic drifts unnoticed, and no more than that. Deciding 1.174 needs a market comparison, and no Batangas market data exists in this repo or in the listings API.",
   "areas": [150, 400],
   "fixtures": [

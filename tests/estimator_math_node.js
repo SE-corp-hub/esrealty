@@ -34,7 +34,7 @@ function ok(cond, label, detail) {
 /* ---- dataset + manifest reconciliation ---- */
 eq(index.municipalities.length, 34, "dataset municipality count 34");
 eq(index.dataVersion, "bir-2022-rdo58-59", "dataset dataVersion");
-eq(config.calculationVersion, "2026.10.5", "config calculationVersion 2026.10.5");
+eq(config.calculationVersion, "2026.10.6", "config calculationVersion 2026.10.6");
 eq(manifest.status, "valid", "manifest status valid");
 eq(manifest.counts.municipalities, 34, "manifest municipality count");
 eq(manifest.counts.streets, 3710, "manifest street count 3710");
@@ -123,7 +123,7 @@ eq(hl.floorArea, 160, "hl explicit floorArea 160");
 eq(hl.floorsMultiplier, 1, "hl storeys multiplier neutral - total floor area spans all storeys");
 eq(hl.ageMidpoint, 25, "hl age midpoint 25");
 eq(hl.depreciatedPct, 62.5, "hl dep 25/40 = 62.5%");
-eq(hl.improvement, Math.round(25000 * 160 * (1 - 0.625)) + 700000, "hl improvement = rate x total floor area x (1 - dep) + features");
+eq(hl.improvement, Math.round(16000 * 160 * (1 - 0.625)) + 700000, "hl improvement = rate x total floor area x (1 - dep) + features");
 eq(hl.featuresTotal, 700000, "hl features 500000 + 200000");
 eq(hl.total, hl.landValue + hl.improvement, "hl total = land + improvement");
 ok(core.integrityCheck(hl).ok, "hl reconciles");
@@ -183,6 +183,21 @@ index.municipalities.forEach(m => {
 ok(withData >= 34, "all 34 municipalities have loadable data", "loaded=" + withData);
 ok(withAnyEstimate >= 34, "every municipality produces an estimate", "n=" + withAnyEstimate);
 eq(checkedAll > 0, true, "sweep executed " + checkedAll + " computations");
+
+/* ---- building condition shifts the effective age (2026-10-14) ---- */
+const cond = c => core.computeEstimate(config, index, balayan, {
+  municipality: "BALAYAN", barangay: "BACLARAN", streetKey: "all street", classification: "RR", area: 200,
+  type: "house_lot", floorArea: 120, floors: "1", ageBand: "11-20", construction: "mixed_chb", condition: c
+});
+const cUnknown = cond("unknown"), cGood = cond("good"), cNew = cond("new"), cRepair = cond("repair");
+eq(cUnknown.ageMidpoint, 15, "condition unknown keeps the band midpoint");
+eq(cGood.improvement, cUnknown.improvement, "condition good = unknown");
+eq(cNew.ageMidpoint, 10, "new finish reads 5 years younger");
+eq(cRepair.ageMidpoint, 25, "repairs needed reads 10 years older");
+eq(cRepair.improvement, Math.round(16000 * 120 * (1 - 25 / 40)), "repair building = rate x floor x (1 - 25/40)");
+ok(cNew.improvement > cUnknown.improvement && cUnknown.improvement > cRepair.improvement, "new > unknown > repair on the building");
+eq(cNew.landValue, cRepair.landValue, "condition never moves the land");
+eq(cond("new").ageMidpoint >= 0 && core.computeEstimate(config, index, balayan, { municipality: "BALAYAN", barangay: "BACLARAN", streetKey: "all street", classification: "RR", area: 200, type: "house_lot", floorArea: 120, ageBand: "0-5", condition: "new" }).ageMidpoint, 0, "effective age never goes below 0");
 
 /* ---- determinism ---- */
 const a = JSON.stringify(core.computeEstimate(config, index, balayan, { municipality: "BALAYAN", barangay: "BACLARAN", streetKey: "all street", classification: "CR", area: 300, corner: true, type: "house_lot", floorArea: 150, floors: "3plus", ageBand: "11-20", construction: "rca_steel", features: ["cctv"] }));

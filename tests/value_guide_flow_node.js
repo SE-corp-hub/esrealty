@@ -61,42 +61,47 @@ function pdfText(bytes) {
     const r = await flow().compute(OPTS, EST);
     assert.strictEqual(r.birZonalRatePerSqm, 11500, "BIR rate unchanged");
     assert.strictEqual(r.birZonalValue, 1150000, "BIR value unchanged");
-    assert.strictEqual(r.landValue, 1343350);
+    /* 2026-10-14: land = public estimator land 2,352,500 (BIR x ramped band
+       2.0457) x (1 + net -0.5%); building = 16,000 x 120 x (1 - 8/40). */
+    assert.strictEqual(r.landValue, 2340738);
     assert.strictEqual(r.improvement, 1536000);
-    assert.strictEqual(r.total, 2879350);
-    assert.strictEqual(r.low, 2447448);
-    assert.strictEqual(r.high, 3743155);
-    assert.strictEqual(r.perSqm, 28794);
+    assert.strictEqual(r.total, 3876738);
+    assert.strictEqual(r.low, 3295227);
+    assert.strictEqual(r.high, 5039759);
+    assert.strictEqual(r.perSqm, 38767);
   });
 
   /* ---- 2. vacant-lot vector ------------------------------------------- */
   await check("vacant-lot vector carries no improvement", async () => {
     const r = await flow().compute(VACANT, EST);
     assert.strictEqual(r.improvement, 0);
-    assert.strictEqual(r.total, 1343350);
-    assert.strictEqual(r.low, 1141848);
-    assert.strictEqual(r.high, 1746355);
-    assert.strictEqual(r.perSqm, 13434);
+    assert.strictEqual(r.total, 2340738);
+    assert.strictEqual(r.low, 1989627);
+    assert.strictEqual(r.high, 3042959);
+    assert.strictEqual(r.perSqm, 23407);
   });
 
   /* ---- 3. the model constants ---------------------------------------- */
-  await check("construction rate table is flat", () => {
+  await check("construction rates come from the shared config, not the guide", () => {
     const F = flow();
-    assert.strictEqual(F.MODEL.RCN.mixed_chb, 16000);
-    assert.strictEqual(F.MODEL.RCN.wood_prefab, 8000);
-    assert.strictEqual(F.MODEL.RCN.rca_steel, 18000);
+    assert.strictEqual(F.MODEL.RCN, undefined, "the guide has its own rate table again");
+    const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, "data/zonal-config.json"), "utf8"));
+    assert.strictEqual(cfg.construction.mixed_chb.costPerSqm, 16000);
+    assert.strictEqual(cfg.construction.wood_prefab.costPerSqm, 11000);
+    assert.strictEqual(cfg.construction.rca_steel.costPerSqm, 22000);
     assert.strictEqual(F.MODEL.valuationYear, undefined, "no valuation year");
     assert.ok(!/1\.02/.test(fs.readFileSync(path.join(ROOT, "js/value_guide_flow.js"), "utf8")), "no escalation factor in source");
   });
-  await check("market indicator is exactly 1.174", () =>
-    assert.strictEqual(flow().MODEL.MARKET_IND, 1.174));
+  await check("the 1.174 market indicator is retired", () =>
+    assert.strictEqual(flow().MODEL.MARKET_IND, undefined));
   await check("range band is 0.85 / 1.30", () => {
     assert.strictEqual(flow().MODEL.RANGE_LOW, 0.85);
     assert.strictEqual(flow().MODEL.RANGE_HIGH, 1.30);
   });
-  await check("depreciation cap is 0.80 on a 40-year life", () => {
-    assert.strictEqual(flow().MODEL.DEP_CAP, 0.80);
-    assert.strictEqual(flow().MODEL.USEFUL_LIFE.mixed_chb, 40);
+  await check("depreciation cap matches the shared config (0.95 on a 40-year life)", () => {
+    const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, "data/zonal-config.json"), "utf8"));
+    assert.strictEqual(flow().MODEL.DEP_CAP, cfg.depreciation.maxPct);
+    assert.strictEqual(cfg.depreciation.lifeYears, 40);
   });
   await check("twelve surviving factors, each with a section", () => {
     const F = flow();
@@ -111,10 +116,10 @@ function pdfText(bytes) {
   await check("no ownership adjustment", async () =>
     assert.strictEqual((await flow().compute(OPTS, EST)).ownershipAdjustmentPct, 0));
 
-  await check("depreciation caps at 80% on the oldest band", async () => {
+  await check("the oldest band depreciates 35/40 = 87.5%", async () => {
     const r = await flow().compute(Object.assign({}, OPTS, { ageBand: "31plus" }), EST);
-    assert.strictEqual(r.depreciatedPct, 80);
-    assert.strictEqual(r.improvement, 120 * 16000 * 0.2);
+    assert.strictEqual(r.depreciatedPct, 87.5);
+    assert.strictEqual(r.improvement, 120 * 16000 * 0.125);
   });
 
   await check("the youngest band barely depreciates", async () => {
@@ -213,8 +218,8 @@ function pdfText(bytes) {
   /* ---- 7. the model is named ------------------------------------------ */
   await check("the result names its model", async () => {
     const r = await flow().compute(OPTS, EST);
-    assert.strictEqual(r.referenceModel.name, "LandValuePH reference model");
-    assert.strictEqual(r.referenceModel.marketInd, 1.174);
+    assert.strictEqual(r.referenceModel.name, "SEA ESTATES factor model");
+    assert.ok(Math.abs(r.referenceModel.marketInd - 2.0457) < 1e-3, "marketInd is the ramped band for Binay St");
     assert.strictEqual(r.appliedMultiple, null, "stale public multiple suppressed");
     assert.strictEqual(r.factorStack, null);
   });
@@ -254,8 +259,8 @@ function pdfText(bytes) {
     /* The callout now leads with what the figure is derived from rather than naming
        the reference tool, which is a competitor and not the source of the number. */
     assert.strictEqual(html.indexOf("Derived from published BIR zonal values"), 0, "callout is first");
-    assert.ok(html.indexOf("SEA ESTATES factor stack") > 0, "names the other model");
-    assert.ok(html.indexOf("2.14x") > 0, "states the divergence");
+    assert.ok(html.indexOf("same SEA ESTATES factor model as the public site calculator") > 0, "says both surfaces share the model");
+    assert.ok(html.indexOf("2.14x") < 0, "the retired divergence figure is gone");
     assert.ok(html.indexOf("not a real estate appraisal under RA 9646") > 0, "closes the caveat");
     assert.ok(html.indexOf("LandValuePH") < 0, "a competitor is not named as the source of the figure");
   });
