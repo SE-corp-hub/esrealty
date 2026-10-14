@@ -302,7 +302,8 @@ jobs:
             # script drives it. The sweep scripts build the -Test argument at
             # runtime from a filename, so they are matched on the bare name rather
             # than on a literal "-Test <name>" that never appears in their source.
-            if grep -qF -- "$name" "$GITHUB_WORKFLOW" \
+            # The workflow FILE: $GITHUB_WORKFLOW is the workflow NAME ("tests").
+            if grep -qF -- "$name" .github/workflows/tests.yml \
                || grep -qF -- "$name" tests/run_all.ps1 tests/run_overflow_sweep.ps1 tests/run_mobile_nav_sweep.ps1; then
               continue
             fi
