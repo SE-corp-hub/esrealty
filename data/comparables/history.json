@@ -4,8 +4,8 @@
   {
    "month": "2026-10",
    "generatedOn": "2026-10-14",
-   "records": 334,
-   "matchRate": 0.895,
+   "records": 342,
+   "matchRate": 0.942,
    "bySource": {
     "bdo": {
      "status": "ok",
@@ -20,7 +20,7 @@
     "pagibig": {
      "status": "ok",
      "observedOn": "2026-10-14",
-     "kept": 227
+     "kept": 235
     },
     "securitybank": {
      "status": "skipped",
@@ -109,14 +109,14 @@
     {
      "town": "SAN JOSE",
      "kind": "built",
-     "n": 24,
-     "medianPricePerSqm": 18649
+     "n": 27,
+     "medianPricePerSqm": 19730
     },
     {
      "town": "SAN PASCUAL",
      "kind": "built",
-     "n": 4,
-     "medianPricePerSqm": 9695
+     "n": 5,
+     "medianPricePerSqm": 10962
     },
     {
      "town": "SAN PASCUAL",
@@ -145,8 +145,8 @@
     {
      "town": "TANAUAN CITY",
      "kind": "built",
-     "n": 45,
-     "medianPricePerSqm": 29236
+     "n": 49,
+     "medianPricePerSqm": 29469
     },
     {
      "town": "TANAUAN CITY",
@@ -156,7 +156,7 @@
     }
    ],
    "accuracy": {
-    "house_lot": -0.046,
+    "house_lot": -0.059,
     "vacant_lot": 0.166
    },
    "accuracyCalculationVersion": "2026.10.7"

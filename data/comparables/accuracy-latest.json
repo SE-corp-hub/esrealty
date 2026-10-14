@@ -5,11 +5,11 @@
  "calculationVersion": "2026.10.7",
  "overall": {
   "house_lot": {
-   "n": 256,
-   "projects": 93,
-   "projectWeightedMedian": -0.046,
-   "median": -0.128,
-   "medianAbs": 0.212
+   "n": 264,
+   "projects": 95,
+   "projectWeightedMedian": -0.059,
+   "median": -0.155,
+   "medianAbs": 0.249
   },
   "vacant_lot": {
    "n": 77,
@@ -122,7 +122,7 @@
   {
    "town": "SAN JOSE",
    "kind": "house_lot",
-   "n": 24,
+   "n": 27,
    "projects": 1,
    "projectWeightedMedian": -0.346,
    "median": -0.346,
@@ -131,11 +131,11 @@
   {
    "town": "SAN PASCUAL",
    "kind": "house_lot",
-   "n": 4,
-   "projects": 3,
-   "projectWeightedMedian": 0.568,
-   "median": 0.907,
-   "medianAbs": 0.907
+   "n": 5,
+   "projects": 4,
+   "projectWeightedMedian": 0.462,
+   "median": 0.568,
+   "medianAbs": 0.568
   },
   {
    "town": "SAN PASCUAL",
@@ -152,8 +152,8 @@
    "n": 95,
    "projects": 27,
    "projectWeightedMedian": -0.011,
-   "median": -0.089,
-   "medianAbs": 0.155
+   "median": -0.094,
+   "medianAbs": 0.22
   },
   {
    "town": "STO. TOMAS CITY",
@@ -176,11 +176,11 @@
   {
    "town": "TANAUAN CITY",
    "kind": "house_lot",
-   "n": 45,
-   "projects": 13,
-   "projectWeightedMedian": -0.222,
-   "median": -0.258,
-   "medianAbs": 0.258
+   "n": 49,
+   "projects": 14,
+   "projectWeightedMedian": -0.232,
+   "median": -0.272,
+   "medianAbs": 0.272
   },
   {
    "town": "TANAUAN CITY",
@@ -208,11 +208,11 @@
    "medianAbs": 0.407
   },
   "pagibig": {
-   "n": 227,
-   "projects": 72,
-   "projectWeightedMedian": -0.065,
-   "median": -0.139,
-   "medianAbs": 0.213
+   "n": 235,
+   "projects": 74,
+   "projectWeightedMedian": -0.072,
+   "median": -0.191,
+   "medianAbs": 0.257
   }
  },
  "projects": [
@@ -299,10 +299,19 @@
   },
   {
    "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "DECA HOMES",
+   "n": 1,
+   "birRate": 1800,
+   "matchLevel": "street",
+   "medianError": -0.369
+  },
+  {
+   "kind": "house_lot",
    "town": "SAN JOSE",
    "name": "GREEN MEADOWS RESIDENCES",
-   "n": 24,
-   "birRate": 1600,
+   "n": 27,
+   "birRate": 1200,
    "matchLevel": "barangay",
    "medianError": -0.346
   },
@@ -326,6 +335,24 @@
   },
   {
    "kind": "house_lot",
+   "town": "SAN PASCUAL",
+   "name": "ECOVERDE HOMES SAN PASCUAL",
+   "n": 1,
+   "birRate": 7500,
+   "matchLevel": "street",
+   "medianError": -0.337
+  },
+  {
+   "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "DECA HOMES TANAUAN",
+   "n": 9,
+   "birRate": 1800,
+   "matchLevel": "street",
+   "medianError": -0.316
+  },
+  {
+   "kind": "house_lot",
    "town": "LIPA CITY",
    "name": "SOUTHRIDGE VILLAS",
    "n": 1,
@@ -341,6 +368,15 @@
    "birRate": null,
    "matchLevel": "municipality",
    "medianError": -0.3
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "CASA ISABEL",
+   "n": 12,
+   "birRate": 3500,
+   "matchLevel": "street",
+   "medianError": -0.291
   },
   {
    "kind": "house_lot",
@@ -362,6 +398,15 @@
   },
   {
    "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "CASA ISABEL EXTENSION",
+   "n": 3,
+   "birRate": 3500,
+   "matchLevel": "street",
+   "medianError": -0.283
+  },
+  {
+   "kind": "house_lot",
    "town": "TANAUAN CITY",
    "name": "TANAUAN PARK PLACE PHASE 2",
    "n": 10,
@@ -377,15 +422,6 @@
    "birRate": 6000,
    "matchLevel": "street",
    "medianError": -0.267
-  },
-  {
-   "kind": "house_lot",
-   "town": "TANAUAN CITY",
-   "name": "DECA HOMES TANAUAN",
-   "n": 6,
-   "birRate": 1800,
-   "matchLevel": "street",
-   "medianError": -0.261
   },
   {
    "kind": "house_lot",
@@ -524,15 +560,6 @@
   },
   {
    "kind": "house_lot",
-   "town": "STO. TOMAS CITY",
-   "name": "CASA ISABEL",
-   "n": 12,
-   "birRate": null,
-   "matchLevel": "municipality",
-   "medianError": -0.158
-  },
-  {
-   "kind": "house_lot",
    "town": "LIPA CITY",
    "name": "Camella Lipa Heights",
    "n": 1,
@@ -548,15 +575,6 @@
    "birRate": 3500,
    "matchLevel": "barangay",
    "medianError": -0.147
-  },
-  {
-   "kind": "house_lot",
-   "town": "STO. TOMAS CITY",
-   "name": "CASA ISABEL EXTENSION",
-   "n": 3,
-   "birRate": null,
-   "matchLevel": "municipality",
-   "medianError": -0.139
   },
   {
    "kind": "house_lot",
