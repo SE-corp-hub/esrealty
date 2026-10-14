@@ -220,3 +220,106 @@ Still open: the 85–130% range is wide; one page shows two different "net
 proceeds" figures (seller-paid costs vs all four taxes); flood risk has no hazard
 data behind its suggestion (defaults to "No flooding"); the listing sample is
 small and asking-price only.
+
+---
+
+## 8. Monthly comparables feed (proposed, 2026-10-14)
+
+### How LandValuePH does it (read from their public bundle)
+
+- The "tested against 859 bank & government property records · Oct 2026" line is
+  hard-coded in `siteStats-*.js` (`R="859"`, `S="Oct 2026"`,
+  `["BPI Buena Mano","SSS","Public listings"]`). It is a marketing constant, not a
+  live count.
+- Their result page labels each comparable by source and price type:
+  sources `myproperty`, `property24`, `lamudi` (public listings), `bpi_buenamano`,
+  `sss_haa`, `metrobank`, `pagibig`; price types `asking`, `minimum_bid`,
+  `appraised_value`, `winning_bid`, `completed_sale`.
+- Quality filters, in their client code: reject a record below 0.5x or above 5x
+  the BIR value, below 0.35x or above 4x the pool median, lot more than 5x
+  different from the subject; flag property-type mismatch, duplicates
+  (barangay + lot + price/sqm) and parse errors; need 3+ records for a median.
+  They then show "N of M tightly aligned (within ±X%)", the newest record date,
+  how many are in the subject's barangay, and how many are bank/government.
+- The records themselves are collected server-side (their Supabase); the
+  collection code is not public. Nothing here should copy their data.
+
+### Sources we can collect ourselves (checked 2026-10-14)
+
+| Source | Batangas records now | Fields | Price type | Format / cadence | Crawl rules |
+|---|---|---|---|---|---|
+| **BDO** asset-for-sale `Luzon_Batangas.pdf` | **96** (as of 10 Oct 2026) | address, project, lot, floor, type | advertised price | one PDF per province, refreshed by BDO | PDF on bdo.com.ph |
+| **BPI Buena Mano** properties for sale (Luzon page) | **12** | BM code, address, lot / floor, tag (green/yellow/red) | selling price | HTML table, monthly sealed bidding | robots.txt allows |
+| **Security Bank** repossessed properties | **5** | address, title no., lot, floor, notes | suggested price (+ sale price) | HTML, "updated monthly" | — |
+| **SSS** "List of SSS HAA for Sale" | ~1 | address, lot, floor, dwelling type | **fair market value** (appraisal) | monthly PDF in wp-content/uploads | robots.txt allows |
+| **Pag-IBIG** acquired assets | unknown (site in maintenance today) | region/province/city filters, lot, floor | **minimum bid**; separate **winning bids** list (completed prices) | web app + lists | check when back up |
+| Metrobank, Landbank | not yet counted | — | selling price | PDF / pages | check |
+| DotProperty / MyProperty | ~100 (Oct sample) | as listed | asking | existing market-scan worker | already in use |
+| Lamudi, Property24 | — | — | asking | blocked crawlers in testing | **do not circumvent** |
+
+So ~110+ Batangas bank records a month from BDO, BPI and Security Bank alone, plus
+portal listings: more Batangas evidence than LandValuePH's whole 859-record test
+set is likely to hold for this province. Pag-IBIG winning bids are the only source
+of *completed* prices and are the priority once their site is reachable.
+
+Caveats: bank prices are "as is, where is" and tag-dependent (a red/yellow tag
+means title or possession issues). Bank appraisals usually sit near market, but
+these are not resale prices, so every record keeps its `source`, `priceType` and
+`saleCategory` and is never silently mixed with resale asking prices.
+
+### Pipeline
+
+1. **Collectors** (`market-scan/sources/*.js`): `bdo.js` (PDF → rows),
+   `bpi.js`, `securitybank.js` (HTML tables), `sss.js` (find the newest monthly
+   PDF), `pagibig.js` (when available), and the existing market-scan API for
+   portals. One request per page per month, an identifying user agent, robots.txt
+   honoured. Sales-officer names and phone numbers are dropped at parse time.
+2. **Build** (`market-scan/build-comparables.js`): normalise to one record shape
+   `{source, priceType, saleCategory, price, lotArea, floorArea, propertyType,
+   address, municipality, barangay, streetKey, matchLevel, tag, observedOn, url}`;
+   match the address to `data/bir-batangas` (municipality → barangay → street,
+   recording how precise the match was); de-duplicate within and across sources
+   (same address/lot within 2% price — the Avida San Pascual lot is on BPI *and*
+   DotProperty); apply LandValuePH-style anomaly filters plus our own.
+3. **Output**: `data/comparables/batangas-latest.json` and a monthly archive
+   `data/comparables/2026-10.json`, so trends are kept.
+4. **Workflow** `.github/workflows/comparables-monthly.yml`, on the 1st of each
+   month at 03:00 PHT (plus manual run): collect → build → run the accuracy test
+   against the new snapshot → commit the data. Opens an issue when a source
+   fails to parse or returns far fewer rows than last month, so a site redesign
+   is noticed instead of silently shrinking the data.
+
+### How the records improve accuracy
+
+1. **Standing accuracy check, refreshed monthly.** `value_guide_market_accuracy_node.js`
+   reads the latest snapshot instead of the fixed October fixture, and reports
+   median error by town, type and source. An issue is opened when the overall
+   median leaves ±10%, or any town with 8+ records leaves ±20%.
+2. **Evidence on the result page.** "12 comparable properties near you", with
+   how tightly they agree, the newest date, the source mix and links — the
+   section LandValuePH charges for, free. Uses the existing comparables engine
+   (`js/value_guide_evidence.js`) with a new institutional source type.
+3. **Town-level calibration, reviewed by a person.** For towns with enough
+   vacant-lot records, compute the median ratio of record price to our land
+   estimate, shrink it toward 1 by n/(n+10), cap at ±25%, and propose it as a
+   pull request to `data/calibration.json`. Never applied automatically:
+   `zonal-config.json` already says factor changes need admin approval, and a bad
+   scrape must not move live prices.
+4. **Building-rate check.** For house records, price minus our land estimate gives
+   an implied building value per sqm; a drifting median flags the 16,000/sqm rate
+   for review.
+
+### Stages and acceptance
+
+| Stage | Done when |
+|---|---|
+| A. BDO + BPI + Security Bank collectors, build script, manual run | ≥90 Batangas records parsed, ≥80% matched to a BIR barangay, no personal data stored |
+| B. Monthly workflow + failure issues | two consecutive monthly runs commit snapshots; a broken source opens an issue |
+| C. Accuracy test on live snapshot | replaces the fixed fixture; per-town report committed each month |
+| D. Evidence card on the result page | shows nearby records with source, price type, date and link |
+| E. SSS + Pag-IBIG (incl. winning bids) | completed-price records tracked separately |
+| F. Calibration PRs | first reviewed calibration merged for a town with ≥10 lot records |
+
+Before stage A goes live: read BDO's, BPI's and Security Bank's website terms
+(BPI's terms page could not be fetched from here) and keep attribution to each
+source on the evidence card.
