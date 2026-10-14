@@ -98,6 +98,30 @@ test("bpi: only the Batangas table, no sales-officer data", () => {
   assert.throws(() => BPI.parseBpiHtml(BPI_HTML.replace("Batangas Properties", "Batangas Listings")), /layout changed/);
 });
 
+/* ---------------- Pag-IBIG ---------------- */
+test("pagibig: one call per town, contact people and title numbers never saved", async () => {
+  const PAG = require(path.join(ROOT, "market-scan/comparables/sources/pagibig.js"));
+  const calls = [];
+  const get = async u => {
+    calls.push(u);
+    if (/LoadLocations/.test(u)) return JSON.stringify([{ result_column0: "041014000", result_column1: "CITY OF LIPA" }, { result_column0: "041006000", result_column1: "BAUAN" }]);
+    return JSON.stringify({ data: [{ ropa_id: "1", prop_location: "Lot 1 Blk. 1 X, BAUAN, BATANGAS, 4201", prop_type: "Lot Only", lot_area: "100", floor_area: "0", min_sellprice: 500000,
+      contact_hbc: "Juan Dela Cruz", email_hbc: "someone@example.com", handling_hbc: "Desk 3", tct_cct_no: "T-123", disposal_flag: "1" }] });
+  };
+  const text = await PAG.fetchPagibig(get, async () => {});
+  assert.strictEqual(calls.length, 3, "towns + one search per town");
+  assert.ok(/city_muni=CITY\+OF\+LIPA/.test(calls[1]), "towns are searched by name");
+  assert.ok(!/Juan|example\.com|Desk 3|T-123/.test(text), "no contact person, e-mail or title number in the saved file");
+  const rows = PAG.parsePagibigJson(fs.readFileSync(path.join(FX, "pagibig-batangas-sample.json"), "utf8")).rows;
+  assert.strictEqual(rows.length, 6, "the condominium (no lot area) is left out");
+  const lot = rows[0];
+  assert.deepStrictEqual([lot.address, lot.propertyType, lot.price, lot.lotArea, lot.tag, lot.note],
+    ["Lot 7 Blk. 4 DE CLARO-PUNZALAN COMPOUND ALANGILAN, BATANGAS CITY, BATANGAS", "Vacant Lot", 505890, 77, "2nd auction, up to 30% below", "unoccupied-lot - title under consolidation"]);
+  assert.strictEqual(rows.find(r => /BELLAVITA/.test(r.address)).propertyType, "Townhouse");
+  assert.strictEqual(rows.find(r => /BANADERO/.test(r.address)).propertyType, "House & Lot");
+  assert.strictEqual(rows.find(r => /FIRST WORLD/.test(r.address)).project, "FIRST WORLD HOMES", "padding trimmed");
+});
+
 /* ---------------- matching ---------------- */
 test("match: towns, barangays and subdivisions from free-text bank addresses", () => {
   const bir = MATCH.loadBir(ROOT);
@@ -140,12 +164,17 @@ test("build: snapshot, matching, de-duplication and a monthly history entry", as
   const ws = workspace();
   fs.writeFileSync(path.join(ws.raw, "bdo--batangas.pdf"), makePdf(ITEMS));
   fs.writeFileSync(path.join(ws.raw, "bpi--luzon.html"), BPI_HTML.replace("</tbody></table>\n<h2>Benguet", DUP_ROW + NOT_DUP + "</tbody></table>\n<h2>Benguet"));
+  fs.copyFileSync(path.join(FX, "pagibig-batangas-sample.json"), path.join(ws.raw, "pagibig--batangas.json"));
   const res = await run(ws, "2026-10-15");
   assert.ok(res.ok, JSON.stringify(res.problems));
   const L = latest(ws);
   assert.strictEqual(L.sources.find(s => s.id === "bdo").parsed, 14);
   assert.strictEqual(L.sources.find(s => s.id === "bpi").parsed, 14);
   assert.strictEqual(L.sources.find(s => s.id === "securitybank").status, "skipped");
+  const pag = L.records.filter(r => r.source === "pagibig");
+  assert.ok(pag.length >= 5, "Pag-IBIG records kept: " + pag.length);
+  assert.ok(pag.every(r => r.saleCategory === "government-acquired" && r.priceType === "minimum_bid" && r.tag && r.note));
+  assert.ok(pag.every(r => r.barangay), "every Pag-IBIG record matched to a barangay");
   assert.ok(L.rejected.some(r => r.id.indexOf("99999-TEST-1") >= 0 && /duplicate of bdo:/.test(r.reason)), "cross-source duplicate merged");
   assert.ok(L.records.some(r => /99999-TEST-2/.test(r.id)), "a different lot at the same price is kept");
   assert.ok(L.summary.matchRate >= 0.8, "match rate " + L.summary.matchRate);

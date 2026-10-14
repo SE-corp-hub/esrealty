@@ -26,6 +26,7 @@
 const fs = require("fs"), path = require("path"), zlib = require("zlib");
 const { parseBdoPdf } = require("./sources/bdo.js");
 const { parseBpiHtml } = require("./sources/bpi.js");
+const { parsePagibigJson } = require("./sources/pagibig.js");
 const { loadBir, matchAddress } = require("./match.js");
 const SOURCES = require("./sources.json");
 
@@ -50,9 +51,9 @@ function kindOf(type) {
   if (/industrial/.test(t)) return "industrial_lot";
   if (/commercial|warehouse|building/.test(t)) return "commercial";
   if (/condo/.test(t)) return "condo";
-  if (/town ?house|row ?house/.test(t)) return "townhouse";
+  if (/town ?house|row ?house|duplex|quadruplex/.test(t)) return "townhouse";
   if (/vacant|lot only|^lot$|- lot$/.test(t)) return "vacant_lot";
-  if (/house/.test(t)) return "house_lot";
+  if (/house|detached|single attached|double attached/.test(t)) return "house_lot";
   return "other";
 }
 const isVacant = k => k === "vacant_lot" || k === "industrial_lot";
@@ -78,6 +79,11 @@ const READERS = {
       const r = await parseBdoPdf(new Uint8Array(fs.readFileSync(file)), inflate);
       return { observedOn: r.asOf || today, rows: r.rows.map(x => ({ address: x.address, project: x.project, propertyType: x.propertyType, price: x.price, lotArea: x.lotArea, floorArea: x.floorArea })) };
     }
+  },
+  pagibig: {
+    ext: /\.json$/i,
+    inbox: n => /^pagibig.*\.json$/i.test(n) && !/\.rows\.json$/i.test(n),
+    read: async (file, today) => ({ observedOn: today, rows: parsePagibigJson(fs.readFileSync(file, "utf8")).rows })
   },
   bpi: {
     ext: /\.html?$/i,
@@ -157,10 +163,10 @@ async function build(opts) {
         const ppsqm = r.lotArea > 0 ? Math.round(r.price / r.lotArea) : null;
         records.push({
           id: s.id + ":" + (r.code || (m.barangay || "x") + ":" + (lotBlockKey(r.address) || i) + ":" + r.price),
-          source: s.id, priceType: s.priceType, saleCategory: "bank-acquired",
+          source: s.id, priceType: s.priceType, saleCategory: s.saleCategory || "bank-acquired",
           kind, propertyType: r.propertyType, tag: r.tag || null,
           price: r.price, lotArea: r.lotArea, floorArea: r.floorArea || 0, pricePerSqmLot: ppsqm,
-          address: r.address, project: r.project || "",
+          address: r.address, project: r.project || "", note: r.note || null,
           municipality: m.municipality, barangay: m.barangay, streetKey: m.streetKey, matchLevel: m.matchLevel,
           birClass: m.birClass, birRate: m.birRate, ratioToBir: m.birRate && ppsqm ? +(ppsqm / m.birRate).toFixed(2) : null,
           observedOn: got.observedOn, url: s.urls[0].url

@@ -6,6 +6,9 @@
 const fs = require("fs"), path = require("path");
 const SOURCES = require("./sources.json");
 const OUT = process.argv[2] || path.join(__dirname, "raw");
+/* Sources that need more than one plain download (several JSON calls) bring
+   their own fetcher; it gets the same polite get() and returns the text to save. */
+const FETCHERS = { pagibig: require("./sources/pagibig.js").fetchPagibig };
 const UA = "SEA-ESTATES-comparables/1.0 (+https://github.com/tradersgag6/esrealty; monthly, one request per page)";
 
 async function get(url) {
@@ -22,7 +25,9 @@ async function get(url) {
     for (const page of s.urls) {
       const file = path.join(OUT, s.id + "--" + page.name);
       try {
-        const buf = await get(page.url);
+        const buf = FETCHERS[s.id]
+          ? Buffer.from(await FETCHERS[s.id](async u => (await get(u)).toString("utf8"), ms => new Promise(r => setTimeout(r, ms))))
+          : await get(page.url);
         fs.writeFileSync(file, buf);
         report.push({ source: s.id, page: page.name, ok: true, bytes: buf.length });
       } catch (e) {

@@ -1498,8 +1498,8 @@ out += "</div>";
   /* Bank listings in the subject's town: the evidence LandValuePH puts behind a
      paywall, shown here with source, price type, date and link. Context only -
      see ESREALTY_EVIDENCE.bankNearby. */
-  var BANK_LABEL = { bdo: "BDO", bpi: "BPI Buena Mano", securitybank: "Security Bank" };
-  var PRICE_LABEL = { advertised: "advertised price", selling: "selling price", suggested: "suggested price" };
+  var BANK_LABEL = { bdo: "BDO", bpi: "BPI Buena Mano", securitybank: "Security Bank", pagibig: "Pag-IBIG Fund", sss: "SSS" };
+  var PRICE_LABEL = { advertised: "advertised price", selling: "selling price", suggested: "suggested price", minimum_bid: "minimum bid", fair_market_value: "fair market value" };
   function shortDate(d) {
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || "");
     return m ? Number(m[3]) + " " + ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m[2]) - 1] + " " + m[1] : "";
@@ -1509,8 +1509,8 @@ out += "</div>";
     if (!snap || snap.unavailable) return '<p class="sf-est-rdp">The bank listing snapshot could not be loaded.</p>';
     var n = evidence.bankNearby(snap, { municipality: r.municipality, barangay: r.barangay, type: r.type, area: r.area, landPerSqm: r.landPerSqm, total: r.total });
     var vacant = r.type === "vacant_lot", town = esc(r.municipality);
-    if (!n.total) return '<div class="sf-est-bank" data-est-bank><p class="sf-est-rdp">No bank-acquired properties are listed for sale in ' + town + ' this month. The list is refreshed monthly from BDO and BPI Buena Mano.</p></div>';
-    var head = '<p class="sf-est-bank-lead"><b>' + n.total + ' bank-acquired propert' + (n.total === 1 ? 'y' : 'ies') + '</b> for sale in ' + town + (n.inBarangay ? ' · <b>' + n.inBarangay + '</b> in ' + esc(r.barangay) : '') + '.</p>';
+    if (!n.total) return '<div class="sf-est-bank" data-est-bank><p class="sf-est-rdp">No bank or Pag-IBIG acquired properties are listed for sale in ' + town + ' this month. The list is refreshed monthly from BDO, BPI Buena Mano and Pag-IBIG.</p></div>';
+    var head = '<p class="sf-est-bank-lead"><b>' + n.total + ' bank and Pag-IBIG acquired propert' + (n.total === 1 ? 'y' : 'ies') + '</b> for sale in ' + town + (n.inBarangay ? ' · <b>' + n.inBarangay + '</b> in ' + esc(r.barangay) : '') + '.</p>';
     if (n.medianPricePerSqm) {
       head += '<p class="sf-est-rdp">Median ' + money(n.medianPricePerSqm) + ' per sqm of lot across ' + n.sameKind + ' ' + (vacant ? 'vacant lots' : 'house-and-lot properties (house included)') +
         (n.cluster ? '; ' + n.cluster.count + ' of ' + n.sameKind + ' are within ±' + n.cluster.pct + '% of it' : '; prices are widely spread') + '.';
@@ -1521,15 +1521,15 @@ out += "</div>";
       var place = rec.barangay ? "Brgy. " + rec.barangay : rec.municipality;
       var size = fmt(rec.lotArea) + " sqm lot" + (rec.floorArea > 0 ? " · " + fmt(rec.floorArea) + " sqm floor" : "");
       var rate = money(rec.pricePerSqmLot) + "/sqm" + (rec.ratioToBir ? " · " + fmt(rec.ratioToBir) + "× BIR" : "");
-      var src = (BANK_LABEL[rec.source] || rec.source) + " · " + (PRICE_LABEL[rec.priceType] || rec.priceType) + " · " + shortDate(rec.observedOn) + (rec.tag ? " · " + rec.tag + " tag" : "") + (rec.carriedOver ? " · from last month" : "");
+      var src = (BANK_LABEL[rec.source] || rec.source) + " · " + (PRICE_LABEL[rec.priceType] || rec.priceType) + " · " + shortDate(rec.observedOn) + (rec.tag ? " · " + rec.tag + (rec.source === "bpi" ? " tag" : "") : "") + (rec.note ? " · " + rec.note : "") + (rec.carriedOver ? " · from last month" : "");
       var title = rec.project || String(rec.address || "").split(/,?\s+(?:Barangay|Brgy\.?)\s/i)[0].slice(0, 70) || rec.propertyType;
       return '<article class="sf-est-bank-record"><h5>' + esc(title) + '</h5>' +
         '<p class="sf-est-bank-price"><b>' + money(rec.price) + '</b> <span>' + esc(rate) + '</span></p>' +
         '<p class="sf-est-rdp">' + esc(place + " · " + size + " · " + rec.propertyType) + '</p>' +
-        '<p class="sf-est-bank-src">' + esc(src) + (/^https:\/\//.test(rec.url || "") ? ' · <a href="' + esc(rec.url) + '" target="_blank" rel="noopener noreferrer">bank list</a>' : '') + '</p></article>';
+        '<p class="sf-est-bank-src">' + esc(src) + (/^https:\/\//.test(rec.url || "") ? ' · <a href="' + esc(rec.url) + '" target="_blank" rel="noopener noreferrer">source list</a>' : '') + '</p></article>';
     }).join("");
     return '<div class="sf-est-bank" data-est-bank>' + head + '<div class="sf-est-bank-list">' + cards + '</div>' +
-      '<p class="sf-est-rdp">Bank prices are "as is, where is": title, possession or repair issues are common, and these are advertised prices, not completed sales. They are shown for context and do not change the estimate. Refreshed monthly' + (n.generatedOn ? ' (last ' + esc(shortDate(n.generatedOn)) + ')' : '') + '; sold or withdrawn properties are removed.</p></div>';
+      '<p class="sf-est-rdp">Bank and Pag-IBIG prices are "as is, where is": title, possession or repair issues are common. Bank figures are advertised prices and Pag-IBIG figures are minimum bids (2nd-auction and negotiated-sale properties can go up to 30% or 45% below them) - none are completed sales. They are shown for context and do not change the estimate. Refreshed monthly' + (n.generatedOn ? ' (last ' + esc(shortDate(n.generatedOn)) + ')' : '') + '; sold or withdrawn properties are removed.</p></div>';
   }
 
   function evidenceHtml(r) {
@@ -1701,13 +1701,13 @@ var displayRange = '';
     s.push({ t: "Professional review", h:
       "<p class=\"sf-est-rdp\"><b>Request a site and document review.</b> A licensed real estate appraiser can review property condition, title, and current local evidence for a formal valuation assignment. The guide itself is a planning estimate.</p>" });
     s.push({ t: "Asking evidence and project sources", h: evidenceHtml(r) });
-    s.push({ t: "Bank listings near you", h: bankListingsHtml(r) });
+    s.push({ t: "Bank & Pag-IBIG listings near you", h: bankListingsHtml(r) });
 
     var groups = [
       { t: "Summary", titles: ["Estimate at a glance", "Pricing strategy", "The property"] },
       { t: "Calculation", titles: ["How this number was built", "Land value build-up", "House value (replacement cost approach)", "House value", "Ownership & title review", "Adjustments from your answers", "Total estimate and range"] },
       { t: "Transaction costs", titles: ["Taxes, fees & commissions"] },
-      { t: "Market evidence", titles: ["Bank listings near you", "Source of land rates", "BIR classification used", "How precise is this match?", "Asking evidence and project sources"] },
+      { t: "Market evidence", titles: ["Bank & Pag-IBIG listings near you", "Source of land rates", "BIR classification used", "How precise is this match?", "Asking evidence and project sources"] },
       { t: "Documents and next steps", titles: ["Professional review"] },
       { t: "Methodology and limitations", titles: ["Methodology", "Coverage and limitations", "Legal"] }
     ];
