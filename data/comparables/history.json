@@ -1,0 +1,144 @@
+{
+ "note": "One summary per monthly comparables run. No individual listings are kept here.",
+ "months": [
+  {
+   "month": "2026-10",
+   "generatedOn": "2026-10-14",
+   "records": 107,
+   "matchRate": 1,
+   "bySource": {
+    "bdo": {
+     "status": "ok",
+     "observedOn": "2026-10-10",
+     "kept": 95
+    },
+    "bpi": {
+     "status": "ok",
+     "observedOn": "2026-10-14",
+     "kept": 12
+    },
+    "securitybank": {
+     "status": "skipped",
+     "observedOn": null,
+     "kept": 0
+    }
+   },
+   "byTown": [
+    {
+     "town": "BATANGAS CITY",
+     "kind": "built",
+     "n": 9,
+     "medianPricePerSqm": 22523
+    },
+    {
+     "town": "BATANGAS CITY",
+     "kind": "vacant",
+     "n": 6,
+     "medianPricePerSqm": 8500
+    },
+    {
+     "town": "BAUAN",
+     "kind": "built",
+     "n": 1,
+     "medianPricePerSqm": 33846
+    },
+    {
+     "town": "CALACA",
+     "kind": "vacant",
+     "n": 1,
+     "medianPricePerSqm": 10000
+    },
+    {
+     "town": "LAUREL",
+     "kind": "vacant",
+     "n": 11,
+     "medianPricePerSqm": 11500
+    },
+    {
+     "town": "LEMERY",
+     "kind": "built",
+     "n": 1,
+     "medianPricePerSqm": 4555
+    },
+    {
+     "town": "LIPA CITY",
+     "kind": "built",
+     "n": 6,
+     "medianPricePerSqm": 31288
+    },
+    {
+     "town": "LIPA CITY",
+     "kind": "vacant",
+     "n": 47,
+     "medianPricePerSqm": 5750
+    },
+    {
+     "town": "NASUGBU",
+     "kind": "built",
+     "n": 1,
+     "medianPricePerSqm": 23926
+    },
+    {
+     "town": "NASUGBU",
+     "kind": "vacant",
+     "n": 1,
+     "medianPricePerSqm": 50000
+    },
+    {
+     "town": "PADRE GARCIA",
+     "kind": "built",
+     "n": 1,
+     "medianPricePerSqm": 16268
+    },
+    {
+     "town": "ROSARIO",
+     "kind": "built",
+     "n": 2,
+     "medianPricePerSqm": 16951
+    },
+    {
+     "town": "SAN PASCUAL",
+     "kind": "built",
+     "n": 1,
+     "medianPricePerSqm": 8427
+    },
+    {
+     "town": "SAN PASCUAL",
+     "kind": "vacant",
+     "n": 2,
+     "medianPricePerSqm": 19100
+    },
+    {
+     "town": "STO. TOMAS CITY",
+     "kind": "built",
+     "n": 4,
+     "medianPricePerSqm": 28678
+    },
+    {
+     "town": "STO. TOMAS CITY",
+     "kind": "vacant",
+     "n": 4,
+     "medianPricePerSqm": 9000
+    },
+    {
+     "town": "TAAL",
+     "kind": "built",
+     "n": 5,
+     "medianPricePerSqm": 30577
+    },
+    {
+     "town": "TANAUAN CITY",
+     "kind": "built",
+     "n": 2,
+     "medianPricePerSqm": 28228
+    },
+    {
+     "town": "TANAUAN CITY",
+     "kind": "vacant",
+     "n": 2,
+     "medianPricePerSqm": 20000
+    }
+   ]
+  }
+ ]
+}

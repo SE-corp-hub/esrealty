@@ -2,7 +2,7 @@
 "use strict";
 /* Downloads each comparables source once into a raw/ folder. Kept separate from
    parsing so a failed parse can be debugged from the exact bytes that were
-   fetched (the monthly workflow uploads raw/ as a build artifact). */
+   fetched (the monthly workflow keeps raw/ as a build artifact for 30 days). */
 const fs = require("fs"), path = require("path");
 const SOURCES = require("./sources.json");
 const OUT = process.argv[2] || path.join(__dirname, "raw");
@@ -18,6 +18,7 @@ async function get(url) {
   fs.mkdirSync(OUT, { recursive: true });
   const report = [];
   for (const s of SOURCES) {
+    if (s.fetch === false) { report.push({ source: s.id, ok: false, skipped: true, error: "not fetched: " + (s.note || "disabled") }); continue; }
     for (const page of s.urls) {
       const file = path.join(OUT, s.id + "--" + page.name);
       try {

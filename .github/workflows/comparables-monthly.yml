@@ -1,0 +1,111 @@
+name: Comparables - monthly refresh
+
+# Once a month: download the bank listings (BDO, BPI), rebuild
+# data/comparables/batangas-latest.json from scratch (properties no longer listed
+# disappear), add one summary line to data/comparables/history.json, test, and
+# commit. Any problem - a source that failed, a sharp drop in rows, a low
+# barangay match rate - opens (or updates) one issue so a site redesign is
+# noticed instead of silently shrinking the data.
+#
+# BDO refuses connections from GitHub's servers. The fallback is a person:
+# upload the PDF to market-scan/comparables/inbox/ (GitHub: Add file -> Upload
+# files). That push re-runs this workflow by itself.
+
+on:
+  schedule:
+    - cron: "17 2 1 * *"   # 1st of each month, 10:17 Philippine time
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - "market-scan/comparables/inbox/**"
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: comparables-monthly
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Fetch sources (one request per page)
+        run: node market-scan/comparables/fetch-raw.js /tmp/raw || echo "some sources failed; the build decides what that means"
+
+      - name: Keep the raw downloads for 30 days (parser debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: comparables-raw
+          path: /tmp/raw
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Build the snapshot
+        id: build
+        run: node market-scan/comparables/build-comparables.js --raw /tmp/raw --report /tmp/report.json
+
+      - name: Test
+        run: |
+          node tests/comparables_pipeline_node.js
+          node tests/value_guide_market_accuracy_node.js
+
+      - name: Commit
+        run: |
+          git config user.name "SEA ESTATES Comparables Bot"
+          git config user.email "comparables@esrealty.local"
+          git add data/comparables
+          if git diff --cached --quiet; then
+            echo "No change in data/comparables."
+            exit 0
+          fi
+          git commit -m "Comparables snapshot $(date -u +%Y-%m)"
+          git pull --rebase
+          git push
+
+      - name: Report problems as an issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_FAILED: ${{ job.status == 'failure' && '1' || '0' }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            let r = { ok: false, problems: ["the build did not finish - see the run log"] };
+            try { r = JSON.parse(fs.readFileSync("/tmp/report.json", "utf8")); } catch (e) {}
+            if (process.env.JOB_FAILED === "1" && r.ok) r.problems.push("a later step (tests or commit) failed - see the run log");
+            if (!r.problems.length) { fs.writeFileSync("/tmp/issue.md", ""); process.exit(0); }
+            const bdo = r.problems.some(p => /^bdo:/.test(p));
+            const lines = [
+              "The monthly comparables run on " + new Date().toISOString().slice(0, 10) + " needs attention.", "",
+              ...r.problems.map(p => "- " + p), "",
+              r.summary ? "Snapshot: " + r.summary.records + " records (" + r.summary.carriedOver + " carried over from last month), " + Math.round(r.summary.matchRate * 100) + "% matched to a BIR barangay." : "The snapshot was NOT updated.",
+              ""
+            ];
+            if (bdo) lines.push(
+              "**BDO:** GitHub cannot download BDO'"'"'s PDF. To refresh it:",
+              "1. Open https://www.bdo.com.ph/content/dam/bdounibank/en-ph/mcg-digital-marketing/asset-for-sale/asset-listings/Luzon_Batangas.pdf and save it.",
+              "2. In this repository: **Add file -> Upload files**, into `market-scan/comparables/inbox/` (keep the name `Luzon_Batangas.pdf`, replacing the old one).",
+              "3. Commit to main. The upload re-runs this workflow by itself.", "");
+            lines.push("Run log: " + process.env.RUN_URL, "", "Close this issue once fixed; the next run opens a new one if anything is still wrong.");
+            fs.writeFileSync("/tmp/issue.md", lines.join("\n"));
+          '
+          if [ ! -s /tmp/issue.md ]; then echo "No problems."; exit 0; fi
+          title="Comparables monthly run needs attention"
+          num=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body-file /tmp/issue.md
+          else
+            gh issue create --title "$title" --body-file /tmp/issue.md
+          fi
+        shell: bash

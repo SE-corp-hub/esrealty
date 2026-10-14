@@ -1,8 +1,10 @@
 [
   { "id": "bdo", "label": "BDO assets for sale", "priceType": "advertised",
+    "note": "BDO refuses connections from data-centre addresses (GitHub Actions times out). When the fetch fails, put the PDF (or a bdo.rows.json) in market-scan/comparables/inbox/.",
     "urls": [ { "name": "batangas.pdf", "url": "https://www.bdo.com.ph/content/dam/bdounibank/en-ph/mcg-digital-marketing/asset-for-sale/asset-listings/Luzon_Batangas.pdf" } ] },
   { "id": "bpi", "label": "BPI Buena Mano", "priceType": "selling",
     "urls": [ { "name": "luzon.html", "url": "https://www.bpi.com.ph/group/buenamano/properties-for-sale/luzon" } ] },
-  { "id": "securitybank", "label": "Security Bank repossessed assets", "priceType": "suggested",
+  { "id": "securitybank", "label": "Security Bank repossessed assets", "priceType": "suggested", "fetch": false,
+    "note": "Answers HTTP 403 to automated requests, so it is not fetched (we do not get around blocks). A person may enter its table as inbox/securitybank.rows.json.",
     "urls": [ { "name": "properties.html", "url": "https://securitybank.com/personal/loans/repossessed-assets/properties-for-sale/" } ] }
 ]

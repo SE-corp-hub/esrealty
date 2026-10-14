@@ -267,27 +267,35 @@ means title or possession issues). Bank appraisals usually sit near market, but
 these are not resale prices, so every record keeps its `source`, `priceType` and
 `saleCategory` and is never silently mixed with resale asking prices.
 
-### Pipeline
+### Pipeline (built 2026-10-14 - see `market-scan/comparables/README.md`)
 
-1. **Collectors** (`market-scan/sources/*.js`): `bdo.js` (PDF → rows),
-   `bpi.js`, `securitybank.js` (HTML tables), `sss.js` (find the newest monthly
-   PDF), `pagibig.js` (when available), and the existing market-scan API for
-   portals. One request per page per month, an identifying user agent, robots.txt
-   honoured. Sales-officer names and phone numbers are dropped at parse time.
-2. **Build** (`market-scan/build-comparables.js`): normalise to one record shape
-   `{source, priceType, saleCategory, price, lotArea, floorArea, propertyType,
-   address, municipality, barangay, streetKey, matchLevel, tag, observedOn, url}`;
-   match the address to `data/bir-batangas` (municipality → barangay → street,
-   recording how precise the match was); de-duplicate within and across sources
-   (same address/lot within 2% price — the Avida San Pascual lot is on BPI *and*
-   DotProperty); apply LandValuePH-style anomaly filters plus our own.
-3. **Output**: `data/comparables/batangas-latest.json` and a monthly archive
-   `data/comparables/2026-10.json`, so trends are kept.
-4. **Workflow** `.github/workflows/comparables-monthly.yml`, on the 1st of each
-   month at 03:00 PHT (plus manual run): collect → build → run the accuracy test
-   against the new snapshot → commit the data. Opens an issue when a source
-   fails to parse or returns far fewer rows than last month, so a site redesign
-   is noticed instead of silently shrinking the data.
+1. **Collectors**: `market-scan/comparables/sources/bdo.js` (reads the PDF's
+   positioned text and rebuilds the table, no poppler) and `sources/bpi.js`
+   (HTML table; the Sales Officer column is never read). One request per page
+   per month, identifying user agent. Security Bank answers 403 to robots, so it
+   is not fetched; a person may enter its table as `inbox/securitybank.rows.json`.
+   BDO refuses GitHub's servers: its PDF (or a rows file) is dropped into
+   `market-scan/comparables/inbox/`, and the run issue says how.
+2. **Build** (`build-comparables.js`): one record shape `{source, priceType,
+   saleCategory, kind, price, lotArea, floorArea, pricePerSqmLot, address,
+   project, municipality, barangay, streetKey, matchLevel, birRate, ratioToBir,
+   tag, observedOn, url}`; address matched to `data/bir-batangas` (`match.js`);
+   duplicates removed within and across sources (same barangay, lot within 1 sqm,
+   price within 2%, no conflicting lot/block numbers - so two different lots at
+   one price in a subdivision are both kept); LandValuePH-style filters (0.5-5x
+   BIR for lots, 0.5-15x for built, 0.35-4x the town median).
+3. **Output**: `data/comparables/batangas-latest.json` is **replaced in full**
+   each month - delisted properties disappear. Only a source that failed keeps
+   last month's records, once, flagged `carriedOver`. `data/comparables/history.json`
+   keeps one summary per month (counts, median price/sqm by town and kind), so
+   trends survive without keeping old listings.
+4. **Workflow** `.github/workflows/comparables-monthly.yml`: 1st of the month,
+   10:17 PHT, plus manual runs and any upload to the inbox. Fetch -> build ->
+   tests -> commit. Opens/updates one issue when a source fails, drops 40%+,
+   matches under 80%, or its data is over 40 days old (refused after 62).
+
+First snapshot (2026-10-14): 108 parsed (BDO 96 as of 10 Oct, BPI 12),
+107 kept, 100% matched to a BIR barangay (42 to the exact street/subdivision).
 
 ### How the records improve accuracy
 
@@ -313,8 +321,8 @@ these are not resale prices, so every record keeps its `source`, `priceType` and
 
 | Stage | Done when |
 |---|---|
-| A. BDO + BPI + Security Bank collectors, build script, manual run | ≥90 Batangas records parsed, ≥80% matched to a BIR barangay, no personal data stored |
-| B. Monthly workflow + failure issues | two consecutive monthly runs commit snapshots; a broken source opens an issue |
+| A. BDO + BPI collectors, build script, manual run | **done 2026-10-14**: 107 records, 100% barangay match, no personal data. Security Bank: manual rows only (403) |
+| B. Monthly workflow + failure issues | built 2026-10-14; done when two monthly runs have committed snapshots |
 | C. Accuracy test on live snapshot | replaces the fixed fixture; per-town report committed each month |
 | D. Evidence card on the result page | shows nearby records with source, price type, date and link |
 | E. SSS + Pag-IBIG (incl. winning bids) | completed-price records tracked separately |
