@@ -21,7 +21,8 @@ const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9,
 const GENERIC = new Set(["SUBD", "SUBDIVISION", "VILLAGE", "VILL", "ST", "STREET", "STS", "ROAD", "RD", "AVE", "AVENUE",
   "HOMES", "PHASE", "PH", "ESTATE", "ESTATES", "HEIGHTS", "HTS", "RESIDENCES", "ALONG", "THE", "DE", "DEL", "LA", "LAS", "LOS",
   "SAN", "STA", "STO", "SANTA", "SANTO", "BRGY", "BARANGAY", "INTERIOR", "ALL", "STREETS", "OTHER", "OTHERS", "AND", "COR", "CORNER",
-  "NATIONAL", "HIGHWAY", "PROVINCIAL", "BLK", "BLOCK", "LOT", "LOTS", "CITY", "TOWN", "PROPER", "AREA", "HOUSING"]);
+  "NATIONAL", "HIGHWAY", "PROVINCIAL", "BLK", "BLOCK", "LOT", "LOTS", "CITY", "TOWN", "PROPER", "AREA", "HOUSING",
+  "RESIDENTIAL", "RESORT", "COMPOUND", "EXTENSION", "EXT", "PARK", "PLACE", "HILLS"]);
 
 function norm(s) {
   return " " + String(s || "").toUpperCase()
@@ -153,4 +154,16 @@ function matchAddress(bir, address, kind) {
   return out;
 }
 
-module.exports = { loadBir, matchAddress, norm };
+/* One development, however each source spells it: "Berberabe Subdivision" and
+   "GC Berberabe Subdivision" -> "BERBERABE"; a BPI row with no project field
+   whose address says "Canyon Woods Subdivision" joins "Canyon Woods Residential
+   Estate". known = keys already seen (from records that do name a project). */
+function projectKey(rec, known) {
+  const own = distinctive(rec.project || "").join(" ");
+  if (own) return own;
+  const a = norm(rec.address);
+  const hit = (known || []).filter(k => k && k.split(" ").every(w => a.indexOf(" " + w + " ") >= 0)).sort((x, y) => y.length - x.length)[0];
+  return hit || "BRGY " + norm(rec.barangay).trim();
+}
+
+module.exports = { loadBir, matchAddress, norm, projectKey, distinctive };

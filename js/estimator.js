@@ -213,6 +213,20 @@
 
   function isFiniteNum(n) { return typeof n === "number" && isFinite(n); }
 
+  /* Reviewed town correction (data/calibration.json, plan stage F). Proposed
+     each month by market-scan/comparables/calibrate.js from bank and Pag-IBIG
+     vacant-lot prices and applied ONLY after a person merges the proposal -
+     the merge is the approval. Residential land on the factor method only;
+     a factor outside 0.75-1.25 is ignored as a bad file, not clamped. */
+  function townCalibrationFor(cfg, municipality, use, landMethod) {
+    var towns = cfg && cfg.townCalibration && cfg.townCalibration.towns;
+    var t = towns && towns[normKey(municipality)];
+    if (!t || landMethod !== "factor" || use !== "residential") return null;
+    var f = Number(t.residentialLandFactor);
+    if (!(f >= 0.75 && f <= 1.25) || f === 1) return null;
+    return { factor: f, month: t.month || "", records: t.records || 0, projects: t.projects || 0 };
+  }
+
   /* Module scope, not scoped to computeEstimate. These are needed by the
      unavailable-results path, which the internal Value Guide also builds, and
      a helper nested inside computeEstimate was unreachable from there. */
@@ -298,7 +312,8 @@
     var sizeFactor = lotSizeFactor(area);
     var site = siteAdjustments(opts, hit.streetName || opts.streetKey);
     var landBeforeAdjustments = Math.round(landPerSqm * area);
-    var landValue = Math.round(landBeforeAdjustments * sizeFactor * (1 + site.pct / 100));
+    var townCal = townCalibrationFor(cfg, muniRow.name, use, landMethod);
+    var landValue = Math.round(landBeforeAdjustments * sizeFactor * (1 + site.pct / 100) * (townCal ? townCal.factor : 1));
     var factorLandValue = landValue;
     var timeIndex = null;
     if (landMethod === "time-indexed") {
@@ -434,6 +449,7 @@
       siteAdjustment: site,
       lotSizeFactor: sizeFactor,
       landBeforeAdjustments: landBeforeAdjustments,
+      townCalibration: townCal,
       legacyOwnershipScenario: { pct: legacyOwnershipScenarioPct, value: Math.round(unadjustedTotal * (1 - legacyOwnershipScenarioPct / 100)), applied: false, basis: "Superseded 2026-10-14: ownership answers are now applied (ownershipAdjustment)" },
       ownership: { occupancy: opts.occupancy || "not_sure", titleStatus: opts.titleStatus || "not_sure", inheritanceStatus: opts.inheritanceStatus || "not_sure" },
       siteReview: { community: opts.community || "not stated", floodRisk: opts.floodRisk || "not stated", roadAccess: opts.roadAccess || "not stated", frontage: opts.frontage || "not stated", lotShape: opts.lotShape || "not stated", rightOfWay: opts.rightOfWay || "not stated", elevation: opts.elevation || "not stated", utilities: opts.utilities || "not stated" },
@@ -612,7 +628,12 @@
 
   function applyGuideSettings(config, payload) {
     var guide = payload && (payload.data || payload).valueGuide;
-    if (!guide) return config;
+    /* Only an approved settings set may change the public factors. The
+       site-settings endpoint answers with built-in defaults (older 25,000/sqm
+       building cost, 1.7 commercial proxy) and an empty approvedBy when no
+       super-admin has approved anything; applying those would silently undo
+       the calibrated zonal-config values. */
+    if (!guide || !guide.approvedBy || !guide.approvedAt) return config;
     var out = JSON.parse(JSON.stringify(config));
     var proxy = guide.proxyFactors || {};
     var mid = guide.marketBandMid || {};
@@ -651,12 +672,15 @@
       /* Bank-acquired listings, refreshed monthly (market-scan/comparables).
          DISPLAY ONLY, like the benchmarks above: bankListingsHtml() shows them
          beside the estimate; they never enter computeEstimate(). */
-      loadJSON("data/comparables/batangas-latest.json").catch(function () { return { records: [], unavailable: true }; })
+      loadJSON("data/comparables/batangas-latest.json").catch(function () { return { records: [], unavailable: true }; }),
+      /* Reviewed town corrections; a missing file simply means none. */
+      loadJSON("data/calibration.json").catch(function () { return null; })
     ]).then(function (parts) {
       DATA = { config: applyGuideSettings(parts[0], parts[2]), index: parts[1], manifest: parts[3], projectEvidence: parts[4] };
       DATA.config.governmentReferenceRegister = parts[5];
       DATA.marketBenchmarks = parts[6];
       DATA.bankComparables = parts[7];
+      DATA.config.townCalibration = parts[8];
       return DATA;
     });
     return dataPromise;
@@ -1182,7 +1206,8 @@ out += "</div>";
     return "<ul class=\"sf-est-rdl\">" + siteRows + "</ul>" +
       "<p class=\"sf-est-rdp\">Site answers net <b>" + pct(sa.pct || 0) + "</b> on land" +
       (sa.clamped ? " (limited from " + pct(sa.rawPct) + ")" : "") + "." +
-      (size < 1 ? " Large-lot adjustment: land rate × <b>" + size.toFixed(3) + "</b> for " + fmt(r.area) + " sqm (price per sqm falls on bigger lots)." : "") + "</p>" +
+      (size < 1 ? " Large-lot adjustment: land rate × <b>" + size.toFixed(3) + "</b> for " + fmt(r.area) + " sqm (price per sqm falls on bigger lots)." : "") +
+      (r.townCalibration ? " Town correction for " + esc(r.municipality) + ": land × <b>" + r.townCalibration.factor.toFixed(3) + "</b>, reviewed and approved from " + r.townCalibration.records + " bank and Pag-IBIG lot prices across " + r.townCalibration.projects + " developments (" + esc(r.townCalibration.month) + ")." : "") + "</p>" +
       (ownRows ? "<ul class=\"sf-est-rdl\">" + ownRows + "</ul><p class=\"sf-est-rdp\">Ownership answers net <b>−" + (oa.pct || 0) + "%</b> on the total" + (oa.clamped ? " (capped at 30%)" : "") + ".</p>"
         : "<p class=\"sf-est-rdp\">No ownership deductions: title, occupancy and inheritance answers were clean or skipped.</p>") +
       "<p class=\"sf-est-rdp\">Suggested answers are typical for the location; correct any that don't match your property.</p>";
@@ -1661,7 +1686,8 @@ var displayRange = '';
       " sqm = <b>" + money(r.landBeforeAdjustments != null ? r.landBeforeAdjustments : r.landValue) + "</b>" +
       ((r.landBeforeAdjustments != null && r.landBeforeAdjustments !== r.landValue)
         ? ", then " + ((Number(r.lotSizeFactor) || 1) < 1 ? "large-lot × " + Number(r.lotSizeFactor).toFixed(3) + " and " : "") +
-          "site answers " + (((r.siteAdjustment && r.siteAdjustment.pct) || 0) >= 0 ? "+" : "−") + Math.abs((r.siteAdjustment && r.siteAdjustment.pct) || 0) + "% = <b>" + money(r.landValue) + "</b>"
+          "site answers " + (((r.siteAdjustment && r.siteAdjustment.pct) || 0) >= 0 ? "+" : "−") + Math.abs((r.siteAdjustment && r.siteAdjustment.pct) || 0) + "%" +
+          (r.townCalibration ? " and town correction × " + r.townCalibration.factor.toFixed(3) : "") + " = <b>" + money(r.landValue) + "</b>"
         : "") + " land value.</p>" +
       multipleNoteHtml });
     if (r.timeIndex) s[s.length - 1].h = timeResultHtml(r);

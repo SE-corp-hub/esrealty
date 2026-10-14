@@ -296,7 +296,7 @@ test("accuracy: project-weighted, banded, and a month-over-month alert", async (
     project, lotArea: 200, floorArea: 0, price: Math.round(model / factor), pricePerSqmLot: 1, birRate: 4000, matchLevel: "barangay" });
   /* one big project priced at half the guide (+100% error) and five single lots at the guide (0%) */
   const month = (bigFactor, today) => {
-    const records = Array.from({ length: 10 }, (_, i) => lot("Big Estate", bigFactor, i)).concat(["A", "B", "C", "D", "E"].map(p => lot("Project " + p, 1, 0)));
+    const records = Array.from({ length: 10 }, (_, i) => lot("Big Estate", bigFactor, i)).concat(["Acacia", "Banaba", "Camia", "Dahlia", "Ilang"].map(p => lot(p + " Homes", 1, 0)));
     return { snap: { month: today.slice(0, 7), records }, today };
   };
   const ws = workspace();
@@ -321,6 +321,55 @@ test("accuracy: project-weighted, banded, and a month-over-month alert", async (
   res = await ACC.accuracy({ root: ROOT, dir: ws.out, today: m.today });
   assert.ok(res.problems.some(p => /vacant_lot guide vs bank prices \+67%.*outside -15% to \+35%/.test(p)), JSON.stringify(res.problems));
   assert.ok(res.problems.some(p => /vacant_lot moved from \+0% last month to \+67%/.test(p)), JSON.stringify(res.problems));
+});
+
+test("calibration: proposals are project-weighted, shrunk, and reach the estimator only via data/calibration.json", async () => {
+  const ACC = require(path.join(ROOT, "market-scan/comparables/accuracy.js"));
+  const CAL = require(path.join(ROOT, "market-scan/comparables/calibrate.js"));
+  const EST = ACC.loadEstimator(ROOT);
+  const base = { purpose: "selling", type: "vacant_lot", municipality: "LIPA CITY", barangay: "CUMBA", streetKey: "", allOther: true,
+    classification: "RR", area: 200, saleContext: "private-resale", landMethod: "factor", features: [] };
+  const land = (await EST.estimate(base)).landValue;
+  /* every record priced so that price x 1.10 / guide land = 0.80 */
+  const price = Math.round(land * 0.8 / 1.1);
+  const lot = (project, i, address) => ({ id: "c:" + project + i, source: "bdo", kind: "vacant_lot", municipality: "LIPA CITY", barangay: "CUMBA",
+    streetKey: null, project, address: address || "Lot " + i + ", Brgy. Cumba, Lipa City, Batangas", lotArea: 200, price, matchLevel: "barangay" });
+  const recs = [];
+  ["Alpha Homes", "Beta Village", "Gamma Estates"].forEach(p => { for (let i = 0; i < 4; i++) recs.push(lot(p, i)); });
+  /* a BPI-style row with no project field joins its development by address */
+  recs.push(lot("", 9, "Lot 9 Block 1 Alpha Homes Barangay Cumba Lipa City Batangas"));
+  const ws = workspace();
+  const calFile = path.join(ws.dir, "calibration.json");
+  fs.writeFileSync(path.join(ws.out, "batangas-latest.json"), JSON.stringify({ month: "2026-10", records: recs }));
+  let out = await CAL.calibrate({ root: ROOT, dir: ws.out, calibrationFile: calFile, today: "2026-10-14", writeCalibration: true });
+  const t = out.towns.find(x => x.town === "LIPA CITY");
+  assert.deepStrictEqual([t.records, t.projects, t.status], [13, 3, "proposed"]);
+  assert.strictEqual(t.projectDetail.find(p => p.name === "ALPHA").n, 5, "the project-less row joined Alpha Homes");
+  assert.ok(Math.abs(t.townRatio - 0.8) < 0.002);
+  const expected = Math.round((1 + 3 / 13 * (t.townRatio - 1)) * 1000) / 1000;
+  assert.strictEqual(t.proposed, expected, "shrunk toward no change by projects / (projects + 10)");
+  const cal = JSON.parse(fs.readFileSync(calFile, "utf8"));
+  assert.strictEqual(cal.towns["LIPA CITY"].residentialLandFactor, expected);
+
+  /* the estimator applies it to residential land only, and shows it */
+  const D = await EST.loadData(true);
+  const md = await EST.loadMunicipality("lipa-city");
+  const plain = EST.core.computeEstimate(D.config, D.index, md, base);
+  const withCal = EST.core.computeEstimate(Object.assign({}, D.config, { townCalibration: cal }), D.index, md, base);
+  assert.strictEqual(withCal.landValue, Math.round(plain.landValue * expected));
+  assert.strictEqual(withCal.townCalibration.factor, expected);
+  assert.ok(EST.core.integrityCheck(withCal).ok);
+  const commercial = EST.core.computeEstimate(Object.assign({}, D.config, { townCalibration: cal }), D.index, md, Object.assign({}, base, { classification: "CR" }));
+  assert.strictEqual(commercial.townCalibration, null, "commercial land is not corrected by residential lot prices");
+  const bad = EST.core.computeEstimate(Object.assign({}, D.config, { townCalibration: { towns: { "LIPA CITY": { residentialLandFactor: 1.6 } } } }), D.index, md, base);
+  assert.strictEqual(bad.landValue, plain.landValue, "an out-of-range factor is ignored, not clamped");
+
+  /* next month starts from the approved factor; two projects are not enough */
+  out = await CAL.calibrate({ root: ROOT, dir: ws.out, calibrationFile: calFile, today: "2026-11-01" });
+  assert.strictEqual(out.towns.find(x => x.town === "LIPA CITY").current, expected);
+  fs.writeFileSync(path.join(ws.out, "batangas-latest.json"), JSON.stringify({ month: "2026-11", records: recs.filter(r => r.project !== "Gamma Estates") }));
+  out = await CAL.calibrate({ root: ROOT, dir: ws.out, calibrationFile: path.join(ws.dir, "none.json"), today: "2026-11-01" });
+  assert.strictEqual(out.towns.find(x => x.town === "LIPA CITY").status, "not enough records");
 });
 
 test("helpers: property kinds and lot/block keys", () => {

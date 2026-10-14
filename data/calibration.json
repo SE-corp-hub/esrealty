@@ -1,0 +1,4 @@
+{
+ "note": "Reviewed town corrections to residential land (plan stage F). Applied by js/estimator.js. Changed only by merging a calibration pull request opened by the monthly comparables workflow (market-scan/comparables/calibrate.js).",
+ "towns": {}
+}

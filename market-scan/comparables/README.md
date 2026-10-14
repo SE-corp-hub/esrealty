@@ -31,6 +31,16 @@ Runs by itself on the 1st of every month (`.github/workflows/comparables-monthly
 Rejected records (outside Batangas, duplicates, prices far from the BIR rate or
 the town median) are listed with the reason under `rejected` in the snapshot.
 
+## Town corrections (calibration)
+
+`calibrate.js` suggests a land factor for each town with at least 10 vacant
+lots from 3+ developments (`data/comparables/calibration-proposals.json`). When
+it suggests a change of 3% or more, the workflow opens a pull request that edits
+`data/calibration.json`. **Nothing changes on the site until someone merges
+that pull request** - merging is the approval, closing it declines. The
+calculator applies the merged factor to residential land and says so in the
+land build-up.
+
 ## When something breaks
 
 The run opens one issue, "Comparables monthly run needs attention", listing the

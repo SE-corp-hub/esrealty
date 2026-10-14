@@ -23,6 +23,7 @@ on:
 permissions:
   contents: write
   issues: write
+  pull-requests: write
 
 concurrency:
   group: comparables-monthly
@@ -59,6 +60,12 @@ jobs:
       - name: Accuracy report
         run: node market-scan/comparables/accuracy.js --report /tmp/report.json
 
+      # Town land-factor suggestions (plan stage F). Written to
+      # data/comparables/calibration-proposals.json with the snapshot; the
+      # factors themselves only change through the pull request below.
+      - name: Calibration proposals
+        run: node market-scan/comparables/calibrate.js
+
       - name: Test
         run: |
           node tests/comparables_pipeline_node.js
@@ -76,6 +83,41 @@ jobs:
           git commit -m "Comparables snapshot $(date -u +%Y-%m)"
           git pull --rebase
           git push
+
+      # The merge is the approval: data/calibration.json changes on its own
+      # branch, and the site uses the new factors only once someone merges it.
+      - name: Open a calibration pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          node market-scan/comparables/calibrate.js --write-calibration > /tmp/cal.log
+          if git diff --quiet -- data/calibration.json; then echo "No calibration change proposed."; exit 0; fi
+          month=$(date -u +%Y-%m); branch="calibration/$month"
+          node -e '
+            const p = require("./data/comparables/calibration-proposals.json");
+            const rows = p.towns.filter(t => t.status === "proposed");
+            const pct = v => (v >= 0 ? "+" : "") + Math.round(v * 1000) / 10 + "%";
+            const lines = ["Monthly suggestion from bank and Pag-IBIG vacant-lot prices (" + p.snapshotMonth + "). **Merging this changes the land value the public calculator shows for these towns.** Close it to decline.", "",
+              "| Town | Lots | Developments | Factor now | Proposed | Change |", "|---|---|---|---|---|---|",
+              ...rows.map(t => "| " + t.town + " | " + t.records + " | " + t.projects + " | " + t.current + " | " + t.proposed + " | " + pct(t.change) + " |"), "",
+              "How it is worked out: each lot price x 1.10 (bank and Pag-IBIG prices sit below resale), divided by the guide land value; the median per development, then the median across developments; moved only part of the way (developments / (developments + 10)) and capped at 0.75-1.25.", "",
+              ...rows.map(t => "**" + t.town + "** by development: " + t.projectDetail.map(d => d.name + " (" + d.n + " lots, " + d.ratio + ")").join(", ")), "",
+              "Check before merging: is one development very different from the town (a resort, a remote estate)? If so, it may be better to decline. Details: data/comparables/calibration-proposals.json"];
+            require("fs").writeFileSync("/tmp/cal.md", lines.join("\n"));
+          '
+          git checkout -b "$branch"
+          git add data/calibration.json
+          git commit -m "Calibration proposal $month (review before merging)"
+          git push -f origin "$branch"
+          if gh pr list --head "$branch" --state open --json number --jq '.[0].number' | grep -q .; then echo "PR already open; branch updated."; exit 0; fi
+          if ! gh pr create --base main --head "$branch" --title "Town land-factor proposal $month - review before merging" --body-file /tmp/cal.md; then
+            # Repository setting "Allow GitHub Actions to create pull requests" is off:
+            # leave the branch and ask for the pull request through an issue instead.
+            { echo "GitHub Actions is not allowed to open pull requests here, so the proposal is on branch \`$branch\`."; echo; echo "Open it as a pull request: $REPO_URL/compare/main...$branch?expand=1"; echo; cat /tmp/cal.md; } > /tmp/cal-issue.md
+            gh issue create --title "Town land-factor proposal $month - review" --body-file /tmp/cal-issue.md
+          fi
+        shell: bash
 
       - name: Report problems as an issue
         if: always()

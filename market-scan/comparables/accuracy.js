@@ -22,6 +22,7 @@
 
 const fs = require("fs"), path = require("path");
 const ROOT = path.resolve(__dirname, "../..");
+const { projectKey, distinctive } = require("./match.js");
 const args = process.argv.slice(2);
 const arg = (k, d) => { const i = args.indexOf("--" + k); return i >= 0 ? args[i + 1] : d; };
 
@@ -58,6 +59,7 @@ async function accuracy(opts) {
   const snap = JSON.parse(fs.readFileSync(path.join(dir, "batangas-latest.json"), "utf8"));
   const EST = loadEstimator(root);
   const rows = [], skipped = [];
+  const known = [...new Set(snap.records.map(r => distinctive(r.project || "").join(" ")).filter(Boolean))];
   for (const r of snap.records) {
     if (["vacant_lot", "house_lot", "townhouse"].indexOf(r.kind) < 0) continue;
     const type = r.kind === "vacant_lot" ? "vacant_lot" : "house_lot";
@@ -68,7 +70,7 @@ async function accuracy(opts) {
       floorArea: r.floorArea || 0, construction: "mixed_chb", floors: "1", ageBand: "6-10"
     });
     if (!e || e.available === false || !(e.total > 0)) { skipped.push({ id: r.id, reason: (e && e.reason) || "no estimate" }); continue; }
-    rows.push({ r, kind: type, err: e.total / r.price - 1, model: e.total, cluster: type + "|" + r.municipality + "|" + (r.project || r.barangay) });
+    rows.push({ r, kind: type, err: e.total / r.price - 1, model: e.total, cluster: type + "|" + r.municipality + "|" + projectKey(r, known) });
   }
 
   const byKind = {}, byTown = {}, bySource = {}, clusters = {};
