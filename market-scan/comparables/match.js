@@ -30,6 +30,7 @@ function norm(s) {
     .replace(/\b(SANTO)\b/g, "STO").replace(/\b(SANTA)\b/g, "STA")
     .replace(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\b/g, r => String(ROMAN[r]))
     .replace(/\bSILANGAN\b/g, "EAST").replace(/\bKANLURAN\b/g, "WEST").replace(/\bHILAGA\b/g, "NORTH").replace(/\bTIMOG\b/g, "SOUTH")
+    .replace(/\bNORTE\b/g, "NORTH").replace(/\bSUR\b/g, "SOUTH").replace(/\bESTE\b/g, "EAST").replace(/\bOESTE\b/g, "WEST")
     .replace(/K/g, "C") /* Labak/Labac, Kaylaway/Caylaway: one spelling key for both sides */
     .replace(/\s+/g, " ").trim() + " ";
 }

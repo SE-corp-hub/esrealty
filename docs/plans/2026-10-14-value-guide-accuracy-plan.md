@@ -283,7 +283,7 @@ these are not resale prices, so every record keeps its `source`, `priceType` and
    duplicates removed within and across sources (same barangay, lot within 1 sqm,
    price within 2%, no conflicting lot/block numbers - so two different lots at
    one price in a subdivision are both kept); LandValuePH-style filters (0.5-5x
-   BIR for lots, 0.5-15x for built, 0.35-4x the town median).
+   BIR for lots, 0.5-30x for built - a 36 sqm row house runs 16-25x - and 0.35-4x the town median).
 3. **Output**: `data/comparables/batangas-latest.json` is **replaced in full**
    each month - delisted properties disappear. Only a source that failed keeps
    last month's records, once, flagged `carriedOver`. `data/comparables/history.json`
@@ -346,7 +346,7 @@ month of bank prices.
 | B. Monthly workflow + failure issues | built 2026-10-14; done when two monthly runs have committed snapshots |
 | C. Accuracy test on live snapshot | **done 2026-10-14**: `market-scan/comparables/accuracy.js` runs monthly after the build and commits `data/comparables/accuracy-latest.json` (by kind, town, source and project) plus a headline per month in `history.json`; issue when a kind's project-weighted median leaves -15%..+35% or moves 15+ points in a month. The resale fixture test stays as the CI guard: bank prices are a different price type, so they report, not gate |
 | D. Evidence card on the result page | **done 2026-10-14**: "Bank listings near you" in the Market evidence group - town count, barangay count, median per sqm with the ±% cluster, this guide's per-sqm against it, and up to 6 nearest records with source, price type, date, tag and link. Display only (`ESREALTY_EVIDENCE.bankNearby`); a test asserts computeEstimate never reads it |
-| E. SSS + Pag-IBIG (incl. winning bids) | completed-price records tracked separately |
+| E. SSS + Pag-IBIG (incl. winning bids) | **Pag-IBIG done 2026-10-14**: `sources/pagibig.js` reads the JSON behind the Online Public Auction (one call per town; GitHub can reach it). 237 Batangas properties, minimum bid plus sale stage and occupancy/title note; contact people and title numbers dropped. **Winning bids: not available** - Pag-IBIG's winners page lists masked bidder names only, no amounts, Metro Manila only. **SSS: manual only** - about one Batangas property a month in a PDF with a new address each month (`inbox/sss.rows.json`). Completed prices remain the gap |
 | F. Calibration PRs | first reviewed calibration merged for a town with ≥10 lot records |
 
 Before stage A goes live: read BDO's, BPI's and Security Bank's website terms

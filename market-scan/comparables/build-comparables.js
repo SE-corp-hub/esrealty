@@ -38,7 +38,10 @@ const arg = (k, d) => { const i = args.indexOf("--" + k); return i >= 0 ? args[i
    built properties whose price includes the house. */
 const LIMITS = {
   vacant: { lowVsZonal: 0.5, highVsZonal: 5 },
-  built: { lowVsZonal: 0.5, highVsZonal: 15 },
+  /* Built: the price includes the house, so per sqm of LOT it runs far above
+     the land rate on small lots - a 36 sqm Pag-IBIG row house is ~16-25x BIR.
+     The town-median screen below still catches real outliers. */
+  built: { lowVsZonal: 0.5, highVsZonal: 30 },
   lowVsPool: 0.35, highVsPool: 4, minPool: 3,
   oldWarn: 40,         /* days: still used, but the issue asks for a fresher file */
   stale: 62,           /* days: refused - this is no longer current data */

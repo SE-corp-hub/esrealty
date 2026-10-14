@@ -1,4 +1,4 @@
-# Monthly comparables (bank-acquired properties, Batangas)
+# Monthly comparables (bank and Pag-IBIG acquired properties, Batangas)
 
 Runs by itself on the 1st of every month (`.github/workflows/comparables-monthly.yml`).
 
@@ -7,6 +7,7 @@ Runs by itself on the 1st of every month (`.github/workflows/comparables-monthly
 | Download each source once, identifying user agent, 1.5 s apart | `fetch-raw.js`, `sources.json` |
 | BDO province PDF -> rows (reads the PDF's positioned text, no poppler) | `sources/bdo.js` |
 | BPI Buena Mano page -> Batangas rows (Sales Officer column never read) | `sources/bpi.js` |
+| Pag-IBIG Online Public Auction JSON -> Batangas rows (minimum bid, sale stage; contact people dropped) | `sources/pagibig.js` |
 | Address -> BIR municipality / barangay / street and its zonal rate | `match.js` |
 | Normalise, de-duplicate, filter outliers, write the snapshot | `build-comparables.js` |
 
