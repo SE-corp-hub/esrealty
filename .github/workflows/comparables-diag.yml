@@ -1,0 +1,20 @@
+name: Comparables - connection diagnostics
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: write
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe BDO
+        run: |
+          mkdir -p /tmp/d && cd /tmp/d
+          UA="SEA-ESTATES-comparables/1.0 (+https://github.com/tradersgag6/esrealty; monthly, one request per page)"
+          URL="https://www.bdo.com.ph/content/dam/bdounibank/en-ph/mcg-digital-marketing/asset-for-sale/asset-listings/Luzon_Batangas.pdf"
+          (curl -sS -v -A "$UA" -o bdo-v4.pdf -4 --max-time 60 "$URL" 2>&1 | tail -40) > diag-v4.txt || true
+          (curl -sS -v -A "$UA" -o bdo-v6.pdf -6 --max-time 30 "$URL" 2>&1 | tail -20) > diag-v6.txt || true
+          ls -la >> diag-v4.txt
+          git init -q -b comparables-diag && git config user.name bot && git config user.email bot@x
+          git add -A && git commit -qm diag
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" comparables-diag
