@@ -1,0 +1,3 @@
+* Could not resolve host: www.bdo.com.ph
+* Closing connection
+curl: (6) Could not resolve host: www.bdo.com.ph

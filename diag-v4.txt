@@ -1,0 +1,45 @@
+{ [3253 bytes data]
+* TLSv1.3 (IN), TLS handshake, CERT verify (15):
+{ [80 bytes data]
+* TLSv1.3 (IN), TLS handshake, Finished (20):
+{ [52 bytes data]
+* TLSv1.3 (OUT), TLS change cipher, Change cipher spec (1):
+} [1 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Finished (20):
+} [52 bytes data]
+* SSL connection using TLSv1.3 / TLS_AES_256_GCM_SHA384 / X25519 / id-ecPublicKey
+* ALPN: server accepted http/1.1
+* Server certificate:
+*  subject: jurisdictionC=PH; businessCategory=Private Organization; serialNumber=0000034001; C=PH; L=Makati; O=BDO Unibank, Inc.; CN=www.bdo.com.ph
+*  start date: May 18 00:00:00 2026 GMT
+*  expire date: Dec  2 23:59:59 2026 GMT
+*  subjectAltName: host "www.bdo.com.ph" matched cert's "www.bdo.com.ph"
+*  issuer: C=US; O=DigiCert Inc; CN=DigiCert Global G3 TLS ECC SHA384 2020 CA1
+*  SSL certificate verify ok.
+*   Certificate level 0: Public key type EC/prime256v1 (256/128 Bits/secBits), signed using ecdsa-with-SHA384
+*   Certificate level 1: Public key type EC/secp384r1 (384/192 Bits/secBits), signed using ecdsa-with-SHA384
+*   Certificate level 2: Public key type EC/secp384r1 (384/192 Bits/secBits), signed using ecdsa-with-SHA384
+* using HTTP/1.x
+} [5 bytes data]
+> GET /content/dam/bdounibank/en-ph/mcg-digital-marketing/asset-for-sale/asset-listings/Luzon_Batangas.pdf HTTP/1.1
+> Host: www.bdo.com.ph
+> User-Agent: SEA-ESTATES-comparables/1.0 (+https://github.com/tradersgag6/esrealty; monthly, one request per page)
+> Accept: */*
+> 
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [281 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [281 bytes data]
+* old SSL session ID is stale, removing
+* Operation timed out after 60002 milliseconds with 0 bytes received
+* Closing connection
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS alert, close notify (256):
+} [2 bytes data]
+curl: (28) Operation timed out after 60002 milliseconds with 0 bytes received
+total 16
+drwxr-xr-x  2 runner runner 4096 Oct 14 04:06 .
+drwxrwxrwt 14 root   root   4096 Oct 14 04:05 ..
+-rw-r--r--  1 runner runner 1934 Oct 14 04:06 diag-v4.txt
+-rw-r--r--  1 runner runner  111 Oct 14 04:06 diag-v6.txt
