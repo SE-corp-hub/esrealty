@@ -117,6 +117,8 @@ jobs:
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test estimator_barangay_select_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test estimator_barangay_select_e2e
       - name: e2e estimator_delivery_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test estimator_delivery_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test estimator_delivery_e2e
+      - name: e2e estimator_suggestions_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test estimator_suggestions_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test estimator_suggestions_e2e
       - name: e2e value_guide_purpose_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test value_guide_purpose_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test value_guide_purpose_e2e
       - name: e2e value_guide_purpose_e2e (mobile)

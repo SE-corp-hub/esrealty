@@ -34,7 +34,7 @@ function ok(cond, label, detail) {
 /* ---- dataset + manifest reconciliation ---- */
 eq(index.municipalities.length, 34, "dataset municipality count 34");
 eq(index.dataVersion, "bir-2022-rdo58-59", "dataset dataVersion");
-eq(config.calculationVersion, "2026.10.6", "config calculationVersion 2026.10.6");
+eq(config.calculationVersion, "2026.10.7", "config calculationVersion 2026.10.7");
 eq(manifest.status, "valid", "manifest status valid");
 eq(manifest.counts.municipalities, 34, "manifest municipality count");
 eq(manifest.counts.streets, 3710, "manifest street count 3710");
@@ -68,9 +68,9 @@ eq(bands.agricultural.mid, 1.5, "agricultural band mid 1.5");
 eq(bands.industrial.mid, 2.0, "industrial band mid 2.0");
 const proxies = config.proxyFactors;
 eq(proxies.residential.factor, 1.0, "proxy residential 1.0");
-eq(proxies.commercial.factor, 1.7, "proxy commercial 1.7");
-eq(proxies.agricultural.factor, 0.5, "proxy agricultural 0.5");
-eq(proxies.industrial.factor, 1.35, "proxy industrial 1.35");
+eq(proxies.commercial.factor, 1, "proxy commercial 1 (CR rate already carries the premium; 2026-10-14)");
+eq(proxies.agricultural.factor, 1, "proxy agricultural 1");
+eq(proxies.industrial.factor, 1, "proxy industrial 1");
 eq(config.cornerLotPct, 0.025, "corner lot +2.5%");
 const floorKeys = (config.floors || []).map(f => f.key);
 eq(JSON.stringify(floorKeys), JSON.stringify(["1", "2", "3plus"]), "floors keys 1/2/3plus");
@@ -94,23 +94,24 @@ const d1 = core.computeEstimate(config, index, balayan, {
 });
 eq(d1.available, true, "d1 available");
 eq(d1.reference.value, 3500, "d1 BIR base 3500");
-eq(d1.factors.proxyFactor, 1.7, "d1 proxy factor drained");
-eq(d1.factors.bandMid, 2.5, "d1 band drained");
+eq(d1.factors.proxyFactor, 1, "d1 proxy factor drained");
+const d1Band = 2.5 - ((3500 - 2000) / 23000) * (2.5 - 1.4); /* commercial now ramps too */
+eq(d1.factors.bandMid, d1Band, "d1 band drained (ramped)");
 eq(d1.factors.regionalAdj, 1.0, "d1 regional adj drained");
-eq(d1.landPerSqm, 14875, "d1 landPerSqm equals BIR × use × market-band factors");
-eq(d1.landValue, 200 * 14875, "d1 landValue 2,975,000");
-eq(d1.total, 2975000, "d1 factor-based total remains available without comparables");
-eq(d1.perSqm, Math.round(2975000 / 200), "d1 perSqm");
-eq(d1.low, Math.round(2975000 * 0.85), "d1 low 85%");
-eq(d1.high, Math.round(2975000 * 1.30), "d1 high 130%");
+eq(d1.landPerSqm, Math.round(3500 * d1Band), "d1 landPerSqm equals BIR × use × market-band factors");
+eq(d1.landValue, 200 * Math.round(3500 * d1Band), "d1 landValue = rate x 200 (no size adjustment at 200 sqm)");
+eq(d1.total, d1.landValue, "d1 factor-based total remains available without comparables");
+eq(d1.perSqm, Math.round(d1.total / 200), "d1 perSqm");
+eq(d1.low, Math.round(d1.total * 0.85), "d1 low 85%");
+eq(d1.high, Math.round(d1.total * 1.30), "d1 high 130%");
 eq(d1.use, "commercial", "d1 use commercial");
 ok(core.integrityCheck(d1).ok, "d1 reconciles");
 
 const corner = core.computeEstimate(config, index, balayan, {
   municipality: "BALAYAN", barangay: "BACLARAN", streetKey: "all street", classification: "CR", area: 200, corner: true
 });
-eq(corner.landPerSqm, 15247, "corner multiplier applies to uncapped factor calculation");
-eq(corner.total, 200 * 15247, "corner total 3,049,400");
+eq(corner.landPerSqm, Math.round(3500 * 1.025 * d1Band), "corner multiplier applies to uncapped factor calculation");
+eq(corner.total, 200 * Math.round(3500 * 1.025 * d1Band), "corner total = rate x 200");
 
 /* ---- house & lot build-up re-derived ---- */
 const hl = core.computeEstimate(config, index, balayan, {
@@ -132,7 +133,7 @@ const hd = core.computeEstimate(config, index, balayan, {
   municipality: "BALAYAN", barangay: "BACLARAN", streetKey: "all street", classification: "RR", area: 200,
   type: "house_lot"
 });
-eq(hd.floorArea, 120, "hd floor defaults to 60% of lot");
+eq(hd.floorArea, 150, "hd blank floor = typical size for a 200 sqm lot (0.75x)");
 
 /* ---- tax math re-derived ---- */
 const t = core.taxMath(config, 1000000);

@@ -30,7 +30,12 @@ function stateOpts() {
     floorArea: Number(st.floorArea) > 0 ? Number(st.floorArea) : 0,
     floors: st.floors, ageBand: st.ageBand,
     construction: st.construction, features: st.features,
-    occupancy: st.occupancy, titleStatus: st.titleStatus, inheritanceStatus: st.inheritanceStatus
+    occupancy: st.occupancy, titleStatus: st.titleStatus, inheritanceStatus: st.inheritanceStatus,
+    /* Since 2026-10-14 the site answers (including the location-based
+       suggestions) move the land value, so the expected figure must use them. */
+    community: st.community, floodRisk: st.floodRisk, roadAccess: st.roadAccess, frontage: st.frontage,
+    lotShape: st.lotShape, rightOfWay: st.rightOfWay, elevation: st.elevation, utilities: st.utilities,
+    condition: st.condition
   };
 }
 async function estimateExpected(opts) {

@@ -294,7 +294,13 @@
        building (rate x floor area x (1 - depreciation) + features), unchanged.
        The guide's own question net adjusts the land only. */
     var marketInd = Number(base.appliedMultiple) || (base.birZonalValue ? (Number(base.landValue) || 0) / base.birZonalValue : 1);
-    r.landValue = Math.round((Number(base.landValue) || 0) * (1 + landNet));
+    /* The guide scores corner exposure in its own net (cornerExposure), so the
+       estimator's corner premium is taken back out first - otherwise a corner
+       lot would be charged twice. Site/ownership answers never reach the
+       estimator's own tables from here: the guide's values ("-700", "titleDoc")
+       use a different vocabulary, asserted in tests. */
+    var cornerPct = base.corner && base.corner.applied ? Number(base.corner.pct) || 0 : 0;
+    r.landValue = Math.round((Number(base.landValue) || 0) / (1 + cornerPct) * (1 + landNet));
     r.landPerSqm = r.area ? Math.round(r.landValue / r.area) : 0;
 
     var rcn = Number(base.buildCostPerSqm) || 0;

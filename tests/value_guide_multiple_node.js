@@ -52,17 +52,23 @@ async function checkAsync(name, fn) { await fn(); count++; console.log("[PASS] "
        the zonal rate reads differently from the full-precision stack. */
     assert.notStrictEqual(r.factorStack, r.landPerSqm / r.birZonalRatePerSqm);
   });
-  check("commercial multiple is 4.25", () => {
+  /* 2026-10-14: the proxy factors were a double count (the CR/A/I rate already
+     carries the use premium or discount), so every proxy is 1.0, and commercial
+     takes the same rate ramp as residential (Binay St CR is 19,500/sqm). Before:
+     commercial 4.25x, agricultural 0.75x (below BIR), industrial 2.7x. */
+  check("commercial multiple is the ramped band at the CR rate", () => {
     const r = EST.core.computeEstimate(config, index, md, { ...options, classification: "CR" });
-    assert.strictEqual(r.appliedMultiple, 4.25);
+    const want = 2.5 - ((r.birZonalRatePerSqm - 2000) / (25000 - 2000)) * (2.5 - 1.4);
+    assert.ok(Math.abs(r.appliedMultiple - want) < 1e-9, r.appliedMultiple + " vs " + want);
+    assert.ok(r.appliedMultiple < 2.5, "commercial is no longer stacked on top of its own premium");
   });
-  check("agricultural multiple is 0.75", () => {
+  check("agricultural multiple is 1.5 (never below BIR)", () => {
     const r = EST.core.computeEstimate(config, index, md, { ...options, classification: "A50" });
-    assert.strictEqual(r.appliedMultiple, 0.75);
+    assert.strictEqual(r.appliedMultiple, 1.5);
   });
-  check("industrial multiple is 2.7", () => {
+  check("industrial multiple is 2.0", () => {
     const r = EST.core.computeEstimate(config, index, md, { ...options, classification: "I" });
-    assert.strictEqual(r.appliedMultiple, 2.7);
+    assert.strictEqual(r.appliedMultiple, 2);
   });
 
   /* The identity is pinned on the corner vector FIRST. On a non-corner result
@@ -157,12 +163,12 @@ async function checkAsync(name, fn) { await fn(); count++; console.log("[PASS] "
   const vectors = [
     ["residential", options, "2.04565"],
     ["residential + corner", { ...options, corner: true }, "2.09679"],
-    ["commercial", { ...options, classification: "CR" }, "4.25"],
-    ["commercial + corner", { ...options, classification: "CR", corner: true }, "4.35625"],
-    ["agricultural", { ...options, classification: "A50" }, "0.75"],
-    ["agricultural + corner", { ...options, classification: "A50", corner: true }, "0.76875"],
-    ["industrial", { ...options, classification: "I" }, "2.7"],
-    ["industrial + corner", { ...options, classification: "I", corner: true }, "2.7675"]
+    ["commercial", { ...options, classification: "CR" }, "1.66304"],
+    ["commercial + corner", { ...options, classification: "CR", corner: true }, "1.70462"],
+    ["agricultural", { ...options, classification: "A50" }, "1.5"],
+    ["agricultural + corner", { ...options, classification: "A50", corner: true }, "1.5375"],
+    ["industrial", { ...options, classification: "I" }, "2"],
+    ["industrial + corner", { ...options, classification: "I", corner: true }, "2.05"]
   ];
   vectors.forEach(([name, opts, expected]) => {
     check("disclosure multiple for " + name + " is " + expected, () => {
@@ -1152,7 +1158,7 @@ async function checkAsync(name, fn) { await fn(); count++; console.log("[PASS] "
      quietly stopped resolving cannot turn the rest of this block vacuous. */
   check("the PDF fixtures are the vectors the checks below assume", () => {
     [["vacant lot", lotPdf, "factor", "2.04565", "vacant_lot"],
-     ["commercial corner", cornerCommercialPdf, "factor", "4.35625", "vacant_lot"],
+     ["commercial corner", cornerCommercialPdf, "factor", "1.70462", "vacant_lot"],
      ["house lot", housePdf, "factor", "2.04565", "house_lot"],
      ["time-indexed", indexedPdf, "time-indexed", null, "vacant_lot"]].forEach(v => {
       assert.ok(v[1].result.available, v[0] + " produced no estimate, so its PDF is empty");

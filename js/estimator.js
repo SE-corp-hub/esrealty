@@ -24,6 +24,67 @@
   var CALCULATING_MIN_MS = 1500, STAGE_STEP_MS = 500;
   /* Years added to the age-band midpoint for the "Building condition" answer. */
   var CONDITION_AGE_SHIFT = { "new": -5, good: 0, unknown: 0, repair: 10 };
+
+  /* Site answers -> % change on LAND value (2026-10-14). Aligned with the
+     ranges LandValuePH shows on /check, moderated where they had no basis
+     (tenants, subdivision). "Not sure" / unanswered = 0. The net is clamped so a
+     stack of bad answers cannot erase the land. See
+     docs/plans/2026-10-14-value-guide-accuracy-plan.md. */
+  var SITE_ADJ = {
+    community: { "Open area": 0, "Subdivision": 2, "Gated community": 4 },
+    floodRisk: { "No flooding": 0, "Occasional flooding": -5, "Flood-prone": -15 },
+    roadAccess: { "Footpath": -10, "Barangay road": 0, "Municipal road": 2, "Highway": 4 },
+    frontage: { "Narrow (under 8m)": -3, "About average (8–20m)": 0, "Wide (20m+)": 3 },
+    lotShape: { "Regular": 0, "Irregular": -5 },
+    rightOfWay: { "Direct road access": 0, "Shared right of way": -12, "Landlocked": -35 },
+    elevation: { "At road level": 0, "Below road level": -7 },
+    utilities: { "Full power & water": 0, "Partial": -5, "None": -10 }
+  };
+  var SITE_NET_MIN = -40, SITE_NET_MAX = 10;
+  /* Ownership answers -> % deducted from the TOTAL (they affect who can buy and
+     how fast, not the land alone). LandValuePH's published figures, tenants
+     moderated to 5. */
+  var OWNERSHIP_ADJ = {
+    occupancy: { caretaker: 5, tenants: 5, informal_settlers: 25 },
+    titleStatus: { titled_previous: 8, tax_declaration: 15 },
+    inheritanceStatus: { pending: 10 }
+  };
+  var OWNERSHIP_MAX = 30;
+  /* Price per sqm falls as lots get bigger. Above LOT_SIZE_REF sqm the land rate
+     is scaled by (ref / area)^LOT_SIZE_EXP, floored at LOT_SIZE_MIN: 500 sqm
+     x0.88, 1,000 sqm x0.74, 2,000 sqm x0.62. Tested against 2026-10 listings
+     (a 1,120 sqm open lot priced +84% without it). */
+  var LOT_SIZE_REF = 300, LOT_SIZE_EXP = 0.25, LOT_SIZE_MIN = 0.6;
+  function lotSizeFactor(area) {
+    if (!(area > LOT_SIZE_REF)) return 1;
+    return Math.max(LOT_SIZE_MIN, Math.pow(LOT_SIZE_REF / area, LOT_SIZE_EXP));
+  }
+  /* A BIR street row that is itself a subdivision already prices the
+     subdivision; adding the community premium on top would count it twice. */
+  function streetIsSubdivision(name) {
+    return /\b(SUBD|SUBDIVISION|VILLAGE|VILLAS?|HOMES|HEIGHTS|RESIDENCES?|ESTATES?|VILLE|PHASE|PARK|HILLS)\b/i.test(String(name || ""));
+  }
+  function siteAdjustments(opts, streetName) {
+    var rows = [], net = 0;
+    Object.keys(SITE_ADJ).forEach(function (key) {
+      var v = opts[key];
+      if (!v || !Object.prototype.hasOwnProperty.call(SITE_ADJ[key], v)) return;
+      var pct = SITE_ADJ[key][v];
+      if (key === "community" && pct > 0 && streetIsSubdivision(streetName)) pct = 0;
+      rows.push({ key: key, answer: v, pct: pct });
+      net += pct;
+    });
+    var clamped = Math.max(SITE_NET_MIN, Math.min(SITE_NET_MAX, net));
+    return { rows: rows, rawPct: net, pct: clamped, clamped: clamped !== net };
+  }
+  function ownershipAdjustments(opts) {
+    var rows = [], net = 0;
+    Object.keys(OWNERSHIP_ADJ).forEach(function (key) {
+      var pct = OWNERSHIP_ADJ[key][opts[key]] || 0;
+      if (pct) { rows.push({ key: key, answer: opts[key], pct: -pct }); net += pct; }
+    });
+    return { rows: rows, rawPct: net, pct: Math.min(OWNERSHIP_MAX, net), clamped: net > OWNERSHIP_MAX };
+  }
   var finance = typeof module === "object" && module.exports ? require("./value_guide_finance.js") : window.ESREALTY_FINANCE;
   var evidence = typeof module === "object" && module.exports ? require("./value_guide_evidence.js") : window.ESREALTY_EVIDENCE;
   var referenceTools = typeof module === "object" && module.exports ? require("./value_guide_reference.js") : window.ESREALTY_REFERENCE;
@@ -65,9 +126,13 @@
      keep their flat bands: the evidence is all residential. */
   function rampBandMid(config, use, base) {
     var mid = bandMid(config, use);
-    if (use !== "residential") return mid;
     var ramp = config && config.marketBand && config.marketBand.rateRamp;
     if (!ramp) return mid;
+    /* appliesTo: residential and (since 2026-10-14) commercial. A high CR rate is
+       a prime-street rate exactly like a high RR rate, so the same descent
+       applies. Older configs carried a single string. */
+    var applies = [].concat(ramp.appliesTo || "residential");
+    if (applies.indexOf(use) === -1) return mid;
     var lo = Number(ramp.lowRate || 2000), hi = Number(ramp.highRate || 25000), floor = Number(ramp.floor || 1.4);
     if (!(lo > 0) || !(hi > lo) || !(floor < mid)) return mid;
     if (!(base > lo)) return mid;
@@ -230,7 +295,10 @@
        the applied one cannot drift apart. */
     var factorStack = (1 + cornerPct) * proxy * band * adj;
     var landPerSqm = Math.round(base * factorStack);
-    var landValue = Math.round(landPerSqm * area);
+    var sizeFactor = lotSizeFactor(area);
+    var site = siteAdjustments(opts, hit.streetName || opts.streetKey);
+    var landBeforeAdjustments = Math.round(landPerSqm * area);
+    var landValue = Math.round(landBeforeAdjustments * sizeFactor * (1 + site.pct / 100));
     var factorLandValue = landValue;
     var timeIndex = null;
     if (landMethod === "time-indexed") {
@@ -250,7 +318,9 @@
       if (opts.ageBand && !(cfg.ageBands || []).some(function (b) { return b.key === opts.ageBand; })) return unavailable("invalid-age");
       if (opts.features && (!Array.isArray(opts.features) || opts.features.some(function (key) { return !Object.prototype.hasOwnProperty.call(cfg.features || {}, key); }))) return unavailable("invalid-features");
       var fDef = Number(typeDef.floorDefaultRatio) > 0 ? typeDef.floorDefaultRatio : 0.6;
-      floorArea = Math.round((Number(opts.floorArea) > 0 ? Number(opts.floorArea) : area * fDef) * 100) / 100;
+      /* Blank floor area: a typical size for the lot (suggestedFloorArea), not a
+         flat 60%; config floorDefaultRatio still wins when set. */
+      floorArea = Math.round((Number(opts.floorArea) > 0 ? Number(opts.floorArea) : (Number(typeDef.floorDefaultRatio) > 0 ? area * fDef : suggestedFloorArea(area))) * 100) / 100;
       var floors = (cfg.floors || []).filter(function (f) { return f.key === String(opts.floors || "1"); })[0];
       floorsMult = (floors && floors.multiplier) || 1;
       var ab = (cfg.ageBands || []).filter(function (b) { return b.key === (opts.ageBand || "0-5"); })[0];
@@ -274,7 +344,8 @@
       improvement = Math.round(buildCost * floorArea * floorsMult * (1 - depPct)) + featuresTotal;
     }
 
-    var ownershipAdjustmentPct = 0;
+    var ownershipAdj = ownershipAdjustments(opts);
+    var ownershipAdjustmentPct = ownershipAdj.pct;
     var legacyOwnershipScenarioPct = ownershipRiskPct(opts);
     var knownRisk = legacyOwnershipScenarioPct > 0 || opts.floodRisk === "High" || opts.roadAccess === "No direct road access";
     if (knownRisk && comps.askingIndication) {
@@ -359,11 +430,15 @@
         comparablePricesUsed: false
       },
       ownershipAdjustmentPct: ownershipAdjustmentPct,
-      legacyOwnershipScenario: { pct: legacyOwnershipScenarioPct, value: Math.round(unadjustedTotal * (1 - legacyOwnershipScenarioPct / 100)), applied: false, basis: "Historical uncalibrated deduction; not applied to the neutral planning estimate" },
+      ownershipAdjustment: ownershipAdj,
+      siteAdjustment: site,
+      lotSizeFactor: sizeFactor,
+      landBeforeAdjustments: landBeforeAdjustments,
+      legacyOwnershipScenario: { pct: legacyOwnershipScenarioPct, value: Math.round(unadjustedTotal * (1 - legacyOwnershipScenarioPct / 100)), applied: false, basis: "Superseded 2026-10-14: ownership answers are now applied (ownershipAdjustment)" },
       ownership: { occupancy: opts.occupancy || "not_sure", titleStatus: opts.titleStatus || "not_sure", inheritanceStatus: opts.inheritanceStatus || "not_sure" },
       siteReview: { community: opts.community || "not stated", floodRisk: opts.floodRisk || "not stated", roadAccess: opts.roadAccess || "not stated", frontage: opts.frontage || "not stated", lotShape: opts.lotShape || "not stated", rightOfWay: opts.rightOfWay || "not stated", elevation: opts.elevation || "not stated", utilities: opts.utilities || "not stated" },
       reviewFlags: [opts.occupancy || "not_sure", opts.titleStatus || "not_sure", opts.inheritanceStatus || "not_sure"].filter(function (v) { return ["empty", "titled_self", "not_inherited", "settled"].indexOf(v) === -1; }),
-      conditions: "Conditional planning figure; title, possession, condition and legal access remain unverified. No unsupported ownership discount applied.",
+      conditions: "Conditional planning figure based on your answers; title, possession, condition and legal access remain unverified until documents are reviewed.",
       saleContext: opts.saleContext || "private-resale",
       condition: opts.condition || "unknown",
       costOptions: { saleContext: opts.saleContext || "private-resale", developerFees: opts.developerFees, brokerPct: opts.brokerPct, notarial: opts.notarial, fairMarketValue: opts.fairMarketValue, costAllocation: opts.costAllocation },
@@ -373,7 +448,10 @@
       birZonalValue: birZonalValue,
       marketGuideEstimate: total,
       marketGuideAvailable: comps.count > 0,
-      recommendedAskingPrice: high,
+      /* A realistic listing price: resale asking prices in the 2026-10 Batangas
+         listings sit roughly 5-10% above where deals close. The 130% figure is
+         the top of the uncertainty range, not a price to list at. */
+      recommendedAskingPrice: Math.round(total * 1.07),
       marketGuideRatePerSqm: perSqm,
       landPerSqm: landPerSqm,
       landValue: landValue,
@@ -693,7 +771,12 @@
        change, and a re-render rebuilds the markup from this map. Without it a
        reader who opened the reference panel and then changed barangay lost the
        panel mid-read and had to hunt for it again. */
-    openPanels: {}
+    openPanels: {},
+    /* Answers pre-selected from the location (suggestAssumptions) vs answers the
+       reader picked. A suggestion is refreshed when the location changes; a
+       reader's own answer never is. */
+    assumed: {},
+    userSet: {}
   };
 
   /* ---------------------------------------------------------- */
@@ -1020,28 +1103,115 @@ out += "</div>";
     return out + "</div>";
   }
 
+  /* Location-based pre-selection (2026-10-14). Typical answers for the chosen
+     street/barangay, shown as "Suggested" and editable. Only fields the reader
+     has not answered are filled, so a suggestion never overwrites a choice. */
+  var HIGHWAY_RE = /\b(HI-?WAY|HIGHWAY|NATIONAL|DIVERSION|PROVINCIAL)\b/i;
+  function suggestedFloorArea(area) {
+    var a = Number(area) || 0;
+    /* Floor/lot ratio of the 2026-10 Batangas house listings: small town lots are
+       usually two storeys (~0.9x the lot), large lots are mostly yard. */
+    var ratio = a <= 150 ? 0.9 : (a <= 300 ? 0.75 : 0.5);
+    return Math.round(a * ratio);
+  }
+  function locationSuggestions() {
+    var street = String(est.streetLabel || est.streetKey || "");
+    var brgy = String(est.barangay || "");
+    var subd = streetIsSubdivision(street);
+    var agri = String(est.classification || "").toUpperCase().indexOf("A") === 0;
+    var road;
+    if (HIGHWAY_RE.test(street)) road = "Highway";
+    else if (subd) road = "Barangay road";
+    else if (street && !est.allOther && (/POBLACION/i.test(brgy) || /\b(ST|STREET|AVE|AVENUE|ROAD|RD|BLVD)\b/i.test(street))) road = "Municipal road";
+    else road = "Barangay road";
+    var out = {
+      community: subd ? "Subdivision" : "Open area",
+      floodRisk: "No flooding",
+      roadAccess: road,
+      frontage: "About average (8–20m)",
+      lotShape: "Regular",
+      rightOfWay: "Direct road access",
+      elevation: "At road level",
+      utilities: agri ? "Partial" : "Full power & water"
+    };
+    if (est.type === "house_lot") {
+      out.ageBand = "6-10";
+      if (est.area) out.floorArea = String(suggestedFloorArea(est.area));
+    }
+    return out;
+  }
+  function suggestAssumptions() {
+    var sug = locationSuggestions();
+    Object.keys(sug).forEach(function (key) {
+      if (est.userSet[key]) return;
+      est[key] = sug[key];
+      est.assumed[key] = true;
+    });
+  }
+  function markUserSet(key) {
+    est.userSet[key] = true;
+    delete est.assumed[key];
+  }
+  function siteImpactLabel(key, value) {
+    var pct = SITE_ADJ[key] && SITE_ADJ[key][value];
+    if (!pct) return "";
+    return (pct > 0 ? "+" : "−") + Math.abs(pct) + "% land";
+  }
+
+  var SITE_LABELS = { community: "Community", floodRisk: "Flood risk", roadAccess: "Road access", frontage: "Frontage", lotShape: "Lot shape", rightOfWay: "Right of way", elevation: "Elevation", utilities: "Utilities" };
+  var OWNERSHIP_LABELS = { occupancy: "Occupancy", titleStatus: "Title", inheritanceStatus: "Inheritance" };
+  function adjustmentsHtml(r) {
+    var pct = function (n) { return (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n) + "%"; };
+    var sa = r.siteAdjustment || { rows: [], pct: 0 }, oa = r.ownershipAdjustment || { rows: [], pct: 0 };
+    var siteRows = Object.keys(SITE_LABELS).map(function (k) {
+      var row = (sa.rows || []).filter(function (x) { return x.key === k; })[0];
+      var v = r.siteReview && r.siteReview[k];
+      return "<li>" + SITE_LABELS[k] + ": <b>" + esc(v || "not stated") + "</b>" +
+        (est.assumed && est.assumed[k] ? " <em>(suggested)</em>" : "") +
+        " · " + (row ? pct(row.pct) + " land" : "no change") + "</li>";
+    }).join("");
+    var ownRows = (oa.rows || []).map(function (x) {
+      return "<li>" + OWNERSHIP_LABELS[x.key] + ": <b>" + esc(ownershipLabel(x.key, x.answer)) + "</b> · " + pct(x.pct) + " total</li>";
+    }).join("");
+    var size = Number(r.lotSizeFactor) || 1;
+    return "<ul class=\"sf-est-rdl\">" + siteRows + "</ul>" +
+      "<p class=\"sf-est-rdp\">Site answers net <b>" + pct(sa.pct || 0) + "</b> on land" +
+      (sa.clamped ? " (limited from " + pct(sa.rawPct) + ")" : "") + "." +
+      (size < 1 ? " Large-lot adjustment: land rate × <b>" + size.toFixed(3) + "</b> for " + fmt(r.area) + " sqm (price per sqm falls on bigger lots)." : "") + "</p>" +
+      (ownRows ? "<ul class=\"sf-est-rdl\">" + ownRows + "</ul><p class=\"sf-est-rdp\">Ownership answers net <b>−" + (oa.pct || 0) + "%</b> on the total" + (oa.clamped ? " (capped at 30%)" : "") + ".</p>"
+        : "<p class=\"sf-est-rdp\">No ownership deductions: title, occupancy and inheritance answers were clean or skipped.</p>") +
+      "<p class=\"sf-est-rdp\">Suggested answers are typical for the location; correct any that don't match your property.</p>";
+  }
+
   function reviewFactorBlock() {
     /* The reference's remaining questions, as collapsed accordions whose
        headers show the picked values, with a "Not sure" skip on each.
-       Recorded for the specialist; none change the estimate. */
+       Since 2026-10-14 each answer moves the land value (SITE_ADJ). */
     var skip = function (key) {
       return { label: "Not sure", value: "", active: !est[key], skip: true };
     };
     var summary = function (keys) {
       var picked = keys.map(function (k) { return est[k]; }).filter(Boolean);
-      return picked.length ? picked.join(" · ") : "Not set";
+      var anyAssumed = keys.some(function (k) { return est[k] && est.assumed[k]; });
+      return picked.length ? picked.join(" · ") + (anyAssumed ? " (suggested)" : "") : "Not set";
     };
     var group = function (title, keys, fields) {
       return '<details class="sf-est-review-group"><summary><h4>' + esc(title) + '</h4><span class="sf-est-review-picked">' + esc(summary(keys)) + "</span></summary>" +
         '<div class="sf-est-fields">' + fields.join("") + "</div></details>";
     };
     var tile = function (label, opts, key) {
-      return '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">' + esc(label) + '</span>' + chipRow(
+      return '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">' + esc(label) +
+        (est[key] && est.assumed[key] ? ' <em class="sf-est-suggested" data-est-suggested="' + esc(key) + '">Suggested</em>' : "") + '</span>' + chipRow(
         opts.map(function (o) {
-          return { label: o.label, value: o.skip ? "" : (o.value || o.label), active: o.skip ? !est[key] : est[key] === (o.value || o.label), skip: o.skip };
+          var v = o.value || o.label, impact = o.skip ? "" : siteImpactLabel(key, v);
+          return { label: o.label + (impact ? " (" + impact + ")" : ""), value: o.skip ? "" : v, active: o.skip ? !est[key] : est[key] === v, skip: o.skip };
         }), key) + "</label>";
     };
-    return group("Surroundings", ["community", "floodRisk", "roadAccess"],
+    var anySuggested = Object.keys(SITE_ADJ).some(function (k) { return est[k] && est.assumed[k]; });
+    return (anySuggested ? '<p class="sf-est-suggest-note" data-est-suggest-note>We pre-selected typical answers for ' +
+        esc([est.streetLabel && !est.allOther ? est.streetLabel : "", est.barangay, est.municipality].filter(Boolean).join(", ")) +
+        '. Change anything that doesn\'t match your property — each answer shows how it moves the land value.</p>' : "") +
+      group("Surroundings", ["community", "floodRisk", "roadAccess"],
       [
         tile("Community", COMMUNITIES.map(function (c) { return { label: c }; }).concat([skip("community")]), "community"),
         tile("Flood risk", FLOOD_RISKS.map(function (c) { return { label: c }; }).concat([skip("floodRisk")]), "floodRisk"),
@@ -1070,21 +1240,21 @@ out += "</div>";
     return '<div class="sf-est-ownership-intro"><span class="sf-est-icon sf-est-icon-large" aria-hidden="true">▤</span><div><h4>Ownership &amp; title</h4><b>Important for a confident sale</b><p>Title status, occupancy, and inheritance can affect marketability and how quickly you can sell. Buyers will discover these during due diligence.</p></div></div>' +
       ownershipQuestion("occupancy", "Is anyone living on the property?", "This affects how quickly and easily you can sell.", [
         { value: "empty", label: "No, it's empty", note: "Ready for viewing", impact: "" },
-        { value: "caretaker", label: "A caretaker or family member", note: "There with permission; confirm possession", impact: "" },
-        { value: "tenants", label: "Tenants paying rent", note: "Review lease and income; no automatic discount", impact: "" },
-        { value: "informal_settlers", label: "Informal settlers", note: "Possession unresolved; review needed", impact: "" },
+        { value: "caretaker", label: "A caretaker or family member", note: "There with permission; confirm possession", impact: "−5%" },
+        { value: "tenants", label: "Tenants paying rent", note: "Buyer takes on the lease; review income", impact: "−5%" },
+        { value: "informal_settlers", label: "Informal settlers", note: "Possession unresolved; review needed", impact: "−25%" },
         { value: "not_sure", label: "Not sure", note: "We'll skip this", impact: "" }
       ]) +
       ownershipQuestion("titleStatus", "Do you have a certificate of title?", "A Transfer Certificate of Title (TCT) or Condominium Certificate of Title (CCT).", [
         { value: "titled_self", label: "Yes, and it's in my name", note: "Title matches the owner", impact: "" },
-        { value: "titled_previous", label: "Yes, but still in the previous owner's name", note: "Verify authority and transfer requirements", impact: "" },
-        { value: "tax_declaration", label: "No, only a tax declaration", note: "Registered ownership unconfirmed", impact: "" },
+        { value: "titled_previous", label: "Yes, but still in the previous owner's name", note: "Verify authority and transfer requirements", impact: "−8%" },
+        { value: "tax_declaration", label: "No, only a tax declaration", note: "Registered ownership unconfirmed", impact: "−15%" },
         { value: "not_sure", label: "Not sure", note: "We'll skip this", impact: "" }
       ]) +
       ownershipQuestion("inheritanceStatus", "Was this property inherited?", "Inherited properties need an Extrajudicial Settlement before they can be sold.", [
         { value: "not_inherited", label: "No, I bought it or it's always been mine", note: "No inheritance process", impact: "" },
         { value: "settled", label: "Yes, and the settlement is finished", note: "Annotated on the title", impact: "" },
-        { value: "pending", label: "Yes, but the settlement isn't done", note: "Settlement pending; no unsupported deduction", impact: "" },
+        { value: "pending", label: "Yes, but the settlement isn't done", note: "Settlement must finish before transfer", impact: "−10%" },
         { value: "not_sure", label: "Not sure", note: "We'll skip this", impact: "" }
       ]);
   }
@@ -1100,13 +1270,14 @@ out += "</div>";
           ["wood_prefab", "mixed_chb", "rca_steel"].map(function (k) {
             return { label: labelFor(DATA.config, "construction", k), value: k, active: est.construction === k };
           }), "construction") + "</label>" +
-        '<label class="sf-est-field">Total built-up area (sqm)<span>Across all storeys. Blank assumes 60% of lot area.</span>' +
-        '<input data-est-floor type="number" min="0" max="100000" step="0.01" inputmode="decimal" placeholder="auto — ' + fmt(Math.round((est.area || 0) * 0.6)) + ' sqm" value="' + esc(est.floorArea) + '"></label>' +
+        '<label class="sf-est-field">Total built-up area (sqm)' + (est.assumed.floorArea ? ' <em class="sf-est-suggested" data-est-suggested="floorArea">Suggested</em>' : "") +
+        '<span>Across all storeys. ' + (est.assumed.floorArea ? "Typical for a " + fmt(est.area || 0) + " sqm lot here — enter yours if you know it." : "Blank uses a typical size for the lot.") + '</span>' +
+        '<input data-est-floor type="number" min="0" max="100000" step="0.01" inputmode="decimal" placeholder="auto — ' + fmt(suggestedFloorArea(est.area)) + ' sqm" value="' + esc(est.floorArea) + '"></label>' +
         '<label class="sf-est-field">Storeys<span>Recorded; the figure above already covers every storey</span>' + chipRow(
           (DATA.config.floors || []).map(function (f) {
             return { label: f.label, value: f.key, active: est.floors === f.key };
           }), "floors") + "</label>" +
-        '<label class="sf-est-field sf-est-span2">Age band<span>Straight-line depreciation, capped</span>' + chipRow(
+        '<label class="sf-est-field sf-est-span2">Age band' + (est.assumed.ageBand ? ' <em class="sf-est-suggested" data-est-suggested="ageBand">Suggested</em>' : "") + '<span>Straight-line depreciation, capped</span>' + chipRow(
           (DATA.config.ageBands || []).map(function (b) {
             return { label: b.label, value: b.key, active: est.ageBand === b.key };
           }), "ageBand") + "</label>" +
@@ -1123,9 +1294,8 @@ out += "</div>";
     }
     out += ownershipQuestions();
     /* The reference asks these questions visibly, each with a "Not sure" skip,
-       so they sit in the main flow rather than a collapsed corner. They are
-       recorded for the specialist and do not change the estimate, which the
-       section note says plainly. */
+       so they sit in the main flow rather than a collapsed corner. Each answer
+       moves the estimate by the % shown on its button. */
     out += '<div class="sf-est-site-review" data-est-site-review>' + reviewFactorBlock() + '</div>';
     out += '<div class="sf-est-actions"><button type="button" class="sf-est-next sf-est-prev" data-est-prev>← Back to property details</button>' +
       '<button type="button" class="sf-est-next" data-est-next>Calculate my estimate →</button></div>';
@@ -1419,8 +1589,8 @@ var displayRange = '';
       '<ul class="sf-est-rdl"><li>Occupancy: <b>' + esc(ownershipLabel("occupancy", r.ownership.occupancy)) + '</b></li>' +
       '<li>Title status: <b>' + esc(ownershipLabel("titleStatus", r.ownership.titleStatus)) + '</b></li>' +
       '<li>Inheritance: <b>' + esc(ownershipLabel("inheritanceStatus", r.ownership.inheritanceStatus)) + '</b></li>' +
-      '<li>Automatic deduction: <b>none — evidence required</b></li></ul>' +
-      '<p class="sf-est-rdp">' + esc(r.conditions) + ' Historical flat title/occupancy discounts are not applied. Verify documents, possession and any actual remediation costs before using a transaction scenario.</p>' });
+      '<li>Deduction applied: <b>' + (r.ownershipAdjustmentPct ? "−" + r.ownershipAdjustmentPct + "% of the total" : "none") + '</b></li></ul>' +
+      '<p class="sf-est-rdp">' + esc(r.conditions) + ' Verify documents, possession and any actual remediation costs before relying on a transaction figure.</p>' });
 
     s.push({ t: "How this number was built", h: provenanceHtml(r) });
     if (r.timeIndex) s[s.length - 1].h = timeResultHtml(r) + '<p class="sf-est-rdp">Building allowances and depreciation remain separate.</p>';
@@ -1446,7 +1616,11 @@ var displayRange = '';
       "<span>Region " + r.factors.regionalAdj.toFixed(2) + "</span>" +
       "</div>" +
       '<p class="sf-est-coverage">Effective land rate <b>' + money(r.landPerSqm) + " /sqm</b> × " + fmt(r.area) +
-      " sqm = <b>" + money(r.landValue) + "</b> land value.</p>" +
+      " sqm = <b>" + money(r.landBeforeAdjustments != null ? r.landBeforeAdjustments : r.landValue) + "</b>" +
+      ((r.landBeforeAdjustments != null && r.landBeforeAdjustments !== r.landValue)
+        ? ", then " + ((Number(r.lotSizeFactor) || 1) < 1 ? "large-lot × " + Number(r.lotSizeFactor).toFixed(3) + " and " : "") +
+          "site answers " + (((r.siteAdjustment && r.siteAdjustment.pct) || 0) >= 0 ? "+" : "−") + Math.abs((r.siteAdjustment && r.siteAdjustment.pct) || 0) + "% = <b>" + money(r.landValue) + "</b>"
+        : "") + " land value.</p>" +
       multipleNoteHtml });
     if (r.timeIndex) s[s.length - 1].h = timeResultHtml(r);
 
@@ -1475,18 +1649,7 @@ var displayRange = '';
 
     s.push({ t: "Taxes, fees & commissions", h: transactionHtml(r, tax) });
 
-    s.push({ t: "Site review factors you recorded", h:
-      "<ul class=\"sf-est-rdl\">" +
-      "<li>Community: <b>" + esc(r.siteReview.community) + "</b></li>" +
-      "<li>Flood risk: <b>" + esc(r.siteReview.floodRisk) + "</b></li>" +
-      "<li>Road access: <b>" + esc(r.siteReview.roadAccess) + "</b></li>" +
-      "<li>Frontage: <b>" + esc(r.siteReview.frontage) + "</b></li>" +
-      "<li>Lot shape: <b>" + esc(r.siteReview.lotShape) + "</b></li>" +
-      "<li>Right of way: <b>" + esc(r.siteReview.rightOfWay) + "</b></li>" +
-      "<li>Elevation: <b>" + esc(r.siteReview.elevation) + "</b></li>" +
-      "<li>Utilities: <b>" + esc(r.siteReview.utilities) + "</b></li>" +
-      "</ul>" +
-      "<p class=\"sf-est-rdp\">These factors are recorded for a specialist to verify on site; they do not change the arithmetic.</p>" });
+    s.push({ t: "Adjustments from your answers", h: adjustmentsHtml(r) });
 
     s.push({ t: "Methodology", h:
       "<p class=\"sf-est-rdp\">The same inputs and data version produce the same calculation. The report shows the BIR reference, applied factors, building-cost/depreciation calculation when relevant, and the resulting range. Listing prices provide context only; they do not directly determine this estimate.</p>" });
@@ -1499,9 +1662,9 @@ var displayRange = '';
 
     var groups = [
       { t: "Summary", titles: ["Estimate at a glance", "Pricing strategy", "The property"] },
-      { t: "Calculation", titles: ["How this number was built", "Land value build-up", "House value (replacement cost approach)", "House value", "Ownership & title review", "Total estimate and range"] },
+      { t: "Calculation", titles: ["How this number was built", "Land value build-up", "House value (replacement cost approach)", "House value", "Ownership & title review", "Adjustments from your answers", "Total estimate and range"] },
       { t: "Transaction costs", titles: ["Taxes, fees & commissions"] },
-      { t: "Market evidence", titles: ["Source of land rates", "BIR classification used", "How precise is this match?", "Site review factors you recorded", "Asking evidence and project sources"] },
+      { t: "Market evidence", titles: ["Source of land rates", "BIR classification used", "How precise is this match?", "Asking evidence and project sources"] },
       { t: "Documents and next steps", titles: ["Professional review"] },
       { t: "Methodology and limitations", titles: ["Methodology", "Coverage and limitations", "Legal"] }
     ];
@@ -2020,7 +2183,7 @@ var saleContext = $q(card, "[data-est-sale-context]");
     });
 
     var floorIn = $q(card, "[data-est-floor]");
-    if (floorIn) floorIn.addEventListener("input", function () { est.floorArea = floorIn.value; });
+    if (floorIn) floorIn.addEventListener("input", function () { est.floorArea = floorIn.value; markUserSet("floorArea"); });
 
     $qa(card, "[data-est-feature]").forEach(function (cb) {
       cb.addEventListener("change", function () {
@@ -2041,6 +2204,7 @@ var saleContext = $q(card, "[data-est-sale-context]");
            unset, not "checked and found nothing". The screen re-renders so the
            active chip state (including the skip chip) matches the state. */
         var review = false;
+        if (t) markUserSet(t);
         if (t === "floodRisk") { est.floodRisk = btn.getAttribute("data-val"); review = true; }
         else if (t === "community") { est.community = btn.getAttribute("data-val"); review = true; }
         else if (t === "roadAccess") { est.roadAccess = btn.getAttribute("data-val"); review = true; }
@@ -2051,7 +2215,7 @@ var saleContext = $q(card, "[data-est-sale-context]");
         else if (t === "utilities") { est.utilities = btn.getAttribute("data-val"); review = true; }
         else if (t === "construction") est.construction = btn.getAttribute("data-val");
         else if (t === "floors") est.floors = btn.getAttribute("data-val");
-        else if (t === "ageBand") est.ageBand = btn.getAttribute("data-val");
+        else if (t === "ageBand") { est.ageBand = btn.getAttribute("data-val"); review = true; }
         if (review) renderLayout();
       });
     });
@@ -2081,6 +2245,7 @@ var saleContext = $q(card, "[data-est-sale-context]");
         if (est.screen === 1) {
             if (validScreen1()) {
               est.validationIssue = null;
+              suggestAssumptions();
               est.screen = 2;
               renderLayout();
               revealEstimatorScreen();

@@ -34,8 +34,8 @@ function check(cond, msg) { if (!cond) errors.push(msg); }
 
 const CONFIG = {
   version: 2,
-  calculationVersion: "2026.10.6",
-  riskPolicy: "Evidence-led: unverified occupancy/title/site flags are conditions, not automatic price discounts",
+  calculationVersion: "2026.10.7",
+  riskPolicy: "Answer-led: each site answer moves land by a stated % (net capped -40%/+10%) and each ownership answer deducts a stated % from the total (capped 30%); answers stay unverified until documents are reviewed",
   scenarioRange: { lowFactor: 0.85, highFactor: 1.3, meaning: "Planning scenarios, not statistical accuracy" },
   dataVersion: "bir-2022-rdo58-59",
   asOf: "2022-07-23",
@@ -43,7 +43,7 @@ const CONFIG = {
   purposes: ["Selling", "Buying", "I received an offer", "Estate", "Loan", "Other"],
   propertyTypes: {
     vacant_lot: { label: "Vacant Lot", kind: "land" },
-    house_lot: { label: "House & Lot", kind: "built", floorDefaultRatio: 0.6 }
+    house_lot: { label: "House & Lot", kind: "built" }
   },
   cornerLotPct: 0.025,
   /* These rates and their provenance are the source of truth for
@@ -90,14 +90,14 @@ const CONFIG = {
   },
   proxyFactors: {
     residential: { label: "Residential", factor: 1.0 },
-    commercial: { label: "Commercial", factor: 1.7 },
-    agricultural: { label: "Agricultural", factor: 0.5 },
-    industrial: { label: "Industrial", factor: 1.35 }
+    commercial: { label: "Commercial", factor: 1.0 },
+    agricultural: { label: "Agricultural", factor: 1.0 },
+    industrial: { label: "Industrial", factor: 1.0 }
   },
   marketBand: {
     regionalAdj: 1.0,
     rateRamp: {
-      appliesTo: "residential",
+      appliesTo: ["residential", "commercial"],
       lowRate: 2000,
       highRate: 25000,
       floor: 1.4,
@@ -263,11 +263,14 @@ provClsKeys.forEach((cls) => {
 
 // config checks
 check(CONFIG.cornerLotPct === 0.025, "config: cornerLotPct must be 0.025");
-check(CONFIG.propertyTypes.vacant_lot && CONFIG.propertyTypes.house_lot && CONFIG.propertyTypes.house_lot.floorDefaultRatio === 0.6, "config: vacant_lot + house_lot present, house_lot floor default 0.6");
+check(CONFIG.propertyTypes.vacant_lot && CONFIG.propertyTypes.house_lot && CONFIG.propertyTypes.house_lot.floorDefaultRatio === undefined, "config: vacant_lot + house_lot present, house_lot floor default 0.6");
 check(CONFIG.marketBand.regionalAdj === 1.0 && CONFIG.marketBand.bands.residential.mid === 2.5 && CONFIG.marketBand.bands.agricultural.mid === 1.5 && CONFIG.marketBand.bands.industrial.mid === 2.0, "config: market band mids");
 check(CONFIG.depreciation.lifeYears === 40 && CONFIG.depreciation.maxPct === 0.95, "config: depreciation rule");
 check(CONFIG.tax.cgtPct === 0.06 && CONFIG.tax.dstPct === 0.015 && CONFIG.tax.transferPct === 0.005 && CONFIG.tax.registrationPct === 0.001, "config: tax rates");
-check(CONFIG.proxyFactors.residential.factor === 1.0 && CONFIG.proxyFactors.commercial.factor === 1.7 && CONFIG.proxyFactors.agricultural.factor === 0.5 && CONFIG.proxyFactors.industrial.factor === 1.35, "config: proxy factors");
+/* 2026-10-14: every proxy is 1.0. The estimator always uses the classification's
+   own BIR rate (CR, A, I...), which already carries the use premium or discount;
+   a second use factor double-counted it (commercial came out at 4.25x BIR). */
+check(CONFIG.proxyFactors.residential.factor === 1.0 && CONFIG.proxyFactors.commercial.factor === 1.0 && CONFIG.proxyFactors.agricultural.factor === 1.0 && CONFIG.proxyFactors.industrial.factor === 1.0, "config: proxy factors");
 ["Wood / Pre-fab", "Mixed / CHB", "Reinforced Concrete / Steel"].forEach((l) => {
   check(Object.values(CONFIG.construction).some((c) => c.label === l), "config: missing construction type " + l);
 });

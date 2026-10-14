@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "calculationVersion": "2026.10.6",
-  "riskPolicy": "Evidence-led: unverified occupancy/title/site flags are conditions, not automatic price discounts",
+  "calculationVersion": "2026.10.7",
+  "riskPolicy": "Answer-led: each site answer moves land by a stated % (net capped -40%/+10%) and each ownership answer deducts a stated % from the total (capped 30%); answers stay unverified until documents are reviewed",
   "scenarioRange": { "lowFactor": 0.85, "highFactor": 1.30, "meaning": "Planning scenarios, not statistical accuracy" },
   "dataVersion": "bir-2022-rdo58-59",
   "asOf": "2022-07-23",
@@ -21,8 +21,7 @@
     },
     "house_lot": {
       "label": "House & Lot",
-      "kind": "built",
-      "floorDefaultRatio": 0.6
+      "kind": "built"
     }
   },
   "cornerLotPct": 0.025,
@@ -135,21 +134,24 @@
     },
     "commercial": {
       "label": "Commercial",
-      "factor": 1.7
+      "factor": 1
     },
     "agricultural": {
       "label": "Agricultural",
-      "factor": 0.5
+      "factor": 1
     },
     "industrial": {
       "label": "Industrial",
-      "factor": 1.35
+      "factor": 1
     }
   },
  "marketBand": {
   "regionalAdj": 1,
   "rateRamp": {
-   "appliesTo": "residential",
+   "appliesTo": [
+        "residential",
+        "commercial"
+      ],
    "lowRate": 2000,
    "highRate": 25000,
    "floor": 1.4,

@@ -1512,7 +1512,10 @@ body .sf-search-form button { min-height: 46px !important; height: 46px !importa
 }
 .sf-est-review-group[open] > summary::after { content: "−"; }
 .sf-est-review-group h4 { margin: 0; font-size: 17px; color: var(--sf-ink); }
-.sf-est-review-picked { margin-left: auto; font-size: 13px; color: var(--sf-ink-mute); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+/* Wraps to two lines rather than nowrap+ellipsis: a nowrap line still counts at
+   full length when the page sizes itself, so a long picked summary (the
+   location-based suggestions) widened the whole details screen past a phone. */
+.sf-est-review-picked { margin-left: auto; min-width: 0; flex: 0 1 55%; font-size: 13px; color: var(--sf-ink-mute); text-align: right; overflow: hidden; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .sf-est-review-group .sf-est-fields { margin: 0 0 14px; }
 .sf-est-report-group { margin: 0 0 24px; }
 .sf-est-report-group h5 { font-size: 18px; margin: 0 0 12px; }

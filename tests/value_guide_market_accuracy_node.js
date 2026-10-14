@@ -90,5 +90,16 @@ checkAsync("the back-office guide prices the same building and land as the publi
   });
 });
 
+checkAsync("the guide's answers never trigger the public site/ownership tables, and corner is counted once", async () => {
+  const o = optsFor(FX.listings[0]);
+  const g0 = Object.assign({}, o, FLOW.pickInputs({ lotShape: "-300", terrain: "-700", elevation: "-700", floodRisk: "-500", roadAccess: "-200", titleDoc: "tax_declaration", ownership: "informal_settlers" }));
+  const s = await EST.estimate(g0);
+  assert.strictEqual(s.siteAdjustment.pct, 0, "guide site answers leaked into the public site table");
+  assert.strictEqual(s.ownershipAdjustmentPct, 0, "guide ownership answers leaked into the public ownership table");
+  const plain = await FLOW.compute(o, EST), corner = await FLOW.compute(Object.assign({}, o, { corner: true }), EST);
+  const ratio = corner.landValue / plain.landValue;
+  assert.ok(Math.abs(ratio - (1 + 0.025)) < 0.002, "corner counted " + ratio.toFixed(4) + "x, expected once (1.025x)");
+});
+
 Promise.all(pending).then(() => console.log("ALL GREEN (" + count + " checks)"))
   .catch(err => { console.error("FAILED:", err && err.stack || err); process.exit(1); });

@@ -34,14 +34,15 @@ eq(r.source.level, "street", "cr level street");
 eq(r.reference.value, 3500, "cr reference 3500");
 eq(r.birZonalRatePerSqm, 3500, "cr BIR zonal rate remains official base");
 eq(r.birZonalValue, 700000, "cr BIR zonal value stays separate");
-eq(r.landPerSqm, 14875, "cr landPerSqm uses restored uncapped factor calculation");
-eq(r.landValue, 2975000, "cr landValue uses BIR × disclosed factors");
-eq(r.low, 2528750, "cr lower planning scenario 85%");
-eq(r.high, 3867500, "cr upper planning scenario 130%");
-eq(r.perSqm, 14875, "cr perSqm");
+const crRate = Math.round(3500 * (2.5 - ((3500 - 2000) / 23000) * 1.1)); /* proxy 1, ramped band (2026-10-14) */
+eq(r.landPerSqm, crRate, "cr landPerSqm uses restored uncapped factor calculation");
+eq(r.landValue, crRate * 200, "cr landValue uses BIR × disclosed factors");
+eq(r.low, Math.round(crRate * 200 * 0.85), "cr lower planning scenario 85%");
+eq(r.high, Math.round(crRate * 200 * 1.30), "cr upper planning scenario 130%");
+eq(r.perSqm, crRate, "cr perSqm");
 eq(r.marketGuideEstimate, r.total, "factor-based estimate remains available without comparables");
 eq(r.marketGuideAvailable, false, "market guide availability requires comparables");
-eq(r.recommendedAskingPrice, r.high, "recommended asking price uses guide upper range");
+eq(r.recommendedAskingPrice, Math.round(r.total * 1.07), "recommended asking price is estimate + 7%, not the 130% scenario");
 eq(r.marketGuide.status, "factor-based-no-comparable-data", "no-comparable basis is explicit");
 eq(r.marketGuide.comparablePricesUsed, false, "comparable asking prices do not feed the factor calculation");
 eq(core.integrityCheck(r).ok, true, "cr reconciles");
@@ -71,14 +72,14 @@ const compEstimate = core.computeEstimate(config, index, balayan, {
   comparableSource: "SEA ESTATES listing"
 });
 eq(compEstimate.marketGuideAvailable, true, "market guide available with comparable evidence");
-eq(compEstimate.recommendedAskingPrice, compEstimate.high, "recommended asking price uses guide upper range");
+eq(compEstimate.recommendedAskingPrice, Math.round(compEstimate.total * 1.07), "recommended asking price is estimate + 7%");
 
 /* ---- corner lot toggle ---- */
 let rc = core.computeEstimate(config, index, balayan, {
   municipality: "BALAYAN", barangay: "BACLARAN", streetKey: "ALL STREET", classification: "CR", area: 200, corner: true
 });
 eq(rc.corner.applied, true, "corner applied");
-eq(rc.landPerSqm, 15247, "corner factor applies to the restored factor calculation");
+eq(rc.landPerSqm, Math.round(3500 * 1.025 * (2.5 - ((3500 - 2000) / 23000) * 1.1)), "corner factor applies to the restored factor calculation");
 
 /* ---- residential RR (proxy 1.0, band 2.5) ---- */
 let rr = core.computeEstimate(config, index, balayan, {
@@ -153,7 +154,7 @@ let hd = core.computeEstimate(config, index, balayan, {
   municipality: "BALAYAN", barangay: "BACLARAN", streetKey: "ALL STREET", classification: "RR", area: 200,
   type: "house_lot"
 });
-eq(hd.floorArea, 120, "hd floor default 0.6 x 200");
+eq(hd.floorArea, 150, "hd blank floor = typical size for a 200 sqm lot (0.75x)");
 
 /* ---- taxes incl. registration ---- */
 let tax = core.taxMath(config, 1000000);
@@ -188,8 +189,8 @@ let risk = core.computeEstimate(config, index, balayan, {
   municipality: "BALAYAN", barangay: "BACLARAN", streetKey: "ALL STREET", classification: "CR", area: 200,
   occupancy: "informal_settlers", titleStatus: "tax_declaration", inheritanceStatus: "pending"
 });
-eq(risk.ownershipAdjustmentPct, 0, "unsupported risk deduction not applied");
-eq(risk.total, risk.landValue + risk.improvement, "conditional neutral value reconciles");
+eq(risk.ownershipAdjustmentPct, 30, "ownership answers applied: 25 + 15 + 10 = 50, capped at 30");
+eq(risk.total, Math.round((risk.landValue + risk.improvement) * 0.70), "total = (land + building) x (1 - 30%)");
 eq(core.integrityCheck(risk).ok, true, "risk-adjusted estimate reconciles");
 
 if (failures) { console.log(failures + " FAILURES"); process.exit(1); }

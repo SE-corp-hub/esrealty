@@ -183,3 +183,40 @@ Order is by impact on the house & lot result. Each step ships with a test.
 - Most listings did not state age or construction; age bands were estimated.
 - A licensed appraiser's opinion on a few Bauan homes would be the single best
   calibration upgrade.
+
+---
+
+## 7. Full input audit and fixes (2026-10-14, calculationVersion 2026.10.7)
+
+Every input was changed one at a time on the Binay St house (100 sqm lot, 120 sqm
+CHB, 6–10 yrs) to see what it does to the total.
+
+| Input | Before | After |
+|---|---|---|
+| Purpose, sale stage, expected price | no effect (by design) | unchanged |
+| Classification CR | +152% (4.25× BIR: CR rate × 1.7 proxy × 2.5 band) | +23% (CR rate × ramped band) |
+| Agricultural / industrial | 0.75× BIR / 2.7× BIR | 1.5× / 2.0× |
+| Lot area 1,000 sqm | linear (+544%) | large-lot factor × 0.74 |
+| Corner | +2.5% land | unchanged |
+| Condition, construction, floor area, age, features | applied | unchanged |
+| Blank floor area | 60% of lot | typical for the lot (0.9× ≤150 sqm, 0.75× ≤300, 0.5× above) |
+| Storeys | no effect (floor area covers it) | unchanged |
+| Occupancy / title / inheritance | **no effect** | −5 / −5 / −25%, −8 / −15%, −10% of total, capped 30% |
+| 8 site questions | **no effect** | % on land (landlocked −35%, flood-prone −15%, …), net capped −40% / +10% |
+| Recommended asking price | estimate × 1.30 | estimate × 1.07 |
+
+Also: the details step now pre-selects typical answers from the location
+(subdivision streets -> Subdivision + barangay road; highway/national/diversion
+streets -> Highway; named poblacion streets -> Municipal road; agricultural class ->
+partial utilities; house: age 6–10 and a typical floor area), marked "Suggested",
+never overwriting a reader's own answer. Each button shows its % effect. The
+back-office guide's corner premium was being counted twice after this morning's
+unification; fixed.
+
+Market test after all changes: house & lot median −2.5%, median |error| 11.2%;
+vacant lots median −2.3% (1,120 sqm open lot +84% -> +32%).
+
+Still open: the 85–130% range is wide; one page shows two different "net
+proceeds" figures (seller-paid costs vs all four taxes); flood risk has no hazard
+data behind its suggestion (defaults to "No flooding"); the listing sample is
+small and asking-price only.
