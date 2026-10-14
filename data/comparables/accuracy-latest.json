@@ -5,15 +5,15 @@
  "calculationVersion": "2026.10.7",
  "overall": {
   "house_lot": {
-   "n": 33,
-   "projects": 25,
-   "projectWeightedMedian": 0.083,
-   "median": 0.024,
-   "medianAbs": 0.188
+   "n": 256,
+   "projects": 93,
+   "projectWeightedMedian": -0.046,
+   "median": -0.128,
+   "medianAbs": 0.212
   },
   "vacant_lot": {
-   "n": 73,
-   "projects": 13,
+   "n": 77,
+   "projects": 17,
    "projectWeightedMedian": 0.166,
    "median": 0.673,
    "medianAbs": 0.673
@@ -32,8 +32,8 @@
   {
    "town": "BATANGAS CITY",
    "kind": "vacant_lot",
-   "n": 6,
-   "projects": 2,
+   "n": 7,
+   "projects": 3,
    "projectWeightedMedian": 1.293,
    "median": 1.293,
    "medianAbs": 1.293
@@ -41,11 +41,11 @@
   {
    "town": "BAUAN",
    "kind": "house_lot",
-   "n": 1,
-   "projects": 1,
-   "projectWeightedMedian": -0.62,
-   "median": -0.62,
-   "medianAbs": 0.62
+   "n": 2,
+   "projects": 2,
+   "projectWeightedMedian": -0.417,
+   "median": -0.417,
+   "medianAbs": 0.417
   },
   {
    "town": "LAUREL",
@@ -59,38 +59,38 @@
   {
    "town": "LEMERY",
    "kind": "house_lot",
-   "n": 1,
-   "projects": 1,
-   "projectWeightedMedian": 0.807,
-   "median": 0.807,
-   "medianAbs": 0.807
+   "n": 2,
+   "projects": 2,
+   "projectWeightedMedian": 0.715,
+   "median": 0.715,
+   "medianAbs": 0.715
   },
   {
    "town": "LIPA CITY",
    "kind": "house_lot",
-   "n": 6,
-   "projects": 5,
-   "projectWeightedMedian": -0.088,
-   "median": -0.121,
-   "medianAbs": 0.124
+   "n": 61,
+   "projects": 29,
+   "projectWeightedMedian": -0.015,
+   "median": -0.015,
+   "medianAbs": 0.191
   },
   {
    "town": "LIPA CITY",
    "kind": "vacant_lot",
-   "n": 47,
-   "projects": 2,
-   "projectWeightedMedian": 0.248,
+   "n": 49,
+   "projects": 4,
+   "projectWeightedMedian": 0.357,
    "median": 0.673,
    "medianAbs": 0.673
   },
   {
    "town": "NASUGBU",
    "kind": "house_lot",
-   "n": 1,
-   "projects": 1,
-   "projectWeightedMedian": -0.128,
-   "median": -0.128,
-   "medianAbs": 0.128
+   "n": 2,
+   "projects": 2,
+   "projectWeightedMedian": 0.596,
+   "median": 0.596,
+   "medianAbs": 0.724
   },
   {
    "town": "NASUGBU",
@@ -113,20 +113,29 @@
   {
    "town": "ROSARIO",
    "kind": "house_lot",
-   "n": 2,
-   "projects": 2,
-   "projectWeightedMedian": 0.346,
-   "median": 0.346,
+   "n": 5,
+   "projects": 4,
+   "projectWeightedMedian": 0.124,
+   "median": 0.115,
+   "medianAbs": 0.115
+  },
+  {
+   "town": "SAN JOSE",
+   "kind": "house_lot",
+   "n": 24,
+   "projects": 1,
+   "projectWeightedMedian": -0.346,
+   "median": -0.346,
    "medianAbs": 0.346
   },
   {
    "town": "SAN PASCUAL",
    "kind": "house_lot",
-   "n": 1,
-   "projects": 1,
+   "n": 4,
+   "projects": 3,
    "projectWeightedMedian": 0.568,
-   "median": 0.568,
-   "medianAbs": 0.568
+   "median": 0.907,
+   "medianAbs": 0.907
   },
   {
    "town": "SAN PASCUAL",
@@ -140,38 +149,38 @@
   {
    "town": "STO. TOMAS CITY",
    "kind": "house_lot",
-   "n": 4,
-   "projects": 3,
-   "projectWeightedMedian": 0.312,
-   "median": 0.312,
-   "medianAbs": 0.312
+   "n": 95,
+   "projects": 27,
+   "projectWeightedMedian": -0.011,
+   "median": -0.089,
+   "medianAbs": 0.155
   },
   {
    "town": "STO. TOMAS CITY",
    "kind": "vacant_lot",
-   "n": 4,
-   "projects": 2,
-   "projectWeightedMedian": 0.445,
-   "median": 0.699,
-   "medianAbs": 0.699
+   "n": 5,
+   "projects": 3,
+   "projectWeightedMedian": 0.154,
+   "median": 0.661,
+   "medianAbs": 0.661
   },
   {
    "town": "TAAL",
    "kind": "house_lot",
-   "n": 5,
-   "projects": 3,
-   "projectWeightedMedian": 0.169,
-   "median": 0.169,
-   "medianAbs": 0.172
+   "n": 6,
+   "projects": 4,
+   "projectWeightedMedian": 0.041,
+   "median": 0.041,
+   "medianAbs": 0.17
   },
   {
    "town": "TANAUAN CITY",
    "kind": "house_lot",
-   "n": 2,
-   "projects": 2,
-   "projectWeightedMedian": 0.053,
-   "median": 0.053,
-   "medianAbs": 0.053
+   "n": 45,
+   "projects": 13,
+   "projectWeightedMedian": -0.222,
+   "median": -0.258,
+   "medianAbs": 0.258
   },
   {
    "town": "TANAUAN CITY",
@@ -197,6 +206,13 @@
    "projectWeightedMedian": 0.053,
    "median": 0.053,
    "medianAbs": 0.407
+  },
+  "pagibig": {
+   "n": 227,
+   "projects": 72,
+   "projectWeightedMedian": -0.065,
+   "median": -0.139,
+   "medianAbs": 0.213
   }
  },
  "projects": [
@@ -219,6 +235,15 @@
    "medianError": -0.576
   },
   {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "ECOVERDE LIPA AREA 1",
+   "n": 1,
+   "birRate": 4500,
+   "matchLevel": "barangay",
+   "medianError": -0.541
+  },
+  {
    "kind": "vacant_lot",
    "town": "NASUGBU",
    "name": "Terrazas de Punta Fuego",
@@ -226,6 +251,24 @@
    "birRate": 18000,
    "matchLevel": "street",
    "medianError": -0.497
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "VIA VERDE VILLAGE",
+   "n": 3,
+   "birRate": 3500,
+   "matchLevel": "barangay",
+   "medianError": -0.493
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "VALLE PIO EXECUTIVE HOMES",
+   "n": 1,
+   "birRate": 5000,
+   "matchLevel": "street",
+   "medianError": -0.457
   },
   {
    "kind": "vacant_lot",
@@ -238,6 +281,96 @@
   },
   {
    "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "ECOVERDE ESPACIO TANAUAN",
+   "n": 2,
+   "birRate": 5500,
+   "matchLevel": "street",
+   "medianError": -0.392
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "NUVISTA LIPA",
+   "n": 1,
+   "birRate": 7500,
+   "matchLevel": "street",
+   "medianError": -0.374
+  },
+  {
+   "kind": "house_lot",
+   "town": "SAN JOSE",
+   "name": "GREEN MEADOWS RESIDENCES",
+   "n": 24,
+   "birRate": 1600,
+   "matchLevel": "barangay",
+   "medianError": -0.346
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "SOUTHGROVE POINTE",
+   "n": 4,
+   "birRate": 2500,
+   "matchLevel": "barangay",
+   "medianError": -0.345
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "LA ALDEA DEL MONTE SUBD",
+   "n": 2,
+   "birRate": 8000,
+   "matchLevel": "barangay",
+   "medianError": -0.338
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "SOUTHRIDGE VILLAS",
+   "n": 1,
+   "birRate": 4000,
+   "matchLevel": "barangay",
+   "medianError": -0.313
+  },
+  {
+   "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "TANAUAN PARK PLACE PHASE 1",
+   "n": 7,
+   "birRate": null,
+   "matchLevel": "municipality",
+   "medianError": -0.3
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "VALLE PIO",
+   "n": 8,
+   "birRate": 5000,
+   "matchLevel": "street",
+   "medianError": -0.29
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "CASA FELIZ",
+   "n": 1,
+   "birRate": 4500,
+   "matchLevel": "street",
+   "medianError": -0.287
+  },
+  {
+   "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "TANAUAN PARK PLACE PHASE 2",
+   "n": 10,
+   "birRate": null,
+   "matchLevel": "municipality",
+   "medianError": -0.27
+  },
+  {
+   "kind": "house_lot",
    "town": "LIPA CITY",
    "name": "Camella Lipa",
    "n": 2,
@@ -247,12 +380,111 @@
   },
   {
    "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "DECA HOMES TANAUAN",
+   "n": 6,
+   "birRate": 1800,
+   "matchLevel": "street",
+   "medianError": -0.261
+  },
+  {
+   "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "LUMINA TANAUAN",
+   "n": 4,
+   "birRate": 3000,
+   "matchLevel": "barangay",
+   "medianError": -0.259
+  },
+  {
+   "kind": "house_lot",
    "town": "BATANGAS CITY",
    "name": "GULOD LABAC",
    "n": 1,
    "birRate": 10500,
    "matchLevel": "street",
    "medianError": -0.247
+  },
+  {
+   "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "HACIENDA DEL SOL",
+   "n": 2,
+   "birRate": 3500,
+   "matchLevel": "barangay",
+   "medianError": -0.242
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "MONTE CARLO HOMES",
+   "n": 1,
+   "birRate": 4000,
+   "matchLevel": "barangay",
+   "medianError": -0.228
+  },
+  {
+   "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "GRANDVIEW HEIGHTS",
+   "n": 4,
+   "birRate": null,
+   "matchLevel": "municipality",
+   "medianError": -0.222
+  },
+  {
+   "kind": "house_lot",
+   "town": "BAUAN",
+   "name": "LUMINA BAUAN",
+   "n": 1,
+   "birRate": 3000,
+   "matchLevel": "street",
+   "medianError": -0.214
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "VALLE SANTANA",
+   "n": 1,
+   "birRate": 4000,
+   "matchLevel": "street",
+   "medianError": -0.201
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "MABINI HEIGHTS II",
+   "n": 1,
+   "birRate": 5000,
+   "matchLevel": "street",
+   "medianError": -0.195
+  },
+  {
+   "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "LUMINA HOMES",
+   "n": 1,
+   "birRate": 3000,
+   "matchLevel": "barangay",
+   "medianError": -0.194
+  },
+  {
+   "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "PLANTACION DEL SOL",
+   "n": 2,
+   "birRate": 4500,
+   "matchLevel": "street",
+   "medianError": -0.194
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "LUMINA HOMES",
+   "n": 3,
+   "birRate": 3500,
+   "matchLevel": "barangay",
+   "medianError": -0.182
   },
   {
    "kind": "vacant_lot",
@@ -284,11 +516,47 @@
   {
    "kind": "house_lot",
    "town": "LIPA CITY",
+   "name": "LYNVILLE RESIDENCES LIPA 2",
+   "n": 4,
+   "birRate": 5500,
+   "matchLevel": "street",
+   "medianError": -0.162
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "CASA ISABEL",
+   "n": 12,
+   "birRate": null,
+   "matchLevel": "municipality",
+   "medianError": -0.158
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
    "name": "Camella Lipa Heights",
    "n": 1,
    "birRate": 6000,
    "matchLevel": "street",
    "medianError": -0.155
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "BLUE ISLE I",
+   "n": 3,
+   "birRate": 3500,
+   "matchLevel": "barangay",
+   "medianError": -0.147
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "CASA ISABEL EXTENSION",
+   "n": 3,
+   "birRate": null,
+   "matchLevel": "municipality",
+   "medianError": -0.139
   },
   {
    "kind": "house_lot",
@@ -301,12 +569,102 @@
   },
   {
    "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "PRIMERAROSA RESIDENCES",
+   "n": 16,
+   "birRate": 4000,
+   "matchLevel": "barangay",
+   "medianError": -0.115
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "NEXTASIA LIPA",
+   "n": 1,
+   "birRate": 4000,
+   "matchLevel": "barangay",
+   "medianError": -0.11
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "AZALEA VISTA",
+   "n": 5,
+   "birRate": 5000,
+   "matchLevel": "street",
+   "medianError": -0.101
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "REGINAROSA RESIDENCES",
+   "n": 3,
+   "birRate": 4000,
+   "matchLevel": "barangay",
+   "medianError": -0.089
+  },
+  {
+   "kind": "house_lot",
    "town": "LIPA CITY",
    "name": "Lipa City",
    "n": 1,
    "birRate": 3500,
    "matchLevel": "street",
    "medianError": -0.088
+  },
+  {
+   "kind": "house_lot",
+   "town": "TAAL",
+   "name": "VILLAS DEL PUEBLO SUBDIVISION",
+   "n": 1,
+   "birRate": 8500,
+   "matchLevel": "street",
+   "medianError": -0.087
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "LYNVILLE RESIDENCES LIPA",
+   "n": 3,
+   "birRate": 4500,
+   "matchLevel": "street",
+   "medianError": -0.086
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "BON GIORNO HOMES",
+   "n": 6,
+   "birRate": 5500,
+   "matchLevel": "street",
+   "medianError": -0.078
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "MY HOMES SUBDIVISION",
+   "n": 2,
+   "birRate": 8000,
+   "matchLevel": "barangay",
+   "medianError": -0.066
+  },
+  {
+   "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "TIERRA VERDE PARKHOMES PHASE I",
+   "n": 4,
+   "birRate": null,
+   "matchLevel": "barangay",
+   "medianError": -0.064
+  },
+  {
+   "kind": "house_lot",
+   "town": "TANAUAN CITY",
+   "name": "CIUDAD VICTORIA SUBD",
+   "n": 1,
+   "birRate": 6500,
+   "matchLevel": "street",
+   "medianError": -0.059
   },
   {
    "kind": "house_lot",
@@ -328,6 +686,24 @@
   },
   {
    "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "MONTE CLARO HOMES",
+   "n": 1,
+   "birRate": 4500,
+   "matchLevel": "street",
+   "medianError": -0.015
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "BELA ROSA RESIDENCES",
+   "n": 7,
+   "birRate": 4000,
+   "matchLevel": "barangay",
+   "medianError": -0.011
+  },
+  {
+   "kind": "house_lot",
    "town": "STO. TOMAS CITY",
    "name": "Camella Sto. Tomas",
    "n": 1,
@@ -345,6 +721,24 @@
    "medianError": 0.006
   },
   {
+   "kind": "vacant_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "INDIVIDUAL",
+   "n": 1,
+   "birRate": 4500,
+   "matchLevel": "barangay",
+   "medianError": 0.011
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "MONTE FLORA HOMES",
+   "n": 1,
+   "birRate": 4500,
+   "matchLevel": "street",
+   "medianError": 0.014
+  },
+  {
    "kind": "house_lot",
    "town": "TANAUAN CITY",
    "name": "SAMBAT",
@@ -352,6 +746,96 @@
    "birRate": 6000,
    "matchLevel": "street",
    "medianError": 0.024
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "NUVISTA HOMES LIPA",
+   "n": 4,
+   "birRate": 6000,
+   "matchLevel": "street",
+   "medianError": 0.032
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "SAMPAGUITA WEST",
+   "n": 2,
+   "birRate": 6000,
+   "matchLevel": "street",
+   "medianError": 0.037
+  },
+  {
+   "kind": "vacant_lot",
+   "town": "LIPA CITY",
+   "name": "NUVISTA LIPA (LA BELLE)",
+   "n": 1,
+   "birRate": 7500,
+   "matchLevel": "street",
+   "medianError": 0.042
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "BRIXTON HOMES",
+   "n": 1,
+   "birRate": 7000,
+   "matchLevel": "street",
+   "medianError": 0.046
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "SOUTH SPRING HEIGHTS",
+   "n": 2,
+   "birRate": 5500,
+   "matchLevel": "street",
+   "medianError": 0.049
+  },
+  {
+   "kind": "house_lot",
+   "town": "ROSARIO",
+   "name": "BELLAVITA ROSARIO",
+   "n": 2,
+   "birRate": 2500,
+   "matchLevel": "street",
+   "medianError": 0.059
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "QUEZON RESIDENCES",
+   "n": 1,
+   "birRate": 4000,
+   "matchLevel": "barangay",
+   "medianError": 0.072
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "LUMINA LIPA",
+   "n": 4,
+   "birRate": 5000,
+   "matchLevel": "street",
+   "medianError": 0.073
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "LE MOUBREZA 3 PHASE B",
+   "n": 6,
+   "birRate": 11000,
+   "matchLevel": "street",
+   "medianError": 0.082
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "HIGHLAND RESIDENCES",
+   "n": 1,
+   "birRate": 3500,
+   "matchLevel": "barangay",
+   "medianError": 0.082
   },
   {
    "kind": "house_lot",
@@ -370,6 +854,33 @@
    "birRate": 4000,
    "matchLevel": "barangay",
    "medianError": 0.093
+  },
+  {
+   "kind": "house_lot",
+   "town": "ROSARIO",
+   "name": "ECOVERDE HOMES ROSARIO",
+   "n": 1,
+   "birRate": 4000,
+   "matchLevel": "street",
+   "medianError": 0.096
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "PRIMERA",
+   "n": 2,
+   "birRate": 5000,
+   "matchLevel": "street",
+   "medianError": 0.111
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "IMPERIAL SOUTH MEADOWS SUBDIVISION",
+   "n": 2,
+   "birRate": 4000,
+   "matchLevel": "street",
+   "medianError": 0.114
   },
   {
    "kind": "house_lot",
@@ -409,12 +920,66 @@
   },
   {
    "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "RL CARMEL HEIGHTS",
+   "n": 1,
+   "birRate": 6000,
+   "matchLevel": "street",
+   "medianError": 0.181
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "MABINI HEIGHTS SUBDIVISION",
+   "n": 1,
+   "birRate": 5000,
+   "matchLevel": "street",
+   "medianError": 0.199
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "LE MOUBREZA 3 PHASE A",
+   "n": 1,
+   "birRate": 11000,
+   "matchLevel": "street",
+   "medianError": 0.208
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "NUVISTA HOMES",
+   "n": 11,
+   "birRate": 6000,
+   "matchLevel": "street",
+   "medianError": 0.242
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "BELLAVITA LIPA",
+   "n": 1,
+   "birRate": 3500,
+   "matchLevel": "barangay",
+   "medianError": 0.274
+  },
+  {
+   "kind": "house_lot",
    "town": "STO. TOMAS CITY",
    "name": "San Antonio Heights",
    "n": 2,
    "birRate": 11000,
    "matchLevel": "street",
    "medianError": 0.312
+  },
+  {
+   "kind": "house_lot",
+   "town": "SAN PASCUAL",
+   "name": "CAMELLA HOMES - BATANGAS",
+   "n": 1,
+   "birRate": 6500,
+   "matchLevel": "street",
+   "medianError": 0.355
   },
   {
    "kind": "house_lot",
@@ -427,12 +992,48 @@
   },
   {
    "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "IMPERIAL SOUTH MEADOWS",
+   "n": 6,
+   "birRate": 4000,
+   "matchLevel": "street",
+   "medianError": 0.364
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "BLUE ISLE",
+   "n": 1,
+   "birRate": 3500,
+   "matchLevel": "barangay",
+   "medianError": 0.407
+  },
+  {
+   "kind": "house_lot",
    "town": "PADRE GARCIA",
    "name": "Marmaine Ville II Subdivision",
    "n": 1,
    "birRate": 7000,
    "matchLevel": "street",
    "medianError": 0.428
+  },
+  {
+   "kind": "vacant_lot",
+   "town": "BATANGAS CITY",
+   "name": "DE CLARO-PUNZALAN COMPOUND",
+   "n": 1,
+   "birRate": 4000,
+   "matchLevel": "street",
+   "medianError": 0.464
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "ROYALE HOMES",
+   "n": 1,
+   "birRate": 4500,
+   "matchLevel": "street",
+   "medianError": 0.503
   },
   {
    "kind": "house_lot",
@@ -442,6 +1043,15 @@
    "birRate": 4000,
    "matchLevel": "barangay",
    "medianError": 0.541
+  },
+  {
+   "kind": "house_lot",
+   "town": "LIPA CITY",
+   "name": "ACROPOLIS HEIGHTS",
+   "n": 1,
+   "birRate": 4500,
+   "matchLevel": "street",
+   "medianError": 0.548
   },
   {
    "kind": "house_lot",
@@ -469,6 +1079,24 @@
    "birRate": 14000,
    "matchLevel": "street",
    "medianError": 0.588
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "LE MOUBREZA",
+   "n": 1,
+   "birRate": 11000,
+   "matchLevel": "street",
+   "medianError": 0.603
+  },
+  {
+   "kind": "house_lot",
+   "town": "LEMERY",
+   "name": "LYNVILLE RESIDENCES LEMERY",
+   "n": 1,
+   "birRate": 6000,
+   "matchLevel": "street",
+   "medianError": 0.624
   },
   {
    "kind": "vacant_lot",
@@ -541,6 +1169,42 @@
    "birRate": 9000,
    "matchLevel": "street",
    "medianError": 1.293
+  },
+  {
+   "kind": "house_lot",
+   "town": "NASUGBU",
+   "name": "ACM WOODSTOCK HOMES",
+   "n": 1,
+   "birRate": 6500,
+   "matchLevel": "barangay",
+   "medianError": 1.32
+  },
+  {
+   "kind": "house_lot",
+   "town": "STO. TOMAS CITY",
+   "name": "TOWNSVILLE SUBDIVISION",
+   "n": 1,
+   "birRate": 11000,
+   "matchLevel": "street",
+   "medianError": 1.342
+  },
+  {
+   "kind": "vacant_lot",
+   "town": "LIPA CITY",
+   "name": "FIRST WORLD HOMES",
+   "n": 1,
+   "birRate": 4500,
+   "matchLevel": "street",
+   "medianError": 1.55
+  },
+  {
+   "kind": "house_lot",
+   "town": "SAN PASCUAL",
+   "name": "CAMELLA HOMES",
+   "n": 2,
+   "birRate": 6500,
+   "matchLevel": "street",
+   "medianError": 1.55
   }
  ],
  "skipped": []
