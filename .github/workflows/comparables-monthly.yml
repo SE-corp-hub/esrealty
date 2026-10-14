@@ -54,6 +54,11 @@ jobs:
         id: build
         run: node market-scan/comparables/build-comparables.js --raw /tmp/raw --report /tmp/report.json
 
+      # Value Guide vs the new bank prices: data/comparables/accuracy-latest.json
+      # plus a headline in history.json. Report only - it never changes a price.
+      - name: Accuracy report
+        run: node market-scan/comparables/accuracy.js --report /tmp/report.json
+
       - name: Test
         run: |
           node tests/comparables_pipeline_node.js
@@ -90,6 +95,7 @@ jobs:
               "The monthly comparables run on " + new Date().toISOString().slice(0, 10) + " needs attention.", "",
               ...r.problems.map(p => "- " + p), "",
               r.summary ? "Snapshot: " + r.summary.records + " records (" + r.summary.carriedOver + " carried over from last month), " + Math.round(r.summary.matchRate * 100) + "% matched to a BIR barangay." : "The snapshot was NOT updated.",
+              r.accuracy ? "Guide vs bank prices (project-weighted median; +0% to +25% expected): " + Object.keys(r.accuracy).map(k => k + " " + (r.accuracy[k].projectWeightedMedian >= 0 ? "+" : "") + Math.round(r.accuracy[k].projectWeightedMedian * 100) + "%").join(", ") + ". Details: data/comparables/accuracy-latest.json" : "",
               ""
             ];
             if (bdo) lines.push(

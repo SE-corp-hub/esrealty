@@ -317,13 +317,34 @@ First snapshot (2026-10-14): 108 parsed (BDO 96 as of 10 Oct, BPI 12),
    an implied building value per sqm; a drifting median flags the 16,000/sqm rate
    for review.
 
+### First accuracy reading (2026-10-14, calculation 2026.10.7)
+
+Guide vs bank prices, project-weighted median (each project counts once):
+**house & lot +8%** (25 projects, plain median +2%), **vacant lot +17%** (13
+projects). Bank "as is" prices usually sit below resale, so a resale-aimed guide
+landing 0-25% above them is where it should be. The plain vacant-lot median
+(+67%) is one subdivision: 46 Plantacion Meridienne lots in Cumba, Lipa.
+
+The spread is the branded-development effect (step 4 above), in both directions:
+
+| Over the bank price | | Under the bank price | |
+|---|---|---|---|
+| GC Berberabe, Batangas City (street BIR 9,000) | +129% | Terrazas de Punta Fuego, Nasugbu (18,000) | -50% |
+| Rancho Vista, Sto. Tomas (9,000) | +74% | Canyon Woods, Laurel (barangay 3,000) | -41% |
+| Plantacion Meridienne, Lipa (barangay 4,000) | +67% | Hacienda Sta. Monica, Lipa (4,000) | -18% |
+
+Resort developments priced off a low barangay rate come out low; ordinary
+subdivisions with a high street rate come out high. That is input for stage F
+(reviewed, town/project-level calibration), not something to change from one
+month of bank prices.
+
 ### Stages and acceptance
 
 | Stage | Done when |
 |---|---|
 | A. BDO + BPI collectors, build script, manual run | **done 2026-10-14**: 107 records, 100% barangay match, no personal data. Security Bank: manual rows only (403) |
 | B. Monthly workflow + failure issues | built 2026-10-14; done when two monthly runs have committed snapshots |
-| C. Accuracy test on live snapshot | replaces the fixed fixture; per-town report committed each month |
+| C. Accuracy test on live snapshot | **done 2026-10-14**: `market-scan/comparables/accuracy.js` runs monthly after the build and commits `data/comparables/accuracy-latest.json` (by kind, town, source and project) plus a headline per month in `history.json`; issue when a kind's project-weighted median leaves -15%..+35% or moves 15+ points in a month. The resale fixture test stays as the CI guard: bank prices are a different price type, so they report, not gate |
 | D. Evidence card on the result page | **done 2026-10-14**: "Bank listings near you" in the Market evidence group - town count, barangay count, median per sqm with the ±% cluster, this guide's per-sqm against it, and up to 6 nearest records with source, price type, date, tag and link. Display only (`ESREALTY_EVIDENCE.bankNearby`); a test asserts computeEstimate never reads it |
 | E. SSS + Pag-IBIG (incl. winning bids) | completed-price records tracked separately |
 | F. Calibration PRs | first reviewed calibration merged for a town with ≥10 lot records |

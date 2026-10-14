@@ -138,7 +138,12 @@
      "n": 2,
      "medianPricePerSqm": 20000
     }
-   ]
+   ],
+   "accuracy": {
+    "house_lot": 0.083,
+    "vacant_lot": 0.166
+   },
+   "accuracyCalculationVersion": "2026.10.7"
   }
  ]
 }

@@ -12,6 +12,13 @@ Runs by itself on the 1st of every month (`.github/workflows/comparables-monthly
 
 ## What gets written
 
+- `data/comparables/accuracy-latest.json` - the Value Guide run on every
+  house, townhouse and vacant-lot record (`accuracy.js`): error by kind, town,
+  bank and project. The headline is the **project-weighted** median (each
+  project counts once). Bank prices usually sit below resale, so +0% to +25%
+  is expected. It never changes a price.
+
+
 - `data/comparables/batangas-latest.json` - **replaced in full every run.**
   Last month's listings are deleted, so a property that was sold or withdrawn
   simply disappears. Exception: a source that *failed* this month keeps its

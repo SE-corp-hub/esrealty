@@ -256,6 +256,44 @@ test("result page: bank listings near the subject, ranked and summarised (displa
   assert.ok(!/bankComparables|bankNearby/.test(compute), "computeEstimate must not read bank listings");
 });
 
+test("accuracy: project-weighted, banded, and a month-over-month alert", async () => {
+  const ACC = require(path.join(ROOT, "market-scan/comparables/accuracy.js"));
+  const EST = ACC.loadEstimator(ROOT); /* installs the file-system fetch the estimator loads its data with */
+  const opts = area => ({ purpose: "selling", type: "vacant_lot", municipality: "LIPA CITY", barangay: "CUMBA", streetKey: "", allOther: true,
+    classification: "RR", area, saleContext: "private-resale", landMethod: "factor", features: [], floorArea: 0, construction: "mixed_chb", floors: "1", ageBand: "6-10" });
+  const model = (await EST.estimate(opts(200))).total;
+  assert.ok(model > 0);
+  const lot = (project, factor, i) => ({ id: "t:" + project + i, source: "bdo", kind: "vacant_lot", municipality: "LIPA CITY", barangay: "CUMBA", streetKey: null,
+    project, lotArea: 200, floorArea: 0, price: Math.round(model / factor), pricePerSqmLot: 1, birRate: 4000, matchLevel: "barangay" });
+  /* one big project priced at half the guide (+100% error) and five single lots at the guide (0%) */
+  const month = (bigFactor, today) => {
+    const records = Array.from({ length: 10 }, (_, i) => lot("Big Estate", bigFactor, i)).concat(["A", "B", "C", "D", "E"].map(p => lot("Project " + p, 1, 0)));
+    return { snap: { month: today.slice(0, 7), records }, today };
+  };
+  const ws = workspace();
+  const write = m => {
+    fs.writeFileSync(path.join(ws.out, "batangas-latest.json"), JSON.stringify(m.snap));
+    const h = fs.existsSync(path.join(ws.out, "history.json")) ? JSON.parse(fs.readFileSync(path.join(ws.out, "history.json"))) : { months: [] };
+    h.months.push({ month: m.snap.month });
+    fs.writeFileSync(path.join(ws.out, "history.json"), JSON.stringify(h));
+  };
+  let m = month(2, "2026-10-14"); write(m);
+  let res = await ACC.accuracy({ root: ROOT, dir: ws.out, today: m.today });
+  const o = res.report.overall.vacant_lot;
+  assert.strictEqual(o.n, 15);
+  assert.strictEqual(o.projects, 6);
+  assert.ok(Math.abs(o.median - 1) < 0.01, "plain median is dominated by the big project");
+  assert.ok(Math.abs(o.projectWeightedMedian) < 0.01, "project-weighted median is not");
+  assert.deepStrictEqual(res.problems, []);
+  assert.ok(Math.abs(JSON.parse(fs.readFileSync(path.join(ws.out, "history.json"))).months[0].accuracy.vacant_lot) < 0.01, "headline kept in history");
+  assert.ok(fs.existsSync(path.join(ws.out, "accuracy-latest.json")));
+  /* next month every project is priced 40% under the guide: out of band and a big move */
+  m = month(1 / 0.6, "2026-11-01"); m.snap.records.forEach(r => { r.price = Math.round(model * 0.6); }); write(m);
+  res = await ACC.accuracy({ root: ROOT, dir: ws.out, today: m.today });
+  assert.ok(res.problems.some(p => /vacant_lot guide vs bank prices \+67%.*outside -15% to \+35%/.test(p)), JSON.stringify(res.problems));
+  assert.ok(res.problems.some(p => /vacant_lot moved from \+0% last month to \+67%/.test(p)), JSON.stringify(res.problems));
+});
+
 test("helpers: property kinds and lot/block keys", () => {
   assert.strictEqual(BUILD.kindOf("Residential - House & Lot"), "house_lot");
   assert.strictEqual(BUILD.kindOf("Residential - Vacant Lot"), "vacant_lot");
