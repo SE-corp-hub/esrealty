@@ -1,4 +1,12 @@
 {
  "note": "Reviewed town corrections to residential land (plan stage F). Applied by js/estimator.js. Changed only by merging a calibration pull request opened by the monthly comparables workflow (market-scan/comparables/calibrate.js).",
- "towns": {}
+ "towns": {
+  "LIPA CITY": {
+   "residentialLandFactor": 0.959,
+   "month": "2026-10",
+   "records": 49,
+   "projects": 4,
+   "basis": "median of project medians of bank/Pag-IBIG lot price x 1.1 / guide land, shrunk by 0.286, from 1"
+  }
+ }
 }
