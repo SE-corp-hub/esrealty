@@ -1,0 +1,177 @@
+{
+ "note": "Town land-factor proposals from bank and Pag-IBIG vacant-lot prices (market-scan/comparables/calibrate.js). Suggestions only: they reach data/calibration.json through a pull request that a person merges.",
+ "generatedOn": "2026-10-14",
+ "snapshotMonth": "2026-10",
+ "rules": {
+  "BANK_GAP": 0.1,
+  "MIN_RECORDS": 10,
+  "MIN_PROJECTS": 3,
+  "PRIOR": 10,
+  "CAP": [
+   0.75,
+   1.25
+  ],
+  "MIN_CHANGE": 0.03
+ },
+ "proposals": [
+  "LIPA CITY"
+ ],
+ "towns": [
+  {
+   "town": "BATANGAS CITY",
+   "records": 7,
+   "projects": 2,
+   "current": 1,
+   "townRatio": 0.615,
+   "weight": 0.167,
+   "proposed": 0.936,
+   "change": -0.064,
+   "status": "not enough records",
+   "projectDetail": [
+    {
+     "name": "BERBERABE",
+     "n": 6,
+     "ratio": 0.48
+    },
+    {
+     "name": "CLARO PUNZALAN",
+     "n": 1,
+     "ratio": 0.751
+    }
+   ]
+  },
+  {
+   "town": "LAUREL",
+   "records": 11,
+   "projects": 1,
+   "current": 1,
+   "townRatio": 1.877,
+   "weight": 0.091,
+   "proposed": 1.08,
+   "change": 0.08,
+   "status": "not enough records",
+   "projectDetail": [
+    {
+     "name": "CANYON WOODS",
+     "n": 11,
+     "ratio": 1.877
+    }
+   ]
+  },
+  {
+   "town": "LIPA CITY",
+   "records": 49,
+   "projects": 4,
+   "current": 1,
+   "townRatio": 0.857,
+   "weight": 0.286,
+   "proposed": 0.959,
+   "change": -0.041,
+   "status": "proposed",
+   "projectDetail": [
+    {
+     "name": "PLANTACION MERIDIENNE",
+     "n": 46,
+     "ratio": 0.658
+    },
+    {
+     "name": "FIRST WORLD",
+     "n": 1,
+     "ratio": 0.431
+    },
+    {
+     "name": "NUVISTA LIPA BELLE",
+     "n": 1,
+     "ratio": 1.056
+    },
+    {
+     "name": "HACIENDA MONICA",
+     "n": 1,
+     "ratio": 1.334
+    }
+   ]
+  },
+  {
+   "town": "NASUGBU",
+   "records": 1,
+   "projects": 1,
+   "current": 1,
+   "townRatio": 2.188,
+   "weight": 0.091,
+   "proposed": 1.108,
+   "change": 0.108,
+   "status": "not enough records",
+   "projectDetail": [
+    {
+     "name": "TERRAZAS PUNTA FUEGO",
+     "n": 1,
+     "ratio": 2.188
+    }
+   ]
+  },
+  {
+   "town": "SAN PASCUAL",
+   "records": 2,
+   "projects": 1,
+   "current": 1,
+   "townRatio": 0.819,
+   "weight": 0.091,
+   "proposed": 0.984,
+   "change": -0.016,
+   "status": "not enough records",
+   "projectDetail": [
+    {
+     "name": "AVIDA SETTINGS BATANGAS",
+     "n": 2,
+     "ratio": 0.819
+    }
+   ]
+  },
+  {
+   "town": "STO. TOMAS CITY",
+   "records": 5,
+   "projects": 3,
+   "current": 1,
+   "townRatio": 0.953,
+   "weight": 0.231,
+   "proposed": 0.989,
+   "change": -0.011,
+   "status": "not enough records",
+   "projectDetail": [
+    {
+     "name": "RANCHO VISTA",
+     "n": 3,
+     "ratio": 0.633
+    },
+    {
+     "name": "INDIVIDUAL",
+     "n": 1,
+     "ratio": 1.088
+    },
+    {
+     "name": "RAFAEL",
+     "n": 1,
+     "ratio": 0.953
+    }
+   ]
+  },
+  {
+   "town": "TANAUAN CITY",
+   "records": 2,
+   "projects": 1,
+   "current": 1,
+   "townRatio": 1.141,
+   "weight": 0.091,
+   "proposed": 1.013,
+   "change": 0.013,
+   "status": "not enough records",
+   "projectDetail": [
+    {
+     "name": "PLANTATION",
+     "n": 2,
+     "ratio": 1.141
+    }
+   ]
+  }
+ ]
+}
