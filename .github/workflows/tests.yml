@@ -286,6 +286,9 @@ jobs:
       - name: e2e value_guide_simplify_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test value_guide_simplify_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test value_guide_simplify_e2e
 
+      - name: e2e services_funnel_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test services_funnel_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test services_funnel_e2e
+
 # Gate: the list above was hand-maintained, which is how 35 suites came
       # to be skipped without anyone noticing. Assert coverage so a new suite
       # cannot be added without a decision about CI.
