@@ -864,30 +864,84 @@
       '<div class="sf-featured-more"><a class="sf-outline-btn" href="#/search">See all properties</a></div></section>';
   }
 
-  function home() {
-    return shell(
-      '<section class="sf-est-hero" id="sf-intro">' +
+  /* Home hero: one job - get the visitor to try the value guide.
+   * Copy (eyebrow, question, one-line promise) and a quick-estimate card that
+   * shows a town-wide starting figure the moment a town is chosen; its "Start
+   * My Value Guide" button carries the answers into the full calculator below.
+   * Live counts from the data files back the promise. Browsing is a quiet
+   * text link, so the hero has one primary action. On wide screens the copy
+   * and proof sit left of the card; on phones the card follows the headline. */
+  function homeHero() {
+    var EST = typeof window.ESREALTY_EST === "object" ? window.ESREALTY_EST : null;
+    var calculator = typeof window.ESREALTY_GUIDE_UI === "object" && window.ESREALTY_GUIDE_UI.publicMarkup
+      ? window.ESREALTY_GUIDE_UI.publicMarkup()
+      : (EST && EST.cardSection ? EST.cardSection() : '<section class="sf-section sf-est" id="sf-estimator" data-est-root><div class="sf-est-card" data-est-card><p class="sf-est-empty">Loading the value guide…</p></div></section>');
+    var quick = EST && EST.quickMarkup
+      ? EST.quickMarkup()
+      : '<div class="sf-hero-actions sf-est-hero-actions"><a class="sf-hero-btn" href="#sf-estimator" data-est-services>Start My Value Guide</a></div>';
+    var stats = EST && EST.quickStatsHtml ? EST.quickStatsHtml() : '<li><b>Free</b><span>planning guide</span></li><li><b>No account</b><span>needed to start</span></li><li><b>BIR</b><span>reference shown separately</span></li>';
+    return '<section class="sf-est-hero" id="sf-intro"><div class="sf-est-hero-grid">' +
       '<div class="sf-est-hero-copy sf-reveal">' +
       '<p class="sf-eyebrow">BATANGAS VALUE GUIDE</p>' +
       '<h1>What could your <em>property be worth?</em></h1>' +
-      '<p class="sf-est-hero-lede">Explore available properties, or start the free guide for your Batangas property.</p>' +
-      '<div class="sf-hero-actions sf-est-hero-actions"><a class="sf-hero-btn" href="#sf-estimator" data-est-services>Start My Value Guide →</a><a class="sf-hero-link" href="#/search">Browse Properties →</a></div>' +
-      '<div class="sf-est-proof"><span><b>Free</b> planning guide</span><span><b>No account</b> to start</span><span><b>BIR reference</b> shown separately</span></div>' +
-      '<p class="sf-est-hero-bir-note">Current guide coverage: Batangas. SEA ESTATES is independent of the BIR.<span class="sf-home-disclaimer">A planning guide, not a certified appraisal.</span></p>' +
+      '<p class="sf-est-hero-lede">Pick your town for an instant starting figure. The free full guide adds your street’s BIR zonal value, a planning range and nearby bank listings.</p>' +
       '</div>' +
-      (typeof window.ESREALTY_GUIDE_UI === "object" && window.ESREALTY_GUIDE_UI.publicMarkup
-        ? window.ESREALTY_GUIDE_UI.publicMarkup()
-        : (typeof window.ESREALTY_EST === "object" && window.ESREALTY_EST.cardSection ? window.ESREALTY_EST.cardSection() : '<section class="sf-section sf-est" id="sf-estimator" data-est-root><div class="sf-est-card" data-est-card><p class="sf-est-empty">Loading the value guide…</p></div></section>')) +
-      '</section>' +
+      quick +
+      '<div class="sf-est-hero-proof">' +
+      '<ul class="sf-est-proof" aria-label="What the guide is built on">' + stats + '</ul>' +
+      '<p class="sf-est-hero-bir-note">Current guide coverage: Batangas. SEA ESTATES is independent of the BIR.<span class="sf-home-disclaimer">A planning guide, not a certified appraisal.</span></p>' +
+      '<p class="sf-est-hero-browse">Looking to buy instead? <a href="#/search">Browse properties →</a></p>' +
+      '</div>' +
+      '</div>' + calculator + '</section>';
+  }
 
-      '<section class="sf-section sf-guide-summary"><div class="sf-section-head sf-reveal"><div><p class="sf-eyebrow">YOUR VALUE GUIDE</p><h2 class="sf-blur"><span>What</span> <span>your</span> <span>guide</span> <span>includes.</span></h2></div><p>Understand the reference, review the estimate, and decide what to check next.</p></div>' +
-      '<div class="sf-guide-summary-grid"><article class="sf-guide-summary-card sf-reveal sf-reveal-up"><span class="sf-gsum-ico" aria-hidden="true">' + GSUM_ICONS[0] + '</span><b>01</b><h3>BIR tax reference</h3><p>The published zonal rate for your selected location and classification. Shown separately from the estimate.</p></article>' +
-      '<article class="sf-guide-summary-card sf-reveal sf-reveal-up"><span class="sf-gsum-ico" aria-hidden="true">' + GSUM_ICONS[1] + '</span><b>02</b><h3>Planning estimate</h3><p>A factor-based estimate with its range and calculation details. Comparable asking prices are context, not calculation inputs.</p></article>' +
-      '<article class="sf-guide-summary-card sf-reveal sf-reveal-up"><span class="sf-gsum-ico" aria-hidden="true">' + GSUM_ICONS[2] + '</span><b>03</b><h3>A practical next step</h3><p>Review the details, ask our team a question, or request a formal appraisal consultation.</p></article></div></section>' +
+  /* What the visitor gets, shown rather than listed: an example report built
+   * by the same estimator (filled in by js/estimator.js once the data loads),
+   * beside the three parts of every guide. Replaces the old three-card summary
+   * and the separate "How it works" steps, which said the same thing twice. */
+  function guideSummarySection() {
+    var points = [
+      ["BIR tax reference", "The published zonal rate for your street and classification, shown separately from the estimate."],
+      ["Planning estimate", "A central figure with a likely range and the land and house split. Bank listings are context, never inputs."],
+      ["A practical next step", "Ask our team a question, compare nearby listings or request a formal appraisal."]
+    ];
+    var sample =
+      '<figure class="sf-guide-sample sf-reveal" aria-labelledby="sf-sample-cap">' +
+      '<div class="sf-sample-card" aria-hidden="true">' +
+      '<div class="sf-sample-top"><span class="sf-sample-tag">Example report</span><span class="sf-sample-for" data-sample="for">150 sqm house &amp; lot · Lipa City</span></div>' +
+      '<span class="sf-sample-label">Estimated property value</span>' +
+      '<strong class="sf-sample-value" data-sample="value">₱ —</strong>' +
+      '<div class="sf-quick-range"><span data-sample="pos" style="left:30%"></span></div>' +
+      '<div class="sf-sample-range"><span data-sample="low">—</span><span>Planning range</span><span data-sample="high">—</span></div>' +
+      '<div class="sf-sample-split"><div><span>Land</span><b data-sample="land">—</b></div><div><span>House</span><b data-sample="house">—</b></div></div>' +
+      '<div class="sf-sample-rows">' +
+      '<div><span>BIR zonal reference</span><b data-sample="bir">—</b></div>' +
+      '<div><span>Bank &amp; Pag-IBIG listings in town</span><b data-sample="listings">—</b></div>' +
+      '</div></div>' +
+      '<figcaption id="sf-sample-cap">Example only, for a 150 sqm house and lot in Lipa City using the town-wide BIR reference. Your street and house change the figures.</figcaption>' +
+      '</figure>';
+    return '<section class="sf-section sf-guide-summary" id="sf-guide-summary"><div class="sf-guide-split">' +
+      '<div class="sf-guide-copy sf-reveal">' +
+      '<p class="sf-eyebrow">YOUR VALUE GUIDE</p><h2>What your guide includes.</h2>' +
+      '<p class="sf-guide-lede">One clear page, every number explained. Three short steps: location, house details, report.</p>' +
+      '</div>' +
+      sample +
+      '<div class="sf-guide-body sf-reveal">' +
+      '<ul class="sf-guide-points">' + points.map(function (p, i) {
+        return '<li><span class="sf-gsum-ico" aria-hidden="true">' + GSUM_ICONS[i] + '</span><div><h3>' + p[0] + '</h3><p>' + p[1] + '</p></div></li>';
+      }).join("") + '</ul>' +
+      '<div class="sf-guide-cta"><a class="sf-hero-btn" href="#sf-estimator" data-est-services>Start My Value Guide</a><span>Free · about 2 minutes</span></div>' +
+      '</div>' +
+      '</div></section>';
+  }
+
+  function home() {
+    return shell(
+      homeHero() +
+      guideSummarySection() +
       featuredSection() +
       '<section class="sf-home-project sf-reveal" aria-labelledby="sf-home-project-title"><div><p class="sf-eyebrow">COMING NEXT</p><h2 id="sf-home-project-title">Project B.T. <span class="sf-home-project-status">Coming Soon</span></h2><p>Details will be shared at launch. Leave your email on the project page to hear when it opens.</p></div><a class="sf-outline-btn" href="#/project-bt">See Project B.T. →</a></section>' +
       servicesSection() +
-      '<section class="sf-process sf-process-compact" id="sf-process"><div class="sf-section-head sf-reveal"><div><p class="sf-eyebrow">HOW IT WORKS</p><h2>From property details to <em>your next step.</em></h2></div><p>Start with what you know. Review the guide before making a decision.</p></div><div class="sf-process-steps"><article class="sf-process-step sf-reveal sf-reveal-up"><b>01</b><h3>Enter the details</h3><p>Choose the location, classification and lot area. Add house details where needed.</p></article><article class="sf-process-step sf-reveal sf-reveal-up"><b>02</b><h3>Review your guide</h3><p>Check the BIR reference, planning estimate, source match and assumptions.</p></article><article class="sf-process-step sf-reveal sf-reveal-up"><b>03</b><h3>Decide what’s next</h3><p>Explore properties or ask our team about selling, buying or a formal valuation.</p></article></div></section>' +
 
       '<section class="sf-cta" id="sf-contact"><div class="sf-cta-band"><div class="sf-reveal"><p class="sf-eyebrow">LET’S TALK</p><h2>What are you <em>planning next?</em></h2><p>Buying, selling, renting or reviewing a property? Share the location and your questions with our team.</p><div class="sf-contact-details">' + contactDetails() + '</div></div>' +
       '<form class="sf-cta-form sf-reveal sf-reveal-right" data-sf-consult><label>Full name<input name="name" required maxlength="160" autocomplete="name" placeholder="Your name"></label><label>Email<input type="email" name="email" required maxlength="254" autocomplete="email" placeholder="you@email.com"></label><label>Phone<input name="phone" type="tel" required maxlength="50" autocomplete="tel" placeholder="Mobile number"></label><label>What would you like help with?<textarea name="message" rows="2" maxlength="2000" placeholder="Property location, your plans, and any questions..."></textarea></label><label class="sf-consent"><input type="checkbox" name="consent" required><span>I consent to SEA ESTATES contacting me about this request. See our <a href="#/privacy">Privacy Notice</a>.</span></label><button type="submit">Ask our team →</button><p class="sf-form-status" aria-live="polite"></p></form></div></section>'

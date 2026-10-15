@@ -15,9 +15,10 @@ async function until(fn) { for (let i = 0; i < 80; i++) { if (fn()) return true;
     check("canonical logo", [...site.querySelectorAll(".sf-brand-mark")].every(el => el.textContent === "S.E"));
     check("original accent retained", getComputedStyle(site).getPropertyValue("--sf-accent").trim().toLowerCase() === "#b4521f");
     check("full calculator visible on Home", document.querySelector("[data-est-muni]").getBoundingClientRect().height >= 40 && !document.querySelector("#sea-guide-disclosure"));
-    check("original services/contact/summary retained", [".sf-services", ".sf-guide-summary", "#sf-contact", ".sf-process"].every(s => site.querySelector(s)));
+    /* .sf-process ("How it works") was folded into .sf-guide-summary on 2026-10-15: the two repeated each other. */
+    check("original services/contact/summary retained", [".sf-services", ".sf-guide-summary", "#sf-contact"].every(s => site.querySelector(s)));
     check("guide coverage stated", /Current guide coverage: Batangas/.test(site.textContent));
-    check("browse and estimate actions present", !!site.querySelector('.sf-est-hero-actions a[href="#/search"]') && /Start My Value Guide/.test(site.querySelector('.sf-est-hero-actions [data-est-services]').textContent));
+    check("browse and estimate actions present", !!site.querySelector('.sf-est-hero a[href="#/search"]') && /Start My Value Guide/.test(site.querySelector('.sf-est-hero-actions [data-est-services]').textContent));
     check("actions before supporting proof text", !!(site.querySelector(".sf-est-hero-actions").compareDocumentPosition(site.querySelector(".sf-est-proof")) & Node.DOCUMENT_POSITION_FOLLOWING));
     const featured = site.querySelector(".sf-featured"), services = site.querySelector(".sf-services");
     check("available listings before service catalogue", !featured || !!(featured.compareDocumentPosition(services) & Node.DOCUMENT_POSITION_FOLLOWING));

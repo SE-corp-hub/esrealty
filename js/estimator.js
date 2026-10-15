@@ -2784,7 +2784,10 @@ return {
         event.preventDefault();
         var goHome = typeof location !== "undefined" && String(location.hash).indexOf("home") === -1;
         if (goHome) { location.hash = "#/home"; setTimeout(scrollToEstimator, 160); }
-        else scrollToEstimator();
+        else {
+          if (link.hasAttribute("data-quick-go")) applyQuickToGuide();
+          scrollToEstimator();
+        }
       });
     }
     if (!document.querySelector("[data-est-root]")) return;
@@ -2792,6 +2795,7 @@ return {
       if (!getCard()) return;
       if (!mountedHome) { est.screen = 1; mountedHome = true; }
       renderLayout();
+      mountQuick();
     }).catch(function () {
       var card = getCard();
       dataPromise = null;
@@ -2802,6 +2806,232 @@ return {
   function scrollToEstimator() {
     var target = document.getElementById("sf-estimator");
     if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  /* ---------------------------------------------------------- */
+  /*  Home hero quick estimate                                   */
+  /*                                                          */
+  /*  Town, property type and lot area give a town-wide starting */
+  /*  figure the moment a town is chosen. It runs the SAME       */
+  /*  estimate() the full guide uses, with the barangay left     */
+  /*  blank so the BIR reference falls back to the municipality  */
+  /*  median, and the full guide's defaults for everything else. */
+  /*  "Start My Value Guide" then carries the three answers into */
+  /*  the calculator, which opens at the barangay question.      */
+  /* ---------------------------------------------------------- */
+  var quick = { municipality: "", type: "house_lot", area: 150, request: 0, result: null, loading: false, shown: 0 };
+  /* Shown before the data files arrive; replaced by the live counts. */
+  var QUICK_STATS_FALLBACK = { towns: 34, streets: 3710 };
+
+  function quickMuniOptions() {
+    if (!DATA || !DATA.index) return "";
+    return DATA.index.municipalities.slice().sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); }).map(function (m) {
+      return '<option value="' + esc(m.name) + '"' + (m.name === quick.municipality ? " selected" : "") + ">" + esc(titleCase(m.name)) + "</option>";
+    }).join("");
+  }
+
+  function quickStats() {
+    var counts = DATA && DATA.manifest && DATA.manifest.counts || {};
+    var bank = DATA && DATA.bankComparables;
+    var listings = bank && bank.records && !bank.unavailable ? bank.records.length : 0;
+    var month = bank && /^\d{4}-\d{2}$/.test(bank.month || "") ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(bank.month.slice(5)) - 1] + " " + bank.month.slice(0, 4) : "";
+    return {
+      towns: counts.municipalities || (DATA && DATA.index && DATA.index.municipalities ? DATA.index.municipalities.length : QUICK_STATS_FALLBACK.towns),
+      streets: counts.streets || QUICK_STATS_FALLBACK.streets,
+      listings: listings,
+      month: month
+    };
+  }
+
+  function quickStatsHtml() {
+    var s = quickStats();
+    return '<li><b data-est-stat="towns">' + fmt(s.towns) + '</b><span>towns and cities covered</span></li>' +
+      '<li><b data-est-stat="streets">' + fmt(s.streets) + '</b><span>BIR street rates</span></li>' +
+      '<li><b data-est-stat="listings">' + (s.listings ? fmt(s.listings) : "Monthly") + '</b><span data-est-stat="listings-label">' + (s.listings ? "bank &amp; Pag‑IBIG listings" + (s.month ? ", " + esc(s.month) : "") : "bank &amp; Pag‑IBIG listings") + '</span></li>';
+  }
+
+  function compactMoney(n) {
+    n = Number(n) || 0;
+    if (n >= 1e6) return "₱" + (Math.round(n / 1e4) / 100).toFixed(2) + "M";
+    return "₱" + fmt(Math.round(n / 1e3)) + "K";
+  }
+
+  function quickRound(n) { return Math.round((Number(n) || 0) / 1e4) * 1e4; }
+
+  function quickResultHtml() {
+    var r = quick.result;
+    if (!quick.municipality || !r) {
+      return '<span class="sf-quick-caption">Your starting figure</span>' +
+        '<strong class="sf-quick-figure is-idle" aria-hidden="true">₱ —</strong>' +
+        '<div class="sf-quick-range is-idle" aria-hidden="true"><span></span></div>' +
+        '<p class="sf-quick-range-text is-idle" aria-hidden="true"><span>₱ —</span><span class="sf-quick-range-mid">Likely range</span><span>₱ —</span></p>' +
+        '<p class="sf-quick-note">' + (quick.municipality && !(quick.area >= 20 && quick.area <= 100000) ? "Enter a lot area between 20 and 100,000 sqm." : "Choose your town to see a starting figure for your property.") + '</p>';
+    }
+    if (r.available === false || !(r.marketGuideEstimate > 0)) {
+      return '<span class="sf-quick-caption">' + esc(titleCase(quick.municipality)) + '</span>' +
+        '<p class="sf-quick-note">A quick figure is not available for this town. The full guide shows what the BIR schedule covers there.</p>';
+    }
+    var span = r.high - r.low, pos = span > 0 ? Math.max(4, Math.min(96, (r.marketGuideEstimate - r.low) / span * 100)) : 50;
+    return '<span class="sf-quick-caption">Starting figure · ' + esc(titleCase(r.municipality)) + '</span>' +
+      '<strong class="sf-quick-figure" data-quick-figure data-value="' + quickRound(r.marketGuideEstimate) + '">' + money(quickRound(r.marketGuideEstimate)) + '</strong>' +
+      '<div class="sf-quick-range" aria-hidden="true"><span style="left:' + pos.toFixed(1) + '%"></span></div>' +
+      '<p class="sf-quick-range-text"><span>' + compactMoney(r.low) + '</span><span class="sf-quick-range-mid">Likely range</span><span>' + compactMoney(r.high) + '</span></p>' +
+      '<p class="sf-quick-note">Town-wide figure for a ' + fmt(r.area) + ' sqm lot' + (r.improvement > 0 ? ' with a ' + fmt(r.floorArea) + ' sqm house under 5 years old' : '') + '. Your barangay, street and house details sharpen it.</p>';
+  }
+
+  function quickSay() {
+    var r = quick.result;
+    if (!quick.municipality || !r || r.available === false || !(r.marketGuideEstimate > 0)) return "";
+    return "Starting figure for " + titleCase(r.municipality) + ": " + money(quickRound(r.marketGuideEstimate)) + ". Likely range " + compactMoney(r.low) + " to " + compactMoney(r.high) + ".";
+  }
+
+  function quickMarkup() {
+    return '<form class="sf-quick" data-est-quick novalidate aria-labelledby="sf-quick-title">' +
+      '<div class="sf-quick-head"><h2 id="sf-quick-title">Quick estimate</h2><span class="sf-quick-tag">Takes 10 seconds</span></div>' +
+      '<label class="sf-quick-field"><span class="sf-quick-label">Town or city</span>' +
+        '<select data-quick-muni><option value="">Choose your town</option>' + quickMuniOptions() + '</select></label>' +
+      '<div class="sf-quick-row">' +
+        '<fieldset class="sf-quick-field"><legend class="sf-quick-label">Property</legend><div class="sf-quick-seg">' +
+          '<label><input type="radio" name="sf-quick-type" value="house_lot" data-quick-type' + (quick.type === "house_lot" ? " checked" : "") + '><span>House &amp; lot</span></label>' +
+          '<label><input type="radio" name="sf-quick-type" value="vacant_lot" data-quick-type' + (quick.type === "vacant_lot" ? " checked" : "") + '><span>Lot only</span></label>' +
+        '</div></fieldset>' +
+        '<label class="sf-quick-field"><span class="sf-quick-label">Lot area</span><span class="sf-quick-unit">' +
+          '<input data-quick-area type="number" inputmode="numeric" min="20" max="100000" step="1" value="' + esc(quick.area || "") + '" aria-describedby="sf-quick-unit"><i id="sf-quick-unit">sqm</i></span></label>' +
+      '</div>' +
+      '<div class="sf-quick-result" data-quick-result>' + quickResultHtml() + '</div>' +
+      '<p class="sf-visually-hidden" aria-live="polite" data-quick-say></p>' +
+      '<div class="sf-hero-actions sf-est-hero-actions"><a class="sf-hero-btn sf-quick-go" href="#sf-estimator" data-est-services data-quick-go>Start My Value Guide</a></div>' +
+      '<p class="sf-quick-meta">Free · No account · About 2 minutes</p>' +
+      '</form>';
+  }
+
+  function quickReducedMotion() {
+    try { return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return true; }
+  }
+
+  function renderQuick(animate) {
+    var form = document.querySelector("[data-est-quick]");
+    if (!form) return;
+    var box = form.querySelector("[data-quick-result]");
+    if (!box) return;
+    box.innerHTML = quickResultHtml();
+    box.classList.toggle("is-loading", !!quick.loading);
+    var say = form.querySelector("[data-quick-say]");
+    if (say && !quick.loading) say.textContent = quickSay();
+    var fig = box.querySelector("[data-quick-figure]");
+    if (!fig) { quick.shown = 0; return; }
+    var to = Number(fig.getAttribute("data-value")) || 0, from = quick.shown || to * 0.7;
+    quick.shown = to;
+    if (!animate || quickReducedMotion() || !window.requestAnimationFrame || from === to) return;
+    var start = 0, duration = 700;
+    fig.textContent = money(quickRound(from));
+    window.requestAnimationFrame(function step(t) {
+      if (!start) start = t;
+      var k = Math.min(1, (t - start) / duration), eased = 1 - Math.pow(1 - k, 3);
+      if (!fig.isConnected) return;
+      fig.textContent = money(k < 1 ? Math.round((from + (to - from) * eased) / 1e3) * 1e3 : to);
+      if (k < 1) window.requestAnimationFrame(step);
+    });
+  }
+
+  function runQuick() {
+    var req = ++quick.request;
+    if (!quick.municipality || !(quick.area >= 20 && quick.area <= 100000)) {
+      quick.result = null; quick.loading = false; renderQuick(false); return;
+    }
+    quick.loading = true;
+    var box = document.querySelector("[data-est-quick] [data-quick-result]");
+    if (box) box.classList.add("is-loading");
+    estimate({
+      purpose: "Selling", type: quick.type, municipality: quick.municipality, barangay: "", streetKey: "",
+      classification: "RR", area: quick.area, landMethod: "factor", saleContext: "private-resale",
+      floorArea: 0, floors: "1", ageBand: "0-5", construction: "mixed_chb", features: []
+    }).then(function (r) {
+      if (req !== quick.request) return;
+      quick.loading = false; quick.result = r; renderQuick(true);
+    }).catch(function () {
+      if (req !== quick.request) return;
+      quick.loading = false; quick.result = { available: false }; renderQuick(false);
+    });
+  }
+
+  /* The home page's example report: a real run of the estimator for a fixed,
+     labelled example (150 sqm house and lot, Lipa City, town-wide reference). */
+  var SAMPLE = { municipality: "LIPA CITY", type: "house_lot", area: 150 };
+  var sampleResult = null;
+  function fillSample() {
+    var box = document.querySelector(".sf-guide-sample");
+    if (!box) return;
+    var paint = function (r) {
+      if (!r || r.available === false || !(r.marketGuideEstimate > 0)) { box.hidden = true; return; }
+      var set = function (k, v) { var el = box.querySelector('[data-sample="' + k + '"]'); if (el) el.textContent = v; };
+      set("value", money(quickRound(r.marketGuideEstimate)));
+      set("low", compactMoney(r.low)); set("high", compactMoney(r.high));
+      set("land", compactMoney(r.landValue)); set("house", compactMoney(r.improvement));
+      set("bir", r.birZonalRatePerSqm > 0 ? money(r.birZonalRatePerSqm) + "/sqm" : "—");
+      var recs = DATA && DATA.bankComparables && DATA.bankComparables.records || [];
+      set("listings", fmt(recs.filter(function (x) { return x.municipality === SAMPLE.municipality; }).length));
+      var pos = box.querySelector('[data-sample="pos"]'), span = r.high - r.low;
+      if (pos && span > 0) pos.style.left = Math.max(4, Math.min(96, (r.marketGuideEstimate - r.low) / span * 100)).toFixed(1) + "%";
+    };
+    if (sampleResult) { paint(sampleResult); return; }
+    estimate({
+      purpose: "Selling", type: SAMPLE.type, municipality: SAMPLE.municipality, barangay: "", streetKey: "",
+      classification: "RR", area: SAMPLE.area, landMethod: "factor", saleContext: "private-resale",
+      floorArea: 0, floors: "1", ageBand: "0-5", construction: "mixed_chb", features: []
+    }).then(function (r) { sampleResult = r; paint(r); }).catch(function () { box.hidden = true; });
+  }
+
+  function mountQuick() {
+    fillSample();
+    var s = quickStats(), set = function (k, v) { var el = document.querySelector('[data-est-stat="' + k + '"]'); if (el) el.innerHTML = v; };
+    set("towns", fmt(s.towns)); set("streets", fmt(s.streets));
+    if (s.listings) { set("listings", fmt(s.listings)); set("listings-label", "bank &amp; Pag‑IBIG listings" + (s.month ? ", " + esc(s.month) : "")); }
+    var form = document.querySelector("[data-est-quick]");
+    if (!form || form.getAttribute("data-bound") === "1") return;
+    form.setAttribute("data-bound", "1");
+    var sel = form.querySelector("[data-quick-muni]");
+    if (sel && sel.options.length < 2) sel.insertAdjacentHTML("beforeend", quickMuniOptions());
+    if (sel) sel.addEventListener("change", function () { quick.municipality = sel.value; runQuick(); });
+    form.querySelectorAll("[data-quick-type]").forEach(function (radio) {
+      radio.addEventListener("change", function () { if (radio.checked) { quick.type = radio.value; runQuick(); } });
+    });
+    var area = form.querySelector("[data-quick-area]"), timer = 0;
+    if (area) area.addEventListener("input", function () {
+      quick.area = Number(area.value) > 0 ? Math.round(Number(area.value)) : null;
+      clearTimeout(timer); timer = setTimeout(runQuick, 250);
+    });
+    form.addEventListener("submit", function (event) { event.preventDefault(); });
+    /* the page re-rendered (route change) while a town was already chosen */
+    if (quick.municipality) runQuick();
+  }
+
+  /* Carries the hero answers into the full guide. Returns false when there is
+     nothing to carry (no town chosen), so the link simply scrolls. */
+  function applyQuickToGuide() {
+    if (!quick.municipality || !DATA || !getCard()) return false;
+    var row = municipalityRow(quick.municipality);
+    if (!row) return false;
+    est.screen = 1;
+    est.validationIssue = null;
+    est.type = quick.type;
+    if (quick.area >= 20 && quick.area <= 100000) est.area = quick.area;
+    est.municipality = row.name;
+    est.municipalitySlug = row.slug;
+    est.muniRow = row;
+    est.barangay = ""; est.streetKey = ""; est.streetLabel = ""; est.allOther = false;
+    est.result = null;
+    var slug = row.slug, ready = muniCache[slug] ? muniCache[slug] : null;
+    est.muniData = null;
+    renderLayout();
+    loadMunicipality(slug).then(function (md) {
+      if (est.municipalitySlug !== slug || est.screen !== 1) return;
+      est.muniData = md;
+      renderLayout();
+      var brgy = getCard() && getCard().querySelector("[data-est-barangay]");
+      if (brgy && brgy.focus) setTimeout(function () { try { brgy.focus({ preventScroll: true }); } catch (e) { brgy.focus(); } }, ready ? 450 : 50);
+    }).catch(function () {});
+    return true;
   }
 
   if (typeof document !== "undefined") {
@@ -2931,6 +3161,8 @@ return {
   return {
     markup: markup,
     cardSection: cardSection,
+    quickMarkup: quickMarkup,
+    quickStatsHtml: quickStatsHtml,
     mount: mount,
     core: core,
     loadData: loadData,

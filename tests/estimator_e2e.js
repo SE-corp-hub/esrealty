@@ -63,8 +63,10 @@ function setInput(sel, v) { const e = q(sel); e.value = v; e.dispatchEvent(new E
        unfiltered browse page; Batangas is still carried by the value guide,
        which is genuinely Batangas-specific (BIR zonal data), and the state
        filter remains available as a visible, removable chip. */
-    chk("homepage-secondary-browse-cta", !!q('.sf-est-hero-actions a[href="#/search"]'), "hrefs=" + Array.prototype.map.call(document.querySelectorAll('.sf-est-hero-actions a'), function (a) { return a.getAttribute('href'); }).join(','));
-    chk("homepage-secondary-cta-has-no-hidden-filter", !q('.sf-est-hero-actions a[href*="state="]'), "hero still ships an unexposed state filter");
+    /* Since 2026-10-15 browsing is a text link under the hero's proof strip;
+       the hero keeps one primary action (tests/home_quick_estimate_e2e.js). */
+    chk("homepage-secondary-browse-cta", !!q('.sf-est-hero a[href="#/search"]'), "hrefs=" + Array.prototype.map.call(document.querySelectorAll('.sf-est-hero a'), function (a) { return a.getAttribute('href'); }).join(','));
+    chk("homepage-secondary-cta-has-no-hidden-filter", !q('.sf-est-hero a[href*="state="]'), "hero still ships an unexposed state filter");
     chk("homepage-guide-summary-heading", /What your guide includes/.test(document.body.innerText), "");
     chk("screen1-rendered", !!q('[data-est-screen="1"]'), "");
     /* Task 12: the progress bar matches the reference's three steps
