@@ -277,7 +277,36 @@
     var cornerPct = opts.corner ? Number(cfg.cornerLotPct || 0) : 0;
     var proxy = proxyFactor(cfg, use);
     var base = hit.value;
-    var band = rampBandMid(cfg, use, base);
+    /* "Street not listed" on a house & lot. The barangay's ALL OTHER STREETS
+       rate stays the BIR tax reference, but as the planning base it ran low:
+       against bank and Pag-IBIG house prices for homes on no listed street (Oct
+       2026: 93 listings, 28 developments) it put the guide 12% below them, while
+       the barangay's MEDIAN listed street put it 6% above (expected +0 to +25%).
+       The lowest listed street was worse (-24%): it is often below all-other.
+       Vacant lots keep all-other - too few developments to judge. Never lowers
+       the base. */
+    var planningReference = null;
+    var typeKeyEarly = opts.type === "house_lot" ? "house_lot" : "vacant_lot";
+    if (hit.depth === 2 && typeKeyEarly === "house_lot" && landMethod === "factor") {
+      var brRow = null;
+      Object.keys(muniData.barangays || {}).forEach(function (k) { if (!brRow && normKey(k) === normKey(opts.barangay)) brRow = muniData.barangays[k]; });
+      var named = [];
+      Object.keys((brRow && brRow.streets) || {}).forEach(function (k) {
+        if (normKey(k) === "ALL STREETS") return;
+        var c = brRow.streets[k].classes && brRow.streets[k].classes[cls];
+        var v = c ? Number(c.value) : 0;
+        if (v > 0) named.push(v);
+      });
+      named.sort(function (a, b) { return a - b; });
+      if (named.length) {
+        var mid = named.length >> 1;
+        var medianStreet = named.length % 2 ? named[mid] : (named[mid - 1] + named[mid]) / 2;
+        if (medianStreet > base) planningReference = { kind: "barangay-median-street", ratePerSqm: medianStreet, birRatePerSqm: base, streets: named.length,
+          note: "Street not listed: the land estimate uses the barangay's median listed-street rate (" + named.length + " streets), not the lower all-other-streets rate. The BIR reference above still shows the all-other rate." };
+      }
+    }
+    var planningBase = planningReference ? planningReference.ratePerSqm : base;
+    var band = rampBandMid(cfg, use, planningBase);
     var adj = regionalAdj(cfg);
     var referenceVerification = referenceTools.lookup(config.governmentReferenceRegister, muniRow.rdo, muniRow.name, opts.valuationDate || new Date().toISOString().slice(0, 10));
     var birZonalRatePerSqm = Math.round(base);
@@ -308,7 +337,7 @@
        stack stays the single source for the rate so the disclosed multiple and
        the applied one cannot drift apart. */
     var factorStack = (1 + cornerPct) * proxy * band * adj;
-    var landPerSqm = Math.round(base * factorStack);
+    var landPerSqm = Math.round(planningBase * factorStack);
     var sizeFactor = lotSizeFactor(area);
     var site = siteAdjustments(opts, hit.streetName || opts.streetKey);
     var landBeforeAdjustments = Math.round(landPerSqm * area);
@@ -432,7 +461,10 @@
          the factor-method landValue and total, which the web report and the PDF
          print as a not-selected comparison. */
       factorStack: landMethod === "factor" ? factorStack : null,
-      appliedMultiple: landMethod === "factor" ? factorStack : null,
+      /* the multiple of the BIR reference actually applied to land, so the
+         disclosure still reconciles when the planning base is the median street */
+      appliedMultiple: landMethod === "factor" ? factorStack * planningBase / base : null,
+      planningReference: planningReference,
       factorSettingsVersion: cfg.factorSettingsVersion || cfg.calculationVersion,
       marketGuide: {
         value: total,
@@ -1690,7 +1722,8 @@ var displayRange = '';
 
     s.push({ t: "How precise is this match?", h:
       "<ul class=\"sf-est-rdl\"><li>Source match: <b>" + esc(r.source.label) + "</b>; match depth is not a valuation accuracy score.</li>" +
-      (r.fallbackNote ? "<li>" + esc(r.fallbackNote) + "</li>" : "") + "</ul>" });
+      (r.fallbackNote ? "<li>" + esc(r.fallbackNote) + "</li>" : "") +
+      (r.planningReference ? "<li>" + esc(r.planningReference.note) + "</li>" : "") + "</ul>" });
 
     s.push({ t: "Land value build-up", h:
       '<div class="sf-est-breakdown">' +
@@ -1803,6 +1836,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       '<details class="sf-est-result-more"><summary>How this number is worked out</summary>' +
       '<div class="sf-est-result-bir"><span>' + esc(r.birReferenceLabel) + '</span><b>' + money(r.birZonalValue) + '</b><small>' + money(r.birZonalRatePerSqm) + '/sqm · ' + (r.birReferenceConfirmed ? "tax-reference figure, separate from the estimate" : "derived fallback, not confirmed parcel tax FMV") + '</small></div>' +
       multipleHtml +
+      (r.planningReference ? '<p class="sf-est-result-context" data-est-planning-ref>' + esc(r.planningReference.note) + '</p>' : '') +
       '<p class="sf-est-result-context">' + context + '</p>' +
       '<p class="sf-est-result-reference-label"><b>' + esc(r.referenceVerification.label) + '</b> — published values unchanged; indexing is a separate scenario.</p>' +
       '<p class="sf-est-result-bir-note">SEA ESTATES is independent of the BIR. Confirm the applicable schedule with the relevant Revenue District Office.</p>' +
