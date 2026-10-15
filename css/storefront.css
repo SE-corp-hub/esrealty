@@ -3012,3 +3012,63 @@ body.sf-menu-open .sf-sticky { display: none; }
 @media (max-width: 360px) { .sf-site .sf-quick-range-text span { font-size: 15px; } .sf-site .sf-quick-range-text .sf-quick-range-mid { font-size: 13px; } }
 .sf-site .sf-cta-short .sf-contact-details { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 14px; }
 .sf-site .sf-cta-short .sf-contact-details a, .sf-site .sf-cta-short .sf-contact-details span { display: inline-flex; align-items: center; min-height: 44px; color: #FFFFFF; font-size: 17px; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(255,255,255,.4); text-underline-offset: 4px; }
+
+/* --- Responsive alignment pass (2026-10-15) ---------------------------- */
+/* Hero: one centred column on phones and tablets, two left-aligned columns
+   from 1000px. Centring the narrow column removes the empty right side it
+   left at tablet widths. */
+@media (max-width: 999px) {
+  .sf-site .sf-est-hero,
+  .sf-site .sf-est-hero .sf-est-hero-copy,
+  .sf-site .sf-est-hero .sf-est-hero-proof { text-align: center; }
+  .sf-site .sf-est-hero-grid { justify-items: center; }
+  .sf-site .sf-est-hero .sf-est-hero-copy { margin: 0 auto; }
+  .sf-site .sf-est-hero h1 { margin-left: auto; margin-right: auto; }
+  .sf-site .sf-est-hero .sf-est-hero-lede,
+  .sf-site .sf-est-hero-copy > p.sf-est-hero-lede,
+  .sf-site .sf-est-hero .sf-est-hero-bir-note { margin-left: auto; margin-right: auto; }
+  .sf-site .sf-est-hero .sf-quick { width: 100%; max-width: 560px; text-align: left; }
+  .sf-site .sf-est-hero .sf-est-hero-proof { width: 100%; max-width: 560px; }
+  .sf-site .sf-est-hero .sf-est-proof li { padding-left: 10px; padding-right: 10px; }
+  .sf-site .sf-est-hero .sf-est-proof li + li { padding-left: 10px; }
+}
+
+/* Services: three per row (the first three show; six more open below). */
+.sf-site .sf-services-grid { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 641px) {
+  .sf-site .sf-services-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sf-site .sf-services-grid > :last-child:nth-child(4n + 3),
+  .sf-site .sf-services-grid > :last-child:nth-child(odd) { grid-column: auto; }
+}
+
+/* Phones: lone buttons and their notes sit on the centre line of the cards
+   above them. */
+@media (max-width: 640px) {
+  .sf-site .sf-services-more,
+  .sf-site .sf-featured-more { text-align: center; }
+  .sf-site .sf-services-more > .sf-services-grid { text-align: left; }
+  .sf-site .sf-featured-more { display: flex; justify-content: center; }
+  .sf-site .sf-guide-cta { flex-direction: column; align-items: stretch; text-align: center; }
+  .sf-site .sf-guide-cta .sf-hero-btn { justify-content: center; }
+}
+
+/* Footer: brand and links on one row, the note beneath; one centred column on
+   phones. The legacy 1fr-auto-1fr grid let the long note squeeze the brand
+   into the links at tablet widths. */
+.sf-site .sf-footer {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "brand links" "note note";
+  align-items: center; gap: 14px 32px; text-align: left;
+}
+.sf-site .sf-footer > .sf-brand { grid-area: brand; justify-self: start; }
+.sf-site .sf-footer > p {
+  grid-area: note; margin: 0; max-width: none; text-align: left;
+  padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, .1); font-size: 16px !important;
+}
+.sf-site .sf-footer > div:last-child { grid-area: links; justify-self: end; flex-direction: row; justify-content: flex-end; align-items: center; }
+@media (max-width: 760px) {
+  .sf-site .sf-footer { grid-template-columns: minmax(0, 1fr); grid-template-areas: "brand" "links" "note"; justify-items: center; text-align: center; }
+  .sf-site .sf-footer > .sf-brand { justify-self: center; }
+  .sf-site .sf-footer > div:last-child { justify-self: center; justify-content: center; }
+  .sf-site .sf-footer > p { text-align: center; }
+}

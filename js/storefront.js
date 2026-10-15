@@ -825,11 +825,11 @@
     return '<section class="sf-section sf-services" id="sf-services"><div class="sf-section-head sf-reveal"><div>' +
       '<p class="sf-eyebrow">HOW WE CAN HELP</p><h2 class="sf-blur"><span>Help</span> <span>with</span> <span>your</span> <span>next</span> <span>property</span> <span>move.</span></h2></div>' +
       '<p>Buying, selling, renting or managing a property? Choose the support you need.</p></div>' +
-      /* The four most asked-for services show; the rest open on request, so the
+      /* The three most asked-for services show (one row); the rest open on request, so the
          section stays short on a phone. */
-      '<div class="sf-services-grid">' + SERVICES.slice(0, 4).map(serviceCard).join("") + '</div>' +
+      '<div class="sf-services-grid">' + SERVICES.slice(0, 3).map(serviceCard).join("") + '</div>' +
       '<details class="sf-services-more"><summary>See all ' + SERVICES.length + ' services</summary>' +
-      '<div class="sf-services-grid">' + SERVICES.slice(4).map(function (item, i) { return serviceCard(item, i + 4); }).join("") + '</div></details></section>';
+      '<div class="sf-services-grid">' + SERVICES.slice(3).map(function (item, i) { return serviceCard(item, i + 3); }).join("") + '</div></details></section>';
   }
 
   function serviceCard(item, i) {
@@ -1129,8 +1129,26 @@
     } catch (e) { /* noop */ }
   }
 
+  function patchFeatured() {
+    if (!host || !host.querySelector(".sf-est-hero")) return false;
+    var old = host.querySelector("#sf-featured");
+    var html = featuredSection();
+    if (old) {
+      if (html) old.outerHTML = html; else old.remove();
+    } else if (html) {
+      var after = host.querySelector(".sf-guide-summary");
+      if (!after) return false;
+      after.insertAdjacentHTML("afterend", html);
+    }
+    bindHomeMotion();
+    return true;
+  }
+
   function renderCurrent() {
     if (!active || !host) return;
+    /* The header (and its menu) is rebuilt below, closed; never leave the page
+       scroll-locked by a menu that no longer exists. */
+    document.body.classList.remove("sf-menu-open");
     var current = route();
     /* Shophouse and Project B.T are temporarily closed and are presented as a
      * single destination. Keep #/shophouse resolvable so existing inbound links
@@ -1224,7 +1242,12 @@
     } else pending = API.list({ featured: true, per_page: 6, sort: "date_desc" });
     pending.then(function (result) {
       if (id !== requestId) return;
-      viewState.loading = false; viewState.result = result; renderCurrent();
+      viewState.loading = false; viewState.result = result;
+      /* Home: swap only the listings block. Re-rendering the whole page made
+         the hero animate in a second time, dropped focus from the calculator
+         and moved the page under the visitor's finger. */
+      if ((current.path === "home" || current.path === "") && patchFeatured()) return;
+      renderCurrent();
     }).catch(function (error) {
       if (id !== requestId) return;
       viewState.loading = false; viewState.error = error.message || "Could not load properties."; viewState.result = null; renderCurrent();

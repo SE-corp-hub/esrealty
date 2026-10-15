@@ -15,6 +15,7 @@
   "use strict";
 
   var servicesBound = false;
+  var guideEntryUrl = "";
   var mountedHome = false, calculationRequest = 0, calculationStartedAt = 0;
   var lastRenderedScreen = 0;
   /* Minimum time the calculating screen stays up so its three stages are
@@ -2874,8 +2875,13 @@ return {
       window.addEventListener("hashchange", function () {
         if (!/^#\/?(home(?:\?|$)|$)/.test(location.hash)) { mountedHome = false; est.validationIssue = null; ++calculationRequest; }
       });
+      /* Back from the guide jump returns to where the visitor tapped (the
+         browser restores that entry's scroll). No scripted scroll here: hash
+         navigations fire popstate too, and a smooth scroll-to-top racing the
+         visitor's own scrolling made the page feel like it fought back. */
       window.addEventListener("popstate", function (event) {
-        if (!(event.state && event.state.sfGuide) && /^#\/?(home|$)/.test(location.hash || "#/home")) window.scrollTo({ top: 0, behavior: "smooth" });
+        /* the browser restores the spot the visitor tapped from */
+        if (guideEntryUrl && location.href === guideEntryUrl && !(event.state && event.state.sfGuide)) guideEntryUrl = "";
       });
       document.addEventListener("click", function (event) {
         if (event.target.closest("[data-est-data-retry]")) { dataPromise = null; mount(); return; }
@@ -2883,14 +2889,26 @@ return {
         if (!link) return;
         event.preventDefault();
         var goHome = typeof location !== "undefined" && String(location.hash).indexOf("home") === -1;
-        /* Home renders after the route change (and re-renders once listings
-           arrive, which resets the scroll), so settle on the guide twice. */
-        if (goHome) { location.hash = "#/home"; setTimeout(scrollToEstimator, 450); setTimeout(scrollToEstimator, 1200); }
+        /* Home renders after the route change, so the guide is reached once it
+           exists. One follow-up pass corrects for late layout, but only if the
+           visitor has not started scrolling themselves - a second jump after
+           they scroll up felt like the page would not let them reach the top. */
+        if (goHome) {
+          location.hash = "#/home";
+          var touched = false, mark = function () { touched = true; };
+          ["wheel", "touchstart", "keydown", "mousedown"].forEach(function (ev) { window.addEventListener(ev, mark, { once: true, passive: true }); });
+          setTimeout(function () { if (!touched) scrollToEstimator(); }, 450);
+          setTimeout(function () {
+            ["wheel", "touchstart", "keydown", "mousedown"].forEach(function (ev) { window.removeEventListener(ev, mark); });
+            var t = document.getElementById("sf-estimator");
+            if (!touched && t && Math.abs(t.getBoundingClientRect().top) > 120) scrollToEstimator();
+          }, 1200);
+        }
         else {
           if (link.hasAttribute("data-quick-go")) applyQuickToGuide();
           /* An entry for the jump, so the phone's Back button returns to the
              top of the page instead of leaving the site (review item 29). */
-          try { if (!(history.state && history.state.sfGuide)) history.pushState({ sfGuide: true }, "", location.href); } catch (e) { /* noop */ }
+          try { if (!(history.state && history.state.sfGuide)) { history.pushState({ sfGuide: true }, "", location.href); guideEntryUrl = location.href; } } catch (e) { /* noop */ }
           scrollToEstimator();
         }
       });
