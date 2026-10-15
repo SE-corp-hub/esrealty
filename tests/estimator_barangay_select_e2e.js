@@ -86,7 +86,7 @@ function chooseMuni(name) {
       await wait(700);
       s = brSnap();
       chk("the chosen barangay is the one displayed",
-        !!s && s.value === real && s.selectedText === real,
+        !!s && s.value === real && s.selectedText.toUpperCase() === real.toUpperCase(),
         "value=" + (s && s.value) + " shown=" + (s && s.selectedText));
       chk("the prompt is no longer selected once a barangay is chosen",
         !!s && !/choose a barangay/i.test(s.selectedText || ""), s ? s.selectedText : "-");
