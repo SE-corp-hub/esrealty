@@ -1058,10 +1058,10 @@
   function screen1Html() {
     var out = '<div class="sf-est-step" data-est-screen="1">';
     out += locSummary();
-    out += '<div class="sf-est-step-head"><span class="sf-est-step-no">01</span><div><p class="sf-est-step-eyebrow">LOCATION</p><h3>Tell us about your property</h3><p class="sf-est-step-subtitle">Location and lot area match the right BIR reference.</p></div></div>';
+    out += '<div class="sf-est-step-head"><div><h3>Tell us about your property</h3><p class="sf-est-step-subtitle">Location and lot area match the right BIR reference.</p></div></div>';
     out += '<div class="sf-est-fields">';
 
-    out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label"><i class="sf-est-icon" aria-hidden="true">✦</i>What do you need this valuation for?</span>' +
+    out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">What do you need this valuation for?</span>' +
       chipRow((DATA.config.purposes || []).map(function (p) {
         return { label: p, value: p, active: est.purpose === p };
       }), "purpose") + "</label>";
@@ -1070,7 +1070,7 @@
       /* The reference's four selling-stage options, verbatim values shared with
          the internal guide (js/app.js saleStage) so a saved answer keeps meaning
          across surfaces. */
-      out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label"><i class="sf-est-icon" aria-hidden="true">◷</i>Where are you in the sale?</span><span>Optional</span>' +
+      out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">Where are you in the sale?</span><span>Optional</span>' +
         chipRow([
           { label: "I'm just checking my property's value", value: "just_checking", active: est.stage === "just_checking" },
           { label: "I'm getting ready to sell", value: "ready_to_sell", active: est.stage === "ready_to_sell" },
@@ -1079,34 +1079,37 @@
         ], "stage") + "</label>";
     }
 
-    out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label"><i class="sf-est-icon" aria-hidden="true">⌂</i>Property type</span>' +
+    out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">Property type</span>' +
       chipRow([
         { label: "Vacant lot", value: "vacant_lot", active: est.type === "vacant_lot" },
         { label: "House & lot", value: "house_lot", active: est.type === "house_lot" }
       ], "type") + "</label>";
 
-    out += '<label class="sf-est-field"><span class="sf-est-label"><i class="sf-est-icon" aria-hidden="true">⌖</i>Municipality</span>' +
+    out += '<label class="sf-est-field"><span class="sf-est-label">Municipality</span>' +
       '<select data-est-muni><option value="">— choose —</option>' + muniOptions() + "</select></label>";
 
-    out += '<label class="sf-est-field"><span class="sf-est-label"><i class="sf-est-icon" aria-hidden="true">⌖</i>Barangay</span><span>Choose after selecting the municipality</span>' +
+    out += '<label class="sf-est-field"><span class="sf-est-label">Barangay</span><span>Choose after selecting the municipality</span>' +
       '<select data-est-barangay>' + barangayOptions() + "</select></label>";
 
-    out += '<div class="sf-est-field sf-est-span2 sf-est-street-field"><span class="sf-est-label"><i class="sf-est-icon" aria-hidden="true">⌕</i>Street <em>(optional)</em></span><span>Skip to use the barangay rate.</span>' +
+    out += '<div class="sf-est-field sf-est-span2 sf-est-street-field"><span class="sf-est-label">Street <em>(optional)</em></span><span>Skip to use the barangay rate.</span>' +
       '<div class="sf-est-street-input-wrap"><input data-est-street-q type="search" placeholder="' + (est.allOther ? "Street not listed — choose another street" : "Type to search streets…") + '" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="sf-est-street-options" aria-expanded="false" aria-label="Search the BIR street list" value="' + esc(est.allOther ? "" : est.streetLabel) + '">' +
       (est.allOther ? '<span class="sf-est-street-selected"><i aria-hidden="true">✓</i>Using all-other-streets rate</span>' : '') + '</div>' +
       '<div id="sf-est-street-options" class="sf-est-street-list" data-est-street-list role="listbox" aria-label="BIR streets"></div></div>';
     out += '<button type="button" class="sf-est-street-fallback sf-est-span2" data-est-street-fallback' + (!est.barangay ? " disabled" : "") + '>My street is not listed — use the best available BIR reference</button>';
 
-    out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label"><i class="sf-est-icon" aria-hidden="true">▣</i>Classification</span><span>Residential is the default</span>' +
+    out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">Classification</span><span>Residential is the default</span>' +
       '<select data-est-class aria-label="BIR classification">' + simpleClassOptions() + "</select></label>";
     out += '<details class="sf-est-help sf-est-span2"><summary>What does BIR classification mean?</summary><p>The BIR schedule groups land by use: residential, commercial, agricultural or industrial. Choose the one that matches the property. If you are unsure, confirm the classification with the relevant Revenue District Office before relying on the guide.</p></details>';
 
-    out += '<label class="sf-est-field"><span class="sf-est-label"><i class="sf-est-icon" aria-hidden="true">▤</i>Lot area (sqm)</span>' +
+    out += '<label class="sf-est-field"><span class="sf-est-label">Lot area (sqm)</span>' +
       '<input data-est-area type="number" min="20" max="100000" step="1" inputmode="decimal" placeholder="e.g. 200" value="' + esc(est.area != null ? est.area : "") + '"></label>';
 
-    out += '<label class="sf-est-field"><span class="sf-est-label"><i class="sf-est-icon" aria-hidden="true">₱</i>' + (est.purpose === "Buying" ? "Asking price or your offer" : est.purpose === "I received an offer" ? "Offer received" : "Expected selling price") + '</span><span>Optional — affects costs, not the estimate</span>' +
+    out += '<label class="sf-est-field"><span class="sf-est-label">' + (est.purpose === "Buying" ? "Asking price or your offer" : est.purpose === "I received an offer" ? "Offer received" : "Expected selling price") + '</span><span>Optional — affects costs, not the estimate</span>' +
       '<input data-est-sale-price type="number" min="0" max="1000000000" step="1000" inputmode="decimal" placeholder="e.g. 5000000" value="' + esc(est.salePrice != null ? est.salePrice : "") + '"></label>';
 
+    /* With the lot questions, not stranded under the technical panels. */
+    out += '<label class="sf-est-field sf-est-span2 sf-est-corner"><input type="checkbox" data-est-corner' + (est.corner ? " checked" : "") + ">" +
+      '<span><b>Corner lot</b> <small>Frontage on two roads adds 2.5% to the land value</small></span></label>';
 out += "</div>";
     /* Built after the main field grid closes so the technical panels never
        interrupt the property questions above them. */
@@ -1117,8 +1120,6 @@ out += "</div>";
       '<label class="sf-est-field">Quoted notarial fee (PHP)<span>Optional, seller-paid in this illustration</span><input type="number" min="0" data-est-cost="notarial" value="' + esc(est.notarial == null ? "" : est.notarial) + '"></label>' +
       '<label class="sf-est-field">Assessor schedule FMV (PHP)<span>Optional confirmed value; not assessed/taxable value</span><input type="number" min="0" data-est-cost="fairMarketValue" value="' + esc(est.fairMarketValue == null ? "" : est.fairMarketValue) + '"></label></div><p>Developer charges require a quote; no universal 6% CGT is applied to developer or unclassified transactions. Local transfer and registration rates remain illustrations.</p>';
     out += aboutPanelHtml(costFields);
-    out += '<label class="sf-est-field sf-est-corner"><input type="checkbox" data-est-corner' + (est.corner ? " checked" : "") + ">" +
-      '<span><b>Corner lot</b> — frontage on more than one road <small>(+2.5% value)</small></span></label>';
 
     out += '<div class="sf-est-actions">' +
       /* The reference status is deliberately repeated on the always-visible path.
@@ -1128,7 +1129,7 @@ out += "</div>";
       '<span class="sf-est-next-hint">' + (est.municipality
         ? "We match the BIR zonal schedule imported for " + esc(est.municipality) + " (" + esc(referenceStatusShort()) + ")."
         : "Choose a municipality to match its BIR schedule.") + "</span>" +
-      '<button type="button" class="sf-est-next" data-est-next>' + (est.type === "house_lot" ? "Continue to the house →" : "Continue to property details →") + "</button></div>";
+      '<button type="button" class="sf-est-next" data-est-next>' + (est.type === "house_lot" ? "Continue to the house" : "Continue to property details") + "</button></div>";
     return out + "</div>";
   }
 
@@ -1292,7 +1293,7 @@ out += "</div>";
   function screen2Html() {
     var out = '<div class="sf-est-step" data-est-screen="2">';
     out += locSummary();
-    out += '<div class="sf-est-step-head"><span class="sf-est-step-no">02</span><div><p class="sf-est-step-eyebrow">PROPERTY DETAILS</p><h3>Describe your property</h3><p class="sf-est-step-subtitle">Answer what you know — tap “Not sure” to skip anything you don’t.</p></div></div>';
+    out += '<div class="sf-est-step-head"><div><h3>Describe your property</h3><p class="sf-est-step-subtitle">Answer what you know — tap “Not sure” to skip anything you don’t.</p></div></div>';
     if (est.type === "house_lot") {
       out += '<div class="sf-est-fields">' +
         '<label class="sf-est-field sf-est-span2">Building condition<select data-est-condition>' + [["unknown", "Not inspected / unknown"], ["new", "New / completed finish"], ["good", "Good condition"], ["repair", "Repairs needed"]].map(function (pair) { return '<option value="' + pair[0] + '"' + (est.condition === pair[0] ? " selected" : "") + '>' + pair[1] + '</option>'; }).join("") + '</select><span>Best guess is fine</span></label>' +
@@ -1327,8 +1328,8 @@ out += "</div>";
        so they sit in the main flow rather than a collapsed corner. Each answer
        moves the estimate by the % shown on its button. */
     out += '<div class="sf-est-site-review" data-est-site-review>' + reviewFactorBlock() + '</div>';
-    out += '<div class="sf-est-actions"><button type="button" class="sf-est-next sf-est-prev" data-est-prev>← Back to property details</button>' +
-      '<button type="button" class="sf-est-next" data-est-next>Calculate my estimate →</button></div>';
+    out += '<div class="sf-est-actions"><button type="button" class="sf-est-next sf-est-prev" data-est-prev>Back to location</button>' +
+      '<button type="button" class="sf-est-next" data-est-next>Calculate my estimate</button></div>';
     return out + "</div>";
   }
 
@@ -1525,6 +1526,9 @@ out += "</div>";
      see ESREALTY_EVIDENCE.bankNearby. */
   var BANK_LABEL = { bdo: "BDO", bpi: "BPI Buena Mano", securitybank: "Security Bank", pagibig: "Pag-IBIG Fund", sss: "SSS" };
   var PRICE_LABEL = { advertised: "advertised price", selling: "selling price", suggested: "suggested price", minimum_bid: "minimum bid", fair_market_value: "fair market value" };
+  function titleCase(v) {
+    return String(v || "").toLowerCase().replace(/(^|[\s(\-\/])([a-zñ])/g, function (m, a, b) { return a + b.toUpperCase(); });
+  }
   function shortDate(d) {
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || "");
     return m ? Number(m[3]) + " " + ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m[2]) - 1] + " " + m[1] : "";
@@ -1759,9 +1763,13 @@ var displayRange = '';
   }
 
   function resultSummaryHtml(r) {
+    var bankN = (DATA && DATA.bankComparables && !DATA.bankComparables.unavailable && r.municipality)
+      ? evidence.bankNearby(DATA.bankComparables, { municipality: r.municipality, barangay: r.barangay, type: r.type, area: r.area, landPerSqm: r.landPerSqm, total: r.total }).total : 0;
+    var badge = r.marketGuideAvailable ? "Local listing context found" : bankN ? "Factor-based · bank listings for context" : "Factor-based · no comparable listings";
     var context = r.marketGuideAvailable
       ? (r.marketGuide.comparableCount || 0) + " comparable asking listing(s) found for context; listing prices are not direct inputs to this calculation."
-      : "No comparable asking listings were available; this estimate uses the disclosed BIR-based factors.";
+      : (bankN ? "No resale asking listings were found to compare; this estimate uses the disclosed BIR-based factors, with bank and Pag-IBIG prices shown for context."
+        : "No comparable asking listings were available; this estimate uses the disclosed BIR-based factors.");
     /* The BIR zonal reference and the market estimate are printed one after the
      * other with nothing connecting them, so the factor that connects them is
      * named here. Every word comes from referenceTools.appliedMultipleDisclosure;
@@ -1782,7 +1790,7 @@ var displayRange = '';
       : "";
 return '<section class="sf-est-result-summary" aria-label="Estimated property value">' +
       '<div class="sf-est-result-summary-head"><div><p class="sf-est-result-summary-label">ESTIMATED PROPERTY VALUE</p><h4>' + (r.landMethod === "time-indexed" ? 'Indexed-reference planning scenario' : 'Central planning estimate') + '</h4></div>' +
-      '<span class="sf-est-result-evidence">' + (r.marketGuideAvailable ? "Local listing context found" : "Factor-based · no comparable listings") + '</span></div>' +
+      '<span class="sf-est-result-evidence">' + badge + '</span></div>' +
       '<strong class="sf-est-result-value">' + money(r.marketGuideEstimate) + '</strong>' +
       '<p class="sf-est-scenario-range">Planning range <b>' + money(r.low) + ' – ' + money(r.high) + '</b><span>85%–130% scenarios, not guaranteed offers or statistical confidence.</span></p>' +
       '<div class="sf-est-result-bir"><span>' + esc(r.birReferenceLabel) + '</span><b>' + money(r.birZonalValue) + '</b><small>' + money(r.birZonalRatePerSqm) + '/sqm · ' + (r.birReferenceConfirmed ? "tax-reference figure, separate from the estimate" : "derived fallback, not confirmed parcel tax FMV") + '</small></div>' +
@@ -1800,22 +1808,28 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
     var selling = r.purpose === "Selling";
     var out = '<div class="sf-est-step sf-est-result-screen' + (selling ? " sf-est-selling-result" : "") + '" data-est-screen="4" data-est-purpose="' + esc(r.purpose || "") + '">';
     out += locSummary();
-    out += '<div class="sf-est-result-hero"><div class="sf-est-step-head sf-est-result-head"><span class="sf-est-step-no">04</span><div><p class="sf-est-result-eyebrow">YOUR PROPERTY VALUE GUIDE</p><h3 id="sf-est-result-heading" tabindex="-1">Your guide is ready.</h3><p class="sf-est-result-subtitle">Review the central estimate, planning scenarios and source evidence before deciding your next step.</p></div></div><div class="sf-est-result-hero-foot"><span class="sf-est-ready"><i aria-hidden="true">✓</i> Property-specific guide prepared</span><button type="button" class="sf-est-scroll-cta" data-est-scroll-report>Explore calculation details <span aria-hidden="true">↓</span></button></div></div>';
-    out += '<div class="sf-est-result-data"><div><span class="sf-est-data-icon" aria-hidden="true">⌖</span><b>BIR source match</b><small>' + esc(r.source.label) + '</small></div><div><span class="sf-est-data-icon" aria-hidden="true">◷</span><b>BIR schedule in effect since</b><small>' + esc(r.effectivityDate) + '</small></div><div><span class="sf-est-data-icon" aria-hidden="true">▣</span><b>Dataset version</b><small>' + esc(r.dataVersion) + '</small></div></div>';
+    /* Answer first: one heading line naming the property, then the price.
+       The data provenance that used to sit above the price (source tiles,
+       schedule note, "analysis complete") is folded into one disclosure
+       below it - the same facts, no longer between the reader and the number. */
+    var typeWord = r.type === "vacant_lot" ? "vacant lot" : (r.typeLabel || "property").toLowerCase();
+    out += '<div class="sf-est-result-head"><h3 id="sf-est-result-heading" tabindex="-1">Your property value guide</h3>' +
+      '<p class="sf-est-result-for">For a ' + fmt(r.area) + ' sqm ' + esc(typeWord) + ' in ' + esc(titleCase(r.barangay)) + ', ' + esc(titleCase(r.municipality)) + ' · ' + esc(r.classificationLabel || r.classification) + '</p></div>';
+    out += resultSummaryHtml(r);
+    var nextScheduleCheck = manifest() && manifest().provenance && manifest().provenance.nextCurrencyReview;
     /* The schedule date is years old by design: zonal values stay in force
        until a newer Department Order supersedes them, so the date is framed as
        the start of an ongoing effectivity and the active re-check cycle is
        stated beside it. Without this the raw 2022 date reads as stale data. */
-    var nextScheduleCheck = manifest() && manifest().provenance && manifest().provenance.nextCurrencyReview;
-    out += '<p class="sf-est-result-data-note">BIR zonal values remain in force until a newer Department Order supersedes them.' + (nextScheduleCheck ? ' Batangas schedules are re-checked every 30 days; next review ' + esc(nextScheduleCheck) + '.' : '') + '</p>';
-    out += '<div class="sf-est-analysis-summary"><div class="sf-est-analysis-status"><span class="sf-est-analysis-check" aria-hidden="true">✓</span><div><b>Analysis complete</b><p>BIR reference matched with your property details.</p></div></div><div class="sf-est-property-chips"><span>' + esc(r.municipality) + ', ' + esc(r.barangay) + '</span><span>' + fmt(r.area) + ' sqm</span><span>' + esc(r.typeLabel) + '</span><span>' + esc(r.classification) + ' · ' + esc(r.use) + '</span></div></div>';
-    out += resultSummaryHtml(r);
+    out += '<details class="sf-est-result-sources"><summary>Where the numbers come from</summary>' +
+      '<div class="sf-est-result-data"><div><b>BIR source match</b><small>' + esc(r.source.label) + '</small></div><div><b>BIR schedule in effect since</b><small>' + esc(r.effectivityDate) + '</small></div><div><b>Dataset version</b><small>' + esc(r.dataVersion) + '</small></div></div>' +
+      '<p class="sf-est-result-data-note">BIR zonal values remain in force until a newer Department Order supersedes them.' + (nextScheduleCheck ? ' Batangas schedules are re-checked every 30 days; next review ' + esc(nextScheduleCheck) + '.' : '') + '</p></details>';
     out += decisionHtml(r);
     /* Placed here, not at the foot of the page: the user has just seen their
      * number and the evidence behind it, which is when the next-step question
      * forms. The bottom CTA still exists for people who read to the end. */
     out += nextStepCard();
-    out += '<p class="sf-est-report-label">YOUR GUIDE, SECTION BY SECTION <span>Value, evidence, limitations, and next steps</span></p>';
+    out += '<p class="sf-est-report-label">Your guide, section by section <span>Value, evidence, limitations and next steps</span></p>';
     out += '<div class="sf-est-report">';
     reportSections(r).forEach(function (sec, i) {
       out += '<details class="sf-est-rsec"' + (i === 0 ? " open" : "") + '>' +
@@ -1823,7 +1837,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
         '<div class="sf-est-rsec-body">' + sec.h + "</div></details>";
     });
     out += "</div>";
-    out += '<div class="sf-est-actions"><button type="button" class="sf-est-next sf-est-prev" data-est-prev>← Adjust inputs</button></div>';
+    out += '<div class="sf-est-actions"><button type="button" class="sf-est-next sf-est-prev" data-est-prev>Adjust my answers</button></div>';
     out += leadBlock(r);
     return out + "</div>";
   }
@@ -1949,7 +1963,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       /* Three steps, matching the reference's Location -> Details -> Report
          progression. There is no review screen and the calculating screen is
          not a step: Details advances straight to the calculation. */
-      var progress = '<ol class="sf-est-progress" aria-label="Value guide progress">' + ["Location", "Details", "Report"].map(function (label, i) { return '<li' + (stage === i + 1 ? ' aria-current="step"' : "") + '><b>' + (i + 1) + '</b><span>' + label + '</span></li>'; }).join("") + '</ol>';
+      var progress = '<ol class="sf-est-progress" aria-label="Value guide progress">' + ["Location", "Details", "Report"].map(function (label, i) { return '<li' + (stage === i + 1 ? ' aria-current="step"' : stage > i + 1 ? ' class="done"' : "") + '><b>' + (i + 1) + '</b><span>' + label + '</span></li>'; }).join("") + '</ol>';
       card.innerHTML = progress + out; bindCard(card);
       if (screenChanged) {
         var step = card.querySelector(".sf-est-step");

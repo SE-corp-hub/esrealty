@@ -2284,3 +2284,228 @@ body.sf-menu-open .sf-sticky { display: none; }
 @media (prefers-reduced-motion: reduce) { .sf-home-project-status::before { animation: none; } }
 .sf-home-project .sf-outline-btn { color: #F2ECE4; border-color: rgba(255, 255, 255, .4); }
 .sf-home-project .sf-outline-btn:hover { color: #F2C98C; border-color: rgba(242, 201, 140, .8); }
+
+/* =====================================================================
+   Value calculator refresh (2026-10-15)
+   One quiet system for the calculator card: white surface, warm-grey
+   lines, near-black text, the brand accent only for what is selected and
+   the primary action. Sentence-case labels, no decorative icons or
+   number badges (the progress bar already says where you are), one
+   narrow column for the questions, and the price as the only loud
+   element on the result. Scoped to .sf-est-card so the rest of the site
+   is untouched; it sits last so it wins over estimator.css and the older
+   rules above without !important (except where estimator.css used it).
+   ===================================================================== */
+.sf-site .sf-est-card {
+  --e-ink: #17191C; --e-text: #3D434B; --e-mute: #6B717A;
+  --e-line: #E5E2DD; --e-line-strong: #CFC9C1; --e-fill: #F7F5F2;
+  --e-accent: var(--sf-accent, #B4521F); --e-accent-hover: var(--sf-accent-hover, #97441A); --e-accent-soft: var(--sf-accent-soft, #FBEDE5);
+  gap: 24px;
+  padding: clamp(20px, 4vw, 44px);
+  border: 1px solid var(--e-line);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(23, 25, 28, .04), 0 16px 40px -20px rgba(23, 25, 28, .14);
+  color: var(--e-text);
+}
+/* questions read best in one column of ~720px; the report keeps the width */
+.sf-site .sf-est-card .sf-est-progress,
+.sf-site .sf-est-card [data-est-screen="1"],
+.sf-site .sf-est-card [data-est-screen="2"],
+.sf-site .sf-est-card [data-est-screen="3"] { width: 100%; max-width: 720px; margin-left: auto; margin-right: auto; }
+
+/* progress: three thin segments with their names */
+.sf-site .sf-est-card .sf-est-progress { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.sf-site .sf-est-card .sf-est-progress li { display: grid; grid-auto-flow: row; justify-items: stretch; gap: 8px; font-size: 13px; text-align: left; color: var(--e-mute); }
+.sf-site .sf-est-card .sf-est-progress li::before,
+.sf-site .sf-est-card .sf-est-progress li::after { content: none; }
+.sf-site .sf-est-card .sf-est-progress b { width: auto; height: 4px; border: 0; border-radius: 4px; background: var(--e-line); font-size: 0; color: transparent; }
+.sf-site .sf-est-card .sf-est-progress li.done b { background: var(--e-accent); opacity: .45; }
+.sf-site .sf-est-card .sf-est-progress li[aria-current="step"] { color: var(--e-ink); font-weight: 600; }
+.sf-site .sf-est-card .sf-est-progress li[aria-current="step"] b { background: var(--e-accent); }
+.sf-site .sf-est-card .sf-est-progress span { font-weight: inherit; }
+
+/* where-you-are line: quiet text, not a box */
+.sf-site .sf-est-card .sf-est-locator { padding: 0; border: 0; background: none; }
+.sf-site .sf-est-card .sf-est-locator span { font-size: 13px; color: var(--e-mute); }
+.sf-site .sf-est-card .sf-est-locator b { font-weight: 600; color: var(--e-text); }
+
+/* step headings */
+.sf-site .sf-est-card .sf-est-step-head { display: block; margin: 4px 0 4px; }
+.sf-site .sf-est-card .sf-est-step-no,
+.sf-site .sf-est-card .sf-est-step-eyebrow,
+.sf-site .sf-est-card .sf-est-icon { display: none; }
+.sf-site .sf-est-card .sf-est-step-head h3,
+.sf-site .sf-est-card .sf-est-result-head h3 { margin: 0 0 6px; padding: 0; border: 0; font-size: clamp(24px, 2.8vw, 30px); font-weight: 650; line-height: 1.2; letter-spacing: -.015em; color: var(--e-ink); }
+.sf-site .sf-est-card .sf-est-step-subtitle,
+.sf-site .sf-est-card .sf-est-result-for { margin: 0; font-size: 15px; line-height: 1.5; color: var(--e-mute); }
+/* headings get focus when a step opens (for screen readers); no ring for that */
+.sf-site .sf-est-card [tabindex="-1"]:focus { outline: none; box-shadow: none; }
+
+/* fields */
+.sf-site .sf-est-card .sf-est-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 16px; align-items: end; }
+.sf-site .sf-est-card .sf-est-span2 { grid-column: 1 / -1; }
+.sf-site .sf-est-card .sf-est-field,
+.sf-site .sf-est-card .sf-est-label { gap: 8px; color: var(--e-ink); font-size: 15px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.sf-site .sf-est-card .sf-est-field > span:not(.sf-est-label):not(.sf-est-chips),
+.sf-site .sf-est-card .sf-est-hint { font-size: 13px; font-weight: 400; line-height: 1.45; color: var(--e-mute); letter-spacing: 0; text-transform: none; }
+.sf-site .sf-est-card .sf-est-label em { font-style: normal; font-weight: 400; color: var(--e-mute); }
+.sf-site .sf-est-card .sf-est-suggested { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: var(--e-accent-soft); color: var(--e-accent-hover); font-size: 12px; font-style: normal; font-weight: 600; letter-spacing: 0; text-transform: none; vertical-align: 1px; }
+.sf-site .sf-est-card select,
+.sf-site .sf-est-card input[type="number"],
+.sf-site .sf-est-card input[type="search"],
+.sf-site .sf-est-card input[type="text"],
+.sf-site .sf-est-card input[type="email"],
+.sf-site .sf-est-card input[type="tel"],
+.sf-site .sf-est-card input[type="date"] {
+  width: 100%; height: 50px; min-height: 50px; padding: 0 14px;
+  border: 1px solid var(--e-line); border-radius: 12px; background-color: #fff;
+  color: var(--e-ink); font: 500 16px/1.2 var(--sf-font); letter-spacing: 0; text-transform: none; box-shadow: none;
+}
+.sf-site .sf-est-card select {
+  -webkit-appearance: none; appearance: none; padding-right: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%236B717A' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 16px center;
+}
+.sf-site .sf-est-card select:hover,
+.sf-site .sf-est-card input:hover:not([type="checkbox"]) { border-color: var(--e-line-strong); }
+.sf-site .sf-est-card select:focus,
+.sf-site .sf-est-card input:focus:not([type="checkbox"]) { outline: none; border-color: var(--e-accent); box-shadow: 0 0 0 3px var(--e-accent-soft); }
+.sf-site .sf-est-card input::placeholder { color: #9AA0A6; font-weight: 400; }
+
+/* choice pills: plain until chosen, then a tick */
+.sf-site .sf-est-card .sf-est-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.sf-site .sf-est-card .sf-est-chip {
+  min-height: 42px; padding: 9px 16px; gap: 8px;
+  border: 1px solid var(--e-line); border-radius: 999px; background: #fff; box-shadow: none; transform: none;
+  color: var(--e-text); font-size: 14px; font-weight: 500; letter-spacing: 0; text-transform: none;
+}
+.sf-site .sf-est-card .sf-est-chip:hover { border-color: var(--e-line-strong); background: var(--e-fill); color: var(--e-ink); transform: none; }
+.sf-site .sf-est-card .sf-est-chip i { display: none; }
+.sf-site .sf-est-card .sf-est-chip.active { border-color: var(--e-accent); background: var(--e-accent-soft); color: var(--e-ink); font-weight: 600; box-shadow: inset 0 0 0 1px var(--e-accent); }
+.sf-site .sf-est-card .sf-est-chip.active i { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 0; background: none; color: var(--e-accent); font-size: 13px; }
+.sf-site .sf-est-card .sf-est-chip:focus-visible,
+.sf-site .sf-est-card .sf-est-ownership-option:focus-visible,
+.sf-site .sf-est-card .sf-est-next:focus-visible { outline: 2px solid var(--e-accent); outline-offset: 2px; }
+/* property type: the one choice everything else depends on - two large tiles */
+.sf-site .sf-est-card .sf-est-chips[data-t="type"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.sf-site .sf-est-card .sf-est-chips[data-t="type"] .sf-est-chip { justify-content: space-between; min-height: 60px; padding: 14px 18px; border-radius: 14px; font-size: 16px; font-weight: 600; }
+
+.sf-site .sf-est-card .sf-est-street-fallback { justify-self: start; min-height: 0; padding: 0; border: 0; background: none; color: var(--e-accent-hover); font-size: 14px; font-weight: 500; text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.sf-site .sf-est-card .sf-est-street-fallback:disabled { color: var(--e-mute); text-decoration: none; cursor: default; }
+.sf-site .sf-est-card .sf-est-help { padding: 0; border: 0; background: none; }
+.sf-site .sf-est-card .sf-est-help > summary { color: var(--e-mute); font-size: 14px; font-weight: 500; cursor: pointer; }
+
+.sf-site .sf-est-card .sf-est-corner { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid var(--e-line); border-radius: 12px; font-weight: 400; cursor: pointer; }
+.sf-site .sf-est-card .sf-est-corner input { flex: none; width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--e-accent); }
+.sf-site .sf-est-card .sf-est-corner span { display: grid; gap: 2px; color: var(--e-mute); font-size: 13px; }
+.sf-site .sf-est-card .sf-est-corner b { color: var(--e-ink); font-size: 15px; font-weight: 600; }
+.sf-site .sf-est-card .sf-est-corner small { font-size: 13px; color: var(--e-mute); }
+
+.sf-site .sf-est-card .sf-est-about { margin: 8px 0 0; border: 1px solid var(--e-line); border-radius: 12px; background: #fff; }
+.sf-site .sf-est-card .sf-est-about-title { color: var(--e-ink); font-size: 15px; font-weight: 600; }
+.sf-site .sf-est-card .sf-est-about-sub { color: var(--e-mute); font-size: 14px; }
+
+/* actions: primary in the brand colour, back as a quiet outline */
+.sf-site .sf-est-card .sf-est-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
+.sf-site .sf-est-card .sf-est-next { min-height: 50px; padding: 0 26px; border: 0; border-radius: 12px; background: var(--e-accent); color: #fff; box-shadow: none; font-size: 16px; font-weight: 600; letter-spacing: 0; text-transform: none; transform: none; }
+.sf-site .sf-est-card .sf-est-next:hover:not(:disabled) { background: var(--e-accent-hover); transform: none; }
+.sf-site .sf-est-card .sf-est-next.sf-est-prev { margin-right: 0; background: #fff !important; color: var(--e-ink) !important; border: 1px solid var(--e-line) !important; }
+.sf-site .sf-est-card .sf-est-next.sf-est-prev:hover:not(:disabled) { background: var(--e-fill) !important; }
+.sf-site .sf-est-card .sf-est-next-hint { order: 3; flex-basis: 100%; font-size: 13px; color: var(--e-mute); }
+
+/* step 2: improvements and ownership */
+.sf-site .sf-est-card .sf-est-feat-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 8px; }
+.sf-site .sf-est-card .sf-est-feat { align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--e-line); border-radius: 12px; background: #fff; }
+.sf-site .sf-est-card .sf-est-feat input { flex: none; width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; accent-color: var(--e-accent); }
+.sf-site .sf-est-card .sf-est-feat span { display: grid; gap: 2px; min-width: 0; }
+.sf-site .sf-est-card .sf-est-feat b { color: var(--e-ink); font-size: 14px; font-weight: 600; }
+.sf-site .sf-est-card .sf-est-feat small { color: var(--e-mute); font-size: 13px; font-weight: 500; white-space: nowrap; }
+.sf-site .sf-est-card .sf-est-feat.on { border-color: var(--e-accent); background: var(--e-accent-soft); }
+.sf-site .sf-est-card .sf-est-ownership-intro { gap: 0; padding: 18px 20px; border: 0; border-radius: 14px; background: var(--e-fill); }
+.sf-site .sf-est-card .sf-est-ownership-intro h4 { margin: 0 0 4px; color: var(--e-ink); font-size: 17px; font-weight: 650; }
+.sf-site .sf-est-card .sf-est-ownership-intro b { display: block; margin-bottom: 4px; color: var(--e-accent-hover); font-size: 13px; font-weight: 600; }
+.sf-site .sf-est-card .sf-est-ownership-intro p { margin: 0; color: var(--e-text); font-size: 14px; line-height: 1.55; }
+.sf-site .sf-est-card .sf-est-ownership-question { padding: 0; border: 0; }
+.sf-site .sf-est-card .sf-est-ownership-question legend { padding: 0; margin-bottom: 4px; color: var(--e-ink); font-size: 16px; font-weight: 650; }
+.sf-site .sf-est-card .sf-est-ownership-question > p { margin: 0 0 4px; color: var(--e-mute); font-size: 14px; }
+.sf-site .sf-est-card .sf-est-ownership-options { gap: 8px; }
+.sf-site .sf-est-card .sf-est-ownership-option { min-height: 0; padding: 14px 56px 14px 16px; border: 1px solid var(--e-line); border-radius: 12px; background: #fff; box-shadow: none; }
+.sf-site .sf-est-card .sf-est-ownership-option:hover { border-color: var(--e-line-strong); background: var(--e-fill); }
+.sf-site .sf-est-card .sf-est-ownership-option.active { border-color: var(--e-accent); background: var(--e-accent-soft); box-shadow: inset 0 0 0 1px var(--e-accent); }
+.sf-site .sf-est-card .sf-est-ownership-option b { color: var(--e-ink); font-size: 15px; font-weight: 600; }
+.sf-site .sf-est-card .sf-est-ownership-option small { color: var(--e-mute); font-size: 13px; }
+.sf-site .sf-est-card .sf-est-ownership-skip { border-style: solid; background: #fff; }
+.sf-site .sf-est-card .sf-est-ownership-skip b::after { content: none; }
+
+/* result: the price is the loud thing */
+.sf-site .sf-est-card .sf-est-result-head { margin: 0; }
+.sf-site .sf-est-card .sf-est-result-summary { padding: clamp(20px, 3vw, 32px); border: 1px solid var(--e-line); border-radius: 16px; background: #fff; box-shadow: none; }
+.sf-site .sf-est-card .sf-est-result-summary-label { display: none; }
+.sf-site .sf-est-card .sf-est-result-summary-head h4 { margin: 0; color: var(--e-mute); font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.sf-site .sf-est-card .sf-est-result-evidence { padding: 4px 10px; border: 0; border-radius: 999px; background: var(--e-fill); color: var(--e-mute); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.sf-site .sf-est-card .sf-est-result-value { display: block; margin: 6px 0 12px; color: var(--e-ink); font-size: clamp(44px, 7vw, 64px); font-weight: 700; line-height: 1.05; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+.sf-site .sf-est-card .sf-est-result-sources { border: 1px solid var(--e-line); border-radius: 12px; padding: 0 16px; background: #fff; }
+.sf-site .sf-est-card .sf-est-result-sources > summary { padding: 14px 0; color: var(--e-ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+.sf-site .sf-est-card .sf-est-result-data { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; margin: 0 0 10px; padding: 0; border: 0; background: none; }
+.sf-site .sf-est-card .sf-est-result-data > div { display: grid; gap: 2px; padding: 0; border: 0; background: none; box-shadow: none; }
+.sf-site .sf-est-card .sf-est-result-data b { color: var(--e-mute); font-size: 13px; font-weight: 500; }
+.sf-site .sf-est-card .sf-est-result-data small { color: var(--e-ink); font-size: 14px; }
+.sf-site .sf-est-card .sf-est-result-data-note { margin: 0 0 14px; color: var(--e-mute); font-size: 13px; }
+.sf-site .sf-est-card .sf-est-report-label,
+.sf-site .sf-est-card .sf-est-nextstep-badge { letter-spacing: 0; text-transform: none; }
+
+@media (max-width: 640px) {
+  .sf-site .sf-est-card { border-radius: 16px; }
+  .sf-site .sf-est-card .sf-est-fields { grid-template-columns: minmax(0, 1fr); }
+  .sf-site .sf-est-card .sf-est-ownership-options { grid-template-columns: minmax(0, 1fr); }
+  .sf-site .sf-est-card .sf-est-actions .sf-est-next { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sf-site .sf-est-card .sf-est-chip,
+  .sf-site .sf-est-card .sf-est-next { transition: none; }
+}
+/* storefront-legacy.css forces "body label, body small { 12px !important }"
+   and is a generated file that must not be regenerated, so the calculator's
+   own label and small text sizes are restated here with !important. */
+.sf-site .sf-est-card label.sf-est-field,
+.sf-site .sf-est-card label.sf-est-corner { font-size: 15px !important; }
+.sf-site .sf-est-card small { font-size: 13px !important; }
+.sf-site .sf-est-card .sf-est-result-data small { font-size: 14px !important; }
+.sf-site .sf-est-card .sf-est-suggested { justify-self: start; width: fit-content; }
+.sf-site .sf-est-card .sf-est-suggest-note { margin: 8px 0 0; color: var(--e-mute); font-size: 14px; line-height: 1.55; }
+.sf-site .sf-est-card .sf-est-decision,
+.sf-site .sf-est-card .sf-est-nextstep { border: 1px solid var(--e-line); border-radius: 16px; background: #fff; box-shadow: none; }
+.sf-site .sf-est-card .sf-est-nextstep-badge { background: var(--e-accent-soft); color: var(--e-accent-hover); }
+.sf-site .sf-est-card .sf-est-report-label { color: var(--e-ink); font-size: 17px; font-weight: 650; }
+.sf-site .sf-est-card .sf-est-report-label span { color: var(--e-mute); font-size: 13px; font-weight: 400; }
+/* the price never breaks across lines; it scales with the screen instead */
+.sf-site .sf-est-card .sf-est-result-value { font-size: clamp(32px, 9.5vw, 64px); white-space: nowrap; }
+@media (max-width: 640px) {
+  .sf-site .sf-est-card { padding: 18px; }
+  .sf-site .sf-est-card .sf-est-result-summary { padding: 18px; }
+}
+.sf-site .sf-est-card .sf-est-chip { text-align: left; }
+/* Reading copy stays at 16px+ (tests/ui_type_system_e2e.js: the audience is
+   40-75 and iOS zooms anything smaller); hints and choices one step up too. */
+.sf-site .sf-est-card .sf-est-step-subtitle,
+.sf-site .sf-est-card .sf-est-result-for,
+.sf-site .sf-est-card .sf-est-suggest-note,
+.sf-site .sf-est-card .sf-est-result-data-note,
+.sf-site .sf-est-card .sf-est-ownership-question > p,
+.sf-site .sf-est-card .sf-est-ownership-intro p { font-size: 16px; }
+.sf-site .sf-est-card label.sf-est-field,
+.sf-site .sf-est-card label.sf-est-corner { font-size: 16px !important; }
+.sf-site .sf-est-card .sf-est-field,
+.sf-site .sf-est-card .sf-est-label { font-size: 16px; }
+.sf-site .sf-est-card .sf-est-field > span:not(.sf-est-label):not(.sf-est-chips),
+.sf-site .sf-est-card .sf-est-hint,
+.sf-site .sf-est-card small { font-size: 14px !important; }
+.sf-site .sf-est-card .sf-est-chip { font-size: 15px; }
+/* native date inputs have a ~175px intrinsic width that overflowed a half
+   column at 320px; let them shrink, and stack that panel on small phones */
+.sf-site .sf-est-card input[type="date"] { min-width: 0; }
+@media (max-width: 640px) {
+  .sf-site .sf-est-card .sf-est-time-inputs .sf-est-fields,
+  .sf-site .sf-est-card .sf-est-about .sf-est-fields { grid-template-columns: minmax(0, 1fr); }
+}

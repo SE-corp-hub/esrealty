@@ -75,7 +75,7 @@ function setInput(sel, v) { const e = q(sel); e.value = v; e.dispatchEvent(new E
       const labels = Array.prototype.map.call(ol.querySelectorAll('span'), s => s.textContent.trim());
       return labels.length === 3 && labels[0] === "Location" && labels[1] === "Details" && labels[2] === "Report";
     })(), "progress=" + (q('.sf-est-progress') ? q('.sf-est-progress').textContent.replace(/\s+/g, " ").trim() : "none"));
-    chk("screen1-guides-inputs", /LOCATION/.test(q('[data-est-screen="1"]').textContent) && /match the right BIR reference/.test(q('[data-est-screen="1"]').textContent), "");
+    chk("screen1-guides-inputs", /Tell us about your property/.test(q('[data-est-screen="1"]').textContent) && /match the right BIR reference/.test(q('[data-est-screen="1"]').textContent), "");
     chk("region-fixed-batangas", !!q('.sf-est-loc-fixed') && /CALABARZON.*Batangas/.test(q('.sf-est-loc-fixed').textContent), "txt=" + (q('.sf-est-loc-fixed') && q('.sf-est-loc-fixed').textContent));
     chk("mn-options-gte34", pt >= 34, "mn=" + pt);
     chk("legacy-map-removed", !document.getElementById("est-map") && !q('[data-est-step]'), "");
@@ -155,12 +155,14 @@ function setInput(sel, v) { const e = q(sel); e.value = v; e.dispatchEvent(new E
     }
     chk("screen3-is-revealed", !!screen3 && screen3.getBoundingClientRect().bottom > 0 && screen3.getBoundingClientRect().top < window.innerHeight, "top=" + (screen3 && screen3.getBoundingClientRect().top) + " bottom=" + (screen3 && screen3.getBoundingClientRect().bottom) + " scrollY=" + window.scrollY + " h=" + (screen3 && screen3.getBoundingClientRect().height) + " ancestors=" + revealAncestors.join(" | "));
     await waitFor(() => q('[data-est-screen="4"]'), 90, ESP);
-    chk("result-heading-is-clear", !!q('#sf-est-result-heading') && /Your guide is ready\./.test(q('#sf-est-result-heading').textContent), "");
-    chk("selling-result-design", !!q('.sf-est-selling-result') && /YOUR PROPERTY VALUE GUIDE/.test(q('.sf-est-result-eyebrow').textContent) && !!q('.sf-est-nextstep') && /04/.test(q('.sf-est-step-no').textContent), "");
-    chk("result-scroll-cue", !!q('[data-est-scroll-report]') && /Explore calculation details/.test(q('[data-est-scroll-report]').textContent), "");
+    chk("result-heading-is-clear", !!q('#sf-est-result-heading') && /Your property value guide/.test(q('#sf-est-result-heading').textContent), "");
+    /* 2026-10-15 refresh: the price comes straight after one heading line; no
+       hero banner, eyebrow or "04" badge in front of it. */
+    chk("selling-result-design", !!q('.sf-est-selling-result') && !!q('.sf-est-nextstep') && !q('.sf-est-result-hero') && !!q('.sf-est-result-head') && q('.sf-est-result-head').compareDocumentPosition(q('.sf-est-result-value')) === Node.DOCUMENT_POSITION_FOLLOWING, "");
+    chk("result-sources-folded-below-price", !!q('.sf-est-result-sources') && q('.sf-est-result-value').compareDocumentPosition(q('.sf-est-result-sources')) === Node.DOCUMENT_POSITION_FOLLOWING && /Where the numbers come from/.test(q('.sf-est-result-sources summary').textContent), "");
     chk("result-data-strip", !!q('.sf-est-result-data') && /BIR source match/.test(q('.sf-est-result-data').textContent) && /BIR schedule in effect since/.test(q('.sf-est-result-data').textContent) && /2022-07-23/.test(q('.sf-est-result-data').textContent), "");
     chk("result-schedule-date-framed-as-ongoing", !!q('.sf-est-result-data-note') && /remain in force until a newer Department Order/.test(q('.sf-est-result-data-note').textContent) && /re-checked every 30 days/.test(q('.sf-est-result-data-note').textContent), (q('.sf-est-result-data-note') || { textContent: "" }).textContent);
-    chk("analysis-summary", !!q('.sf-est-analysis-summary') && /Analysis complete/.test(q('.sf-est-analysis-summary').textContent) && /Vacant lot/i.test(q('.sf-est-analysis-summary').textContent), "");
+    chk("result-names-the-property", !!q('.sf-est-result-for') && /vacant lot/i.test(q('.sf-est-result-for').textContent) && /sqm/.test(q('.sf-est-result-for').textContent), (q('.sf-est-result-for') || { textContent: "" }).textContent);
     chk("next-step-card-above-report", !!q('.sf-est-nextstep') && !!q('[data-est-lead-open]') &&
         q('.sf-est-nextstep').compareDocumentPosition(q('.sf-est-report')) & Node.DOCUMENT_POSITION_FOLLOWING &&
         /no obligation/i.test(q('.sf-est-nextstep').textContent) &&
@@ -193,7 +195,7 @@ chk("central-estimate-and-range-in-summary", !!q('.sf-est-result-summary') && !!
     chk("estimate-result-is-large", !!q('.sf-est-result-value') && parseFloat(getComputedStyle(q('.sf-est-result-value')).fontSize) >= 40, "font=" + (q('.sf-est-result-value') && getComputedStyle(q('.sf-est-result-value')).fontSize));
     chk("asking-price-amount-is-large", !!q('.sf-est-result-value') && parseFloat(getComputedStyle(q('.sf-est-result-value')).fontSize) >= 32, "font=" + (q('.sf-est-result-value') && getComputedStyle(q('.sf-est-result-value')).fontSize));
     const reportText = (q('.sf-est-report') || { textContent: "" }).textContent;
-     chk("guide-section-label", /YOUR GUIDE, SECTION BY SECTION/.test(document.body.innerText), "");
+     chk("guide-section-label", /Your guide, section by section/.test(document.body.innerText), "");
      chk("pricing-strategy-has-no-duplicate-asking-card", qa('[data-est-pricing-body] .sf-est-recommended-ask').length === 0 && qa('.sf-est-result-summary .sf-est-recommended-ask').length === 0, "pricing-body cards=" + qa('[data-est-pricing-body] .sf-est-recommended-ask').length);
       chk("computed-cards-open-without-contact", qa('.sf-est-price-lock').length === 0 && /Transaction taxes/.test(q('[data-est-pricing-body]').textContent) && /₱/.test(q('[data-est-pricing-body]').textContent), "");
     chk("taxes-fees-commissions-shown", /Taxes, fees & commissions/.test(reportText) && /Broker commission/.test(reportText), "");
