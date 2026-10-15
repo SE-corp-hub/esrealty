@@ -2940,3 +2940,75 @@ body.sf-menu-open .sf-sticky { display: none; }
 .sf-site label.sf-consent { flex-wrap: wrap; }
 .sf-site label.sf-consent > span:not(.sf-field-err) { flex: 1 1 0; min-width: 0; }
 .sf-site label.sf-consent > .sf-field-err { flex: 1 1 100%; margin-top: 4px; }
+
+/* --- Review items 13-16, 22-32 (2026-10-15) ---------------------------- */
+/* 13: small grey text raised for a 40-75 audience */
+.sf-site .sf-est-card .sf-est-field > span:not(.sf-est-label) { font-size: 15px !important; color: #555B63; }
+.sf-site .sf-est-card .sf-est-loc-fixed,
+.sf-site .sf-est-card .sf-est-next-hint,
+.sf-site .sf-est-card .sf-est-street-fallback { font-size: 15px !important; color: #555B63; }
+.sf-site .sf-consent span { font-size: 15px !important; line-height: 1.5 !important; color: #4A4F57 !important; }
+.sf-site .sf-pv-form label, .sf-site .sf-cs label { font-size: 15px !important; color: #2B2F35; }
+.sf-site .sf-consent input[type="checkbox"] { width: 24px !important; height: 24px !important; flex: none; }
+.sf-site .sf-footer small { font-size: 14px !important; color: #B7C0C9 !important; line-height: 1.6; }
+.sf-site .sf-footer a, .sf-site .sf-footer button { font-size: 15px !important; min-height: 44px; display: inline-flex; align-items: center; }
+.sf-site .sf-footer > div:last-child { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+
+/* 14/15: one eyebrow chip (the hero); section labels become plain small headings */
+.sf-site .sf-guide-summary .sf-eyebrow,
+.sf-site .sf-featured .sf-eyebrow,
+.sf-site .sf-services .sf-eyebrow,
+.sf-site .sf-cta .sf-eyebrow,
+.sf-site .sf-home-project .sf-eyebrow {
+  padding: 0; border: 0; background: none; border-radius: 0;
+  color: var(--sf-accent-hover); font-size: 13px; letter-spacing: .12em;
+}
+.sf-site .sf-guide-summary .sf-eyebrow::before,
+.sf-site .sf-featured .sf-eyebrow::before,
+.sf-site .sf-services .sf-eyebrow::before,
+.sf-site .sf-cta .sf-eyebrow::before,
+.sf-site .sf-home-project .sf-eyebrow::before { content: none; }
+
+/* 16: one primary and one secondary button size */
+.sf-site .sf-primary-btn, .sf-site .sf-outline-btn { min-height: 48px; padding-inline: 22px; border-radius: 999px; font-size: 16px; }
+.sf-site .sf-cs-actions .sf-primary-btn, .sf-site .sf-cs-actions .sf-outline-btn { min-height: 48px; }
+
+/* 26: phone menu groups read as links, not disabled labels */
+.sf-site .sf-menu-acc-sum { color: var(--sf-ink) !important; text-transform: none !important; letter-spacing: 0 !important; font-weight: 600 !important; font-size: 17px !important; }
+
+/* 30: house icon in empty states */
+.sf-site .sf-empty > .sf-empty-ico { color: var(--sf-accent-hover); background: var(--sf-accent-soft); font-family: inherit; }
+
+/* 32: whole service card is the link */
+.sf-site .sf-service-card { text-decoration: none; }
+.sf-site .sf-service-card:focus-visible { outline: 2px solid var(--sf-accent); outline-offset: 2px; }
+
+/* 25: assumptions beside the figure */
+.sf-site .sf-est-card .sf-est-assume { margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: #FDF8F3; border: 1px solid #F0E3D7; }
+.sf-site .sf-est-card .sf-est-assume-title { margin: 0 0 6px; font-size: 15px; font-weight: 650; color: var(--e-ink); }
+.sf-site .sf-est-card .sf-est-assume ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.sf-site .sf-est-card .sf-est-assume li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; font-size: 16px; line-height: 1.45; color: var(--e-text); }
+.sf-site .sf-est-card .sf-est-assume-edit {
+  flex: none; min-height: 44px; padding: 0 16px; border: 1px solid var(--e-line-strong); border-radius: 999px;
+  background: #FFFFFF; color: var(--e-accent-hover); font: inherit; font-size: 15px; font-weight: 650; cursor: pointer;
+}
+.sf-site .sf-est-card .sf-est-assume-edit:focus-visible { outline: 2px solid var(--e-accent); outline-offset: 2px; }
+
+/* 24: plain meanings */
+.sf-site .sf-est-card .sf-est-terms { margin-top: 12px; border: 1px solid var(--e-line); border-radius: 12px; background: #FFFFFF; }
+.sf-site .sf-est-card .sf-est-terms > summary { min-height: 48px; padding: 12px 16px; cursor: pointer; font-size: 16px; font-weight: 600; color: var(--e-ink); display: flex; align-items: center; }
+.sf-site .sf-est-card .sf-est-terms dl { margin: 0; padding: 0 16px 14px; display: grid; gap: 10px; }
+.sf-site .sf-est-card .sf-est-terms dt { font-size: 15px; font-weight: 650; color: var(--e-ink); }
+.sf-site .sf-est-card .sf-est-terms dd { margin: 2px 0 0; font-size: 16px; line-height: 1.5; color: var(--e-text); }
+
+/* 22: two next-step choices plus a quiet link */
+.sf-site .sf-est-card .sf-est-nextstep-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.sf-site .sf-est-card .sf-est-nextstep-more {
+  display: inline-flex; align-items: center; min-height: 44px; margin-top: 10px; padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--e-accent-hover); font: inherit; font-size: 16px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-align: left;
+}
+.sf-site .sf-sample-split { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+.sf-site .sf-sample-split > div { min-width: 0; }
+@media (max-width: 360px) { .sf-site .sf-quick-range-text span { font-size: 15px; } .sf-site .sf-quick-range-text .sf-quick-range-mid { font-size: 13px; } }
+.sf-site .sf-cta-short .sf-contact-details { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 14px; }
+.sf-site .sf-cta-short .sf-contact-details a, .sf-site .sf-cta-short .sf-contact-details span { display: inline-flex; align-items: center; min-height: 44px; color: #FFFFFF; font-size: 17px; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(255,255,255,.4); text-underline-offset: 4px; }

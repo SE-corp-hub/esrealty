@@ -145,7 +145,7 @@ function setInput(sel, v) { const e = q(sel); e.value = v; e.dispatchEvent(new E
     q('[data-est-next]').click();
     chk("details-advances-straight-to-calculation", !!q('[data-est-screen="3"]') && !q('[data-est-screen="5"]'), "no review screen");
     estApi().mount(); await wait(40);
-    chk("same-home-rerender-keeps-calculating-stage", !!q('[data-est-screen="3"]') && /BACLARAN/.test(q('[data-est-screen="3"]').textContent), "");
+    chk("same-home-rerender-keeps-calculating-stage", !!q('[data-est-screen="3"]') && /BACLARAN/i.test(q('[data-est-screen="3"]').textContent), "");
     const screen3 = q('[data-est-screen="3"]');
     chk("screen3-no-rotating-indicator", !q('[data-est-screen="3"] [data-est-spin]') && !q('[data-est-screen="3"] [data-est-anim-mark]'), "");
     chk("screen3-progress-design", !!q('[data-est-screen="3"] .sf-est-anim-panel') && qa('[data-est-screen="3"] [data-est-stage]').length === 3 && /Calculating your property value/.test(q('[data-est-screen="3"] .sf-est-anim-title').textContent), "");

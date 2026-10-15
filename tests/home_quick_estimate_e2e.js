@@ -56,7 +56,7 @@ const figure = () => (q("[data-quick-figure]") || {}).textContent || "";
     const e1 = await api.estimate(quickOpts("LIPA CITY", "house_lot", 150));
     check("figure equals the estimator (house & lot, 150 sqm)", figure() === money(round10k(e1.marketGuideEstimate)), figure() + " vs " + money(round10k(e1.marketGuideEstimate)));
     const rangeText = q(".sf-quick-range-text").textContent;
-    check("range equals the estimator", rangeText.indexOf(compact(e1.low)) >= 0 && rangeText.indexOf(compact(e1.high)) >= 0, rangeText);
+    check("range equals the estimator", rangeText.indexOf(money(round10k(e1.low))) >= 0 && rangeText.indexOf(money(round10k(e1.high))) >= 0, rangeText);
     check("note states the house assumption", /135 sqm house|sqm house under 5 years/.test(q(".sf-quick-note").textContent), q(".sf-quick-note").textContent);
     check("result announced once to screen readers", /Starting figure for Lipa City/.test(q("[data-quick-say]").textContent), q("[data-quick-say]").textContent);
 

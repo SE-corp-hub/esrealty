@@ -24,7 +24,7 @@
    * defaults are what actually renders - so the closed shophouse campaign was
    * still the homepage's call to action. The shophouse and Project B.T pages are
    * parked and must not leak their copy into the live site. */
-  var siteContact = { eyebrow: "PROPERTY GUIDANCE", title: "What are you planning next?", description: "Tell us whether you are buying, selling, renting, or reviewing a property. Share the location and your questions so we can help with the next step.", phone: "", email: "", address: "", hours: "", contactLoaded: false };
+  var siteContact = { eyebrow: "PROPERTY GUIDANCE", title: "What are you planning next?", description: "Tell us whether you are buying, selling, renting, or reviewing a property. Share the location and your questions so we can help with the next step.", phone: "0905 307 9119", email: "seaestate@gmail.com", address: "", hours: "", contactLoaded: false };
 
   /* Shared implementation from js/util.js, with a byte-identical local
    * fallback so this module can be require()d directly by the Node tests. */
@@ -175,8 +175,10 @@
 
   function footer() {
     return '<footer class="sf-footer"><div class="sf-brand"><span class="sf-brand-mark">S.E</span><span><b>SEA ESTATES</b><small>Property &amp; local guidance.</small></span></div>' +
-      '<p>Browse properties, review a value guide, and plan your next step. <span class="sf-copyright">&copy; SEA ESTATES ' + new Date().getFullYear() + '</span><br><small>Independent of the BIR · Batangas coverage only · BIR values are tax references.</small></p>' +
-      '<div><a href="#/search">Browse properties</a><a href="#/privacy">Privacy notice</a><button data-sf-auth="signin">Agent sign in</button></div></footer>';
+      '<p>Browse properties, review a value guide, and plan your next step. <span class="sf-copyright">&copy; SEA ESTATES ' + new Date().getFullYear() + '</span><br><small>Serving Batangas province · Independent of the BIR · BIR values are tax references.</small></p>' +
+      '<div>' + (siteContact.phone ? '<a href="tel:' + encodeURIComponent(telHref(siteContact.phone)) + '">' + esc(siteContact.phone) + '</a>' : '') +
+      (siteContact.email ? '<a href="mailto:' + encodeURIComponent(siteContact.email) + '">' + esc(siteContact.email) + '</a>' : '') +
+      '<a href="#/search">Browse properties</a><a href="#/privacy">Privacy notice</a><button data-sf-auth="signin">Agent sign in</button></div></footer>';
   }
 
   function shell(content) {
@@ -227,7 +229,7 @@
        * filled in at all. A visible label is also simply better for the 40-75
        * audience this site targets. */
       '<label class="sf-field"><span>Email address</span>' +
-      '<input type="email" name="email" required maxlength="254" autocomplete="email" placeholder="you@example.com"></label>' +
+      '<input type="email" name="email" required maxlength="254" autocomplete="email" placeholder="e.g. name@example.com"></label>' +
       '<label class="sf-consent"><input type="checkbox" name="consent" required><span>I agree to be contacted about Project B.T. I can unsubscribe at any time. See our <a href="#/privacy">Privacy Notice</a>.</span></label>' +
       '<button class="sf-primary-btn" type="submit">Notify me</button>' +
       '<p class="sf-form-status" aria-live="polite"></p></form></div></section>');
@@ -355,9 +357,9 @@
       '<h2 class="sf-pv-h2">Tell us what you need</h2>' +
       '<p class="sf-pv-form-sub">A few details and the service you are after. We reply within one business day.</p>' +
       '<form class="sf-pv-form" data-sf-consult novalidate>' +
-      '<div class="sf-pv-field-row"><label>Full name<input name="name" required maxlength="160" autocomplete="name" placeholder="Juan dela Cruz"></label>' +
-      '<label>Mobile number<input name="phone" required maxlength="50" autocomplete="tel" inputmode="tel" placeholder="09xx xxx xxxx"></label></div>' +
-      '<label>Email<input type="email" name="email" maxlength="254" autocomplete="email" placeholder="you@example.com"></label>' +
+      '<div class="sf-pv-field-row"><label>Full name<input name="name" required maxlength="160" autocomplete="name" placeholder="e.g. Juan dela Cruz"></label>' +
+      '<label>Mobile number<input name="phone" type="tel" required maxlength="50" autocomplete="tel" inputmode="tel" placeholder="e.g. 0917 123 4567 or +63 917 123 4567"></label></div>' +
+      '<label>Email<input type="email" name="email" maxlength="254" autocomplete="email" placeholder="e.g. name@example.com"></label>' +
       /* The option value is the human label, so the lead's message reads the
          same to the team as it does to the reader (a service key like "broker"
          used to be posted verbatim). The first option is the default, so the
@@ -481,7 +483,8 @@
       return;
     }
     API.siteSettings().then(function (result) {
-      if (result && result.data) siteContact = Object.assign({}, siteContact, result.data);
+      /* Site settings override the built-in contact only where they are filled in. */
+      if (result && result.data) Object.keys(result.data).forEach(function (k) { var v = result.data[k]; if (v != null && String(v).trim() !== "") siteContact[k] = v; });
       siteContact.contactLoaded = true;
       applyContact();
     }).catch(function () {
@@ -653,7 +656,7 @@
   }
 
   function empty(message) {
-    return '<div class="sf-empty"><div>S.E</div><h3>No properties found</h3><p>' + esc(message || "Try changing your filters.") + '</p></div>';
+    return '<div class="sf-empty"><div class="sf-empty-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg></div><h3>No properties found</h3><p>' + esc(message || "Try changing your filters.") + '</p></div>';
   }
 
   function skeletons(count) {
@@ -797,10 +800,16 @@
   }
 
 
+  /* 0905 307 9119 -> +639053079119 so the link dials from abroad too */
+  function telHref(phone) {
+    var d = String(phone || "").replace(/[^\d+]/g, "");
+    return /^0\d{10}$/.test(d) ? "+63" + d.slice(1) : d;
+  }
+
   function contactDetails() {
     var out = [];
     if (siteContact.phone) {
-      out.push('<a href="tel:' + encodeURIComponent(String(siteContact.phone).replace(/[^\d+]/g, "")) + '">' + esc(siteContact.phone) + '</a>');
+      out.push('<a href="tel:' + encodeURIComponent(telHref(siteContact.phone)) + '">' + esc(siteContact.phone) + '</a>');
     }
     if (siteContact.email) {
       out.push('<a href="mailto:' + encodeURIComponent(siteContact.email) + '">' + esc(siteContact.email) + '</a>');
@@ -827,8 +836,7 @@
     return '<a class="sf-service-card" href="' + esc(item.href) + '">' +
       '<span class="sf-service-ico">' + (SERVICE_ICONS[i] || "") + '</span>' +
       '<span class="sf-service-num">' + (i < 9 ? "0" : "") + (i + 1) + '</span>' +
-      '<h3>' + esc(item.label) + '</h3><p>' + esc(item.note) + '</p>' +
-      '<span class="sf-service-go" aria-hidden="true">&rarr;</span></a>';
+      '<h3>' + esc(item.label) + '</h3><p>' + esc(item.note) + '</p></a>';
   }
 
   /* Obvious placeholder rows - a bare number like "321321", or "sample3" - are
@@ -959,11 +967,11 @@
     var active = activeFilters(params);
     if (active.length) {
       var chips = active.map(function (f) { return filterSummary(f); }).join(", ");
-      return '<div class="sf-empty"><div>S.E</div><h3>No properties match these filters</h3>' +
+      return '<div class="sf-empty"><div class="sf-empty-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg></div><h3>No properties match these filters</h3>' +
         '<p>Nothing matches ' + esc(chips) + ' right now. Clear the filters to see everything we publish.</p>' +
         '<a class="sf-outline-btn" href="' + esc(clearLink(active.map(function (f) { return f.def.name; }))) + '">Clear all filters</a></div>';
     }
-    return '<div class="sf-empty"><div>S.E</div><h3>No properties published yet</h3>' +
+    return '<div class="sf-empty"><div class="sf-empty-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg></div><h3>No properties published yet</h3>' +
       '<p>There are no live listings on the site at the moment. Tell us what you are looking for and we will come back to you, or check your own property with the free Value Guide.</p>' +
       '<div class="sf-empty-actions"><a class="sf-primary-btn" href="#/property-value?service=broker">Tell us what you need</a>' +
       '<a class="sf-outline-btn" href="#/home" data-est-services>Start my Value Guide</a></div></div>';
@@ -982,7 +990,7 @@
     var page = Number(result.page || 1), pages = Number(result.total_pages || 0);
     var nothingListed = !viewState.loading && !rows.length && !activeFilters(params).length && !compareIds.length;
     var pager = pages > 1 ? '<div class="sf-pager"><button data-sf-page="' + (page - 1) + '"' + (page <= 1 ? " disabled" : "") + '>Previous</button><span>Page ' + page + ' of ' + pages + '</span><button data-sf-page="' + (page + 1) + '"' + (page >= pages ? " disabled" : "") + '>Next</button></div>' : "";
-     return shell('<section class="sf-search-page"><div class="sf-search-intro"><p class="sf-eyebrow">PROPERTY SEARCH</p><h1>Find a property that fits.</h1><p>Browse the properties SEA ESTATES has listed for sale or rent.</p></div>' +
+     return shell('<section class="sf-search-page"><div class="sf-search-intro"><p class="sf-eyebrow">PROPERTY SEARCH</p><h1>Find a property that fits.</h1><p>Browse the properties SEA ESTATES has listed for sale or rent. The free Value Guide covers Batangas province.</p></div>' +
       '<div class="sf-filter-stick">' + searchFields(params, true) + '</div>' + activeFilterChips(params) +
       /* With nothing listed, compare, sort and view switches have nothing to act
          on: the empty state alone explains the page. */

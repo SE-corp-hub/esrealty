@@ -865,7 +865,7 @@
       return String(a.name).localeCompare(String(b.name));
     }).map(function (m) {
       var sel = m.name === est.municipality ? " selected" : "";
-      return '<option value="' + esc(m.name) + '"' + sel + ">" + esc(m.name) + "</option>";
+      return '<option value="' + esc(m.name) + '"' + sel + ">" + esc(titleCase(m.name)) + "</option>";
     }).join("");
   }
 
@@ -887,7 +887,7 @@
     var placeholder = est.barangay ? "" : " selected";
     return '<option value=""' + placeholder + ">— choose a barangay —</option>" + keys.map(function (b) {
       var sel = b === est.barangay ? " selected" : "";
-      return '<option value="' + esc(b) + '"' + sel + ">" + esc(b) + "</option>";
+      return '<option value="' + esc(b) + '"' + sel + ">" + esc(titleCase(b)) + "</option>";
     }).join("");
   }
 
@@ -974,9 +974,9 @@
   }
 
   function locSummary() {
-    var bits = ['<span class="sf-est-loc-fixed">Region IV-A (CALABARZON) · Batangas</span>'];
-    if (est.municipality) bits.push("<b>" + esc(est.municipality) + "</b>");
-    if (est.barangay) bits.push(esc(est.barangay));
+    var bits = ['<span class="sf-est-loc-fixed">Region IV-A (CALABARZON) · Batangas province only</span>'];
+    if (est.municipality) bits.push("<b>" + esc(titleCase(est.municipality)) + "</b>");
+    if (est.barangay) bits.push(esc(titleCase(est.barangay)));
     if (est.streetLabel && !est.allOther) bits.push("<span>" + esc(est.streetLabel) + "</span>");
     else if (est.allOther) bits.push("<span>Street not listed</span>");
     return '<div class="sf-est-locator"><span>' + bits.join(" · ") + "</span></div>";
@@ -1173,7 +1173,7 @@ out += "</div>";
        the register does not support, and the honest version was hidden inside a
        collapsed disclosure. */
       '<span class="sf-est-next-hint">' + (est.municipality
-        ? "We match the BIR zonal schedule imported for " + esc(est.municipality) + " (" + esc(referenceStatusShort()) + ")."
+        ? "We match the BIR zonal schedule imported for " + esc(titleCase(est.municipality)) + " (" + esc(referenceStatusShort()) + ")."
         : "Choose a municipality to match its BIR schedule.") + "</span>" +
       '<button type="button" class="sf-est-next" data-est-next>' + (est.type === "house_lot" ? "Continue to the house" : "Continue to property details") + "</button></div>";
     return out + "</div>";
@@ -1254,7 +1254,7 @@ out += "</div>";
       "<p class=\"sf-est-rdp\">Site answers net <b>" + pct(sa.pct || 0) + "</b> on land" +
       (sa.clamped ? " (limited from " + pct(sa.rawPct) + ")" : "") + "." +
       (size < 1 ? " Large-lot adjustment: land rate × <b>" + size.toFixed(3) + "</b> for " + fmt(r.area) + " sqm (price per sqm falls on bigger lots)." : "") +
-      (r.townCalibration ? " Town correction for " + esc(r.municipality) + ": land × <b>" + r.townCalibration.factor.toFixed(3) + "</b>, reviewed and approved from " + r.townCalibration.records + " bank and Pag-IBIG lot prices across " + r.townCalibration.projects + " developments (" + esc(r.townCalibration.month) + ")." : "") + "</p>" +
+      (r.townCalibration ? " Town correction for " + esc(titleCase(r.municipality)) + ": land × <b>" + r.townCalibration.factor.toFixed(3) + "</b>, reviewed and approved from " + r.townCalibration.records + " bank and Pag-IBIG lot prices across " + r.townCalibration.projects + " developments (" + esc(r.townCalibration.month) + ")." : "") + "</p>" +
       (ownRows ? "<ul class=\"sf-est-rdl\">" + ownRows + "</ul><p class=\"sf-est-rdp\">Ownership answers net <b>−" + (oa.pct || 0) + "%</b> on the total" + (oa.clamped ? " (capped at 30%)" : "") + ".</p>"
         : "<p class=\"sf-est-rdp\">No ownership deductions: title, occupancy and inheritance answers were clean or skipped.</p>") +
       "<p class=\"sf-est-rdp\">Suggested answers are typical for the location; correct any that don't match your property.</p>";
@@ -1551,7 +1551,7 @@ out += "</div>";
     var here = rows.filter(function (rec) { return evidence.place(rec.municipality) === evidence.place(r.municipality); });
     var near = rows.filter(function (rec) { return evidence.place(rec.municipality) !== evidence.place(r.municipality); }).slice(0, 3);
     var list = here.concat(near);
-    if (!list.length) return '<p class="sf-est-rdp">No researched asking-price records near ' + esc(r.municipality) + ' yet. Researched records exist for: ' + esc(rows.map(function (rec) { return rec.municipality; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(", ")) + '.</p>';
+    if (!list.length) return '<p class="sf-est-rdp">No researched asking-price records near ' + esc(titleCase(r.municipality)) + ' yet. Researched records exist for: ' + esc(rows.map(function (rec) { return rec.municipality; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(", ")) + '.</p>';
     var cards = list.map(function (rec) {
       var perSqm = rec.askingPricePerSqmMin ? fmt(rec.askingPricePerSqmMin) + (rec.askingPricePerSqmMax ? "–" + fmt(rec.askingPricePerSqmMax) : "") + "/sqm"
         : (rec.askingPrice && rec.lotArea) ? fmt(Math.round(rec.askingPrice / rec.lotArea)) + "/sqm"
@@ -1565,7 +1565,7 @@ out += "</div>";
         + '<p class="sf-est-rdp">' + esc((rec.notes || rec.priceBasis || "").slice(0, 160)) + '</p>' + source + '</article>';
     }).join("");
     var sameMuni = here.length ? " This municipality has " + here.length + " researched asking record(s)." : " This municipality has no researched asking record yet; nearby records are shown for context.";
-    return '<div class="sf-est-benchmark-context" data-est-benchmark-context><h5>Researched asking prices' + (here.length ? " in " + esc(r.municipality) : " nearby") + '</h5>' + cards + '<p class="sf-est-rdp">Researched asking prices are advertised prices, not achieved sales, and they are context only - they never change the estimate above.' + sameMuni + '</p></div>';
+    return '<div class="sf-est-benchmark-context" data-est-benchmark-context><h5>Researched asking prices' + (here.length ? " in " + esc(titleCase(r.municipality)) : " nearby") + '</h5>' + cards + '<p class="sf-est-rdp">Researched asking prices are advertised prices, not achieved sales, and they are context only - they never change the estimate above.' + sameMuni + '</p></div>';
   }
   /* Bank listings in the subject's town: the evidence LandValuePH puts behind a
      paywall, shown here with source, price type, date and link. Context only -
@@ -1587,7 +1587,7 @@ out += "</div>";
     var n = evidence.bankNearby(snap, { municipality: r.municipality, barangay: r.barangay, type: r.type, area: r.area, landPerSqm: r.landPerSqm, total: r.total });
     if (!n.total) return "";
     var what = r.type === "vacant_lot" ? "vacant lots" : "houses";
-    return '<p class="sf-est-result-bank" data-est-bank-line><b>' + n.total + ' bank and Pag-IBIG propert' + (n.total === 1 ? 'y' : 'ies') + '</b> for sale in ' + esc(r.municipality) +
+    return '<p class="sf-est-result-bank" data-est-bank-line><b>' + n.total + ' bank and Pag-IBIG propert' + (n.total === 1 ? 'y' : 'ies') + '</b> for sale in ' + esc(titleCase(r.municipality)) +
       (n.medianPricePerSqm ? ' · median ' + money(n.medianPricePerSqm) + '/sqm of lot for ' + what : '') +
       (n.subjectVsMedian != null ? ' · this guide ' + (n.subjectVsMedian >= 0 ? '+' : '') + fmt(Math.round(n.subjectVsMedian * 100)) + '%' : '') +
       '. <span>As-is asking prices and minimum bids; details under Market evidence.</span></p>';
@@ -1597,7 +1597,7 @@ out += "</div>";
     var snap = DATA && DATA.bankComparables;
     if (!snap || snap.unavailable) return '<p class="sf-est-rdp">The bank listing snapshot could not be loaded.</p>';
     var n = evidence.bankNearby(snap, { municipality: r.municipality, barangay: r.barangay, type: r.type, area: r.area, landPerSqm: r.landPerSqm, total: r.total });
-    var vacant = r.type === "vacant_lot", town = esc(r.municipality);
+    var vacant = r.type === "vacant_lot", town = esc(titleCase(r.municipality));
     if (!n.total) return '<div class="sf-est-bank" data-est-bank><p class="sf-est-rdp">No bank or Pag-IBIG acquired properties are listed for sale in ' + town + ' this month. The list is refreshed monthly from BDO, BPI Buena Mano and Pag-IBIG.</p></div>';
     var head = '<p class="sf-est-bank-lead"><b>' + n.total + ' bank and Pag-IBIG acquired propert' + (n.total === 1 ? 'y' : 'ies') + '</b> for sale in ' + town + (n.inBarangay ? ' · <b>' + n.inBarangay + '</b> in ' + esc(r.barangay) : '') + '.</p>';
     if (n.medianPricePerSqm) {
@@ -1710,7 +1710,7 @@ var displayRange = '';
       "<ul class=\"sf-est-rdl\">" +
       "<li>Purpose: <b>" + esc(r.purpose || "—") + "</b></li>" +
       "<li>Type: <b>" + esc(r.typeLabel) + "</b></li>" +
-      "<li>Municipality: <b>" + esc(r.municipality) + "</b></li>" +
+      "<li>Municipality: <b>" + esc(titleCase(r.municipality)) + "</b></li>" +
       "<li>Barangay: <b>" + esc(r.barangay) + "</b></li>" +
       "<li>Street: <b>" + esc(r.streetName ? r.streetName : "Street not listed") + "</b></li>" +
       "<li>Lot area: <b>" + fmt(r.area) + " sqm</b>" + (r.corner.applied ? " · corner lot (+2.5%)" : "") + "</li>" +
@@ -1809,6 +1809,35 @@ var displayRange = '';
     });
   }
 
+  /* What the figure assumed, beside the figure, each with a way to change it
+     (review item 25). */
+  function assumptionsHtml(r) {
+    var rows = [];
+    var where = r.planningReference ? "Street not listed: the barangay's typical listed-street rate is used"
+      : est.allOther ? "Street not listed: the barangay's all-other-streets rate is used"
+      : r.streetName ? "On " + titleCase(r.streetName)
+      : "Barangay rate (no street chosen)";
+    rows.push({ text: where, screen: 1, label: "Change location" });
+    if (r.improvement > 0) {
+      var typical = !(Number(est.floorArea) > 0);
+      rows.push({ text: "House of " + fmt(r.floorArea) + " sqm" + (typical ? " (typical for this lot size)" : "") + ", " + String(labelFor(DATA.config, "ageBands", est.ageBand)).toLowerCase() + " old", screen: 2, label: "Change house details" });
+    }
+    if (est.classification && est.classification !== "RR") rows.push({ text: classificationLabelShort() + " land", screen: 1, label: "Change classification" });
+    return '<div class="sf-est-assume"><p class="sf-est-assume-title">This figure assumes</p><ul>' + rows.map(function (row) {
+      return '<li><span>' + esc(row.text) + '</span><button type="button" class="sf-est-assume-edit" data-est-edit="' + row.screen + '" aria-label="' + esc(row.label) + '">Change</button></li>';
+    }).join("") + '</ul></div>';
+  }
+
+  /* Plain meanings for the words the result uses (review item 24). */
+  function termsHtml() {
+    return '<details class="sf-est-terms"><summary>What do these terms mean?</summary><dl>' +
+      '<div><dt>BIR zonal value</dt><dd>The government\'s published land rate per sqm, used to compute taxes. It is a reference, not a selling price.</dd></div>' +
+      '<div><dt>Planning range</dt><dd>Where a sale would usually land: 85% to 130% of the central figure. It is not a guaranteed offer.</dd></div>' +
+      '<div><dt>Classification</dt><dd>How the BIR groups land by use: residential, commercial, agricultural or industrial.</dd></div>' +
+      '<div><dt>All other streets</dt><dd>The BIR rate for streets in a barangay that its list does not name.</dd></div>' +
+      '</dl></details>';
+  }
+
   function resultSummaryHtml(r) {
     var bankN = (DATA && DATA.bankComparables && !DATA.bankComparables.unavailable && r.municipality)
       ? evidence.bankNearby(DATA.bankComparables, { municipality: r.municipality, barangay: r.barangay, type: r.type, area: r.area, landPerSqm: r.landPerSqm, total: r.total }).total : 0;
@@ -1846,7 +1875,9 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       '<dl class="sf-est-result-split"><div><dt>Land</dt><dd>' + money(r.landValue) + '</dd></div>' +
         (r.improvement > 0 ? '<div><dt>House</dt><dd>' + money(r.improvement) + '</dd></div>' : '') +
         '<div><dt>Per sqm of lot</dt><dd>' + money(r.perSqm) + '</dd></div></dl>' +
+      assumptionsHtml(r) +
       bankSummaryLineHtml(r) +
+      termsHtml() +
       '<details class="sf-est-result-more"><summary>How this number is worked out</summary>' +
       '<div class="sf-est-result-bir"><span>' + esc(r.birReferenceLabel) + '</span><b>' + money(r.birZonalValue) + '</b><small>' + money(r.birZonalRatePerSqm) + '/sqm · ' + (r.birReferenceConfirmed ? "tax-reference figure, separate from the estimate" : "derived fallback, not confirmed parcel tax FMV") + '</small></div>' +
       multipleHtml +
@@ -1880,11 +1911,12 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
     out += '<details class="sf-est-result-sources"><summary>Where the numbers come from</summary>' +
       '<div class="sf-est-result-data"><div><b>BIR source match</b><small>' + esc(r.source.label) + '</small></div><div><b>BIR schedule in effect since</b><small>' + esc(r.effectivityDate) + '</small></div><div><b>Dataset version</b><small>' + esc(r.dataVersion) + '</small></div></div>' +
       '<p class="sf-est-result-data-note">BIR zonal values remain in force until a newer Department Order supersedes them.' + (nextScheduleCheck ? ' Batangas schedules are re-checked every 30 days; next review ' + esc(nextScheduleCheck) + '.' : '') + '</p></details>';
-    out += decisionHtml(r);
     /* Placed here, not at the foot of the page: the user has just seen their
      * number and the evidence behind it, which is when the next-step question
-     * forms. The bottom CTA still exists for people who read to the end. */
+     * forms. The bottom CTA still exists for people who read to the end.
+     * The decision card (net proceeds / budget) follows it (review item 22). */
     out += nextStepCard();
+    out += decisionHtml(r);
     out += '<p class="sf-est-report-label">Full report <span>Every figure, source and limitation behind the estimate</span></p>';
     out += '<div class="sf-est-report">';
     reportSections(r).forEach(function (sec, i) {
@@ -1902,7 +1934,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
     var r = est.result || {};
     return '<div class="sf-est-unavail sf-est-step" data-est-screen="4">' +
       '<span class="sf-est-tag sf-est-tag-unavailable">Unavailable</span>' +
-      "<h3>No estimate available yet" + (est.municipality ? " for " + esc(est.municipality) : "") + "</h3>" +
+      "<h3>No estimate available yet" + (est.municipality ? " for " + esc(titleCase(est.municipality)) : "") + "</h3>" +
       "<p>" + esc(unavailableReason(r.reason)) + "</p>" +
       '<div class="sf-est-actions"><button type="button" class="sf-est-next sf-est-prev" data-est-prev>← Back to property details</button>' + (r.reason === "connection" ? '<button type="button" class="sf-est-next" data-est-calc-retry>Retry calculation</button>' : "") + '</div>' +
       "</div>";
@@ -1948,14 +1980,14 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
     return '<div class="sf-est-nextstep">' +
       '<div class="sf-est-nextstep-head">' +
       '<span class="sf-est-nextstep-badge">No obligation to list</span>' +
-      "<h4>Choose your next step</h4>" +
-      '<p>Pick what helps most. None of these commits you to anything.</p>' +
+      "<h4>What would you like to do next?</h4>" +
+      '<p>Talk it through with our team, or keep a copy. Neither commits you to anything.</p>' +
       "</div>" +
       '<div class="sf-est-nextstep-grid">' +
-      '<button type="button" class="sf-est-nextstep-tile" data-est-email-open>' + icon('<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="m4.5 7.5 7.5 5.5 7.5-5.5"/>') + "<span><b>Email my guide</b><small>Get a copy in your inbox. No follow-up unless you ask.</small></span><i class=\"sf-est-nextstep-go\" aria-hidden=\"true\">→</i></button>" +
-      '<button type="button" class="sf-est-nextstep-tile" data-est-lead-open>' + icon('<path d="M9 4.5h6a1 1 0 0 1 1 1V7H8V5.5a1 1 0 0 1 1-1Z"/><path d="M8 5.5H6.5A1.5 1.5 0 0 0 5 7v12a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19V7a1.5 1.5 0 0 0-1.5-1.5H16"/><path d="m9 13.5 2 2 4-4"/>') + "<span><b>Request an appraisal consultation</b><small>A specialist verifies your inputs against the current BIR schedule.</small></span><i class=\"sf-est-nextstep-go\" aria-hidden=\"true\">→</i></button>" +
       '<button type="button" class="sf-est-nextstep-tile" data-est-broker-open>' + icon('<path d="M4 7a2.5 2.5 0 0 1 2.5-2.5h11A2.5 2.5 0 0 1 20 7v6.5a2.5 2.5 0 0 1-2.5 2.5H12l-4.5 3.5V16H6.5A2.5 2.5 0 0 1 4 13.5V7Z"/><path d="M8.5 10.5h7"/>') + "<span><b>Talk to a licensed broker</b><small>Discuss selling, buying or marketing this property.</small></span><i class=\"sf-est-nextstep-go\" aria-hidden=\"true\">→</i></button>" +
+      '<button type="button" class="sf-est-nextstep-tile" data-est-email-open>' + icon('<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="m4.5 7.5 7.5 5.5 7.5-5.5"/>') + "<span><b>Email my guide</b><small>Get a copy in your inbox. No follow-up unless you ask.</small></span><i class=\"sf-est-nextstep-go\" aria-hidden=\"true\">→</i></button>" +
       "</div>" +
+      '<button type="button" class="sf-est-nextstep-more" data-est-lead-open>Need a formal valuation? Request an appraisal consultation</button>' +
       '<p class="sf-est-nextstep-reassure">Your results are open above. A specialist replies within one business day.</p>' +
       "</div>";
   }
@@ -1982,7 +2014,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
           : "We email the guide to you. No follow-up unless you ask.";
       out += '<form class="sf-est-lead-form" data-est-lead-form>' +
         "<h3>" + leadTitle + "</h3>" +
-        '<p class="sf-est-lead-ctx">For: <b>' + esc(est.municipality + " · " + est.barangay + (est.streetLabel && !est.allOther ? " · " + est.streetLabel : "")) + "</b> · " + leadValue + ".</p>" +
+        '<p class="sf-est-lead-ctx">For: <b>' + esc(titleCase(est.municipality) + " · " + titleCase(est.barangay) + (est.streetLabel && !est.allOther ? " · " + est.streetLabel : "")) + "</b> · " + leadValue + ".</p>" +
         '<p class="sf-est-lead-reassure">' + leadReassure + '</p>' +
         '<div class="sf-est-lead-grid">' +
         '<label>Full name<input name="name" autocomplete="name" required maxlength="160" placeholder="Your name"></label>' +
@@ -2390,6 +2422,15 @@ var saleContext = $q(card, "[data-est-sale-context]");
           b.classList.toggle("active", active);
           b.setAttribute("aria-pressed", active ? "true" : "false");
         });
+      });
+    });
+
+    $qa(card, "[data-est-edit]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var target = Number(btn.getAttribute("data-est-edit")) || 1;
+        est.screen = target === 2 ? 2 : 1;
+        renderLayout();
+        revealEstimatorScreen();
       });
     });
 
@@ -2833,6 +2874,9 @@ return {
       window.addEventListener("hashchange", function () {
         if (!/^#\/?(home(?:\?|$)|$)/.test(location.hash)) { mountedHome = false; est.validationIssue = null; ++calculationRequest; }
       });
+      window.addEventListener("popstate", function (event) {
+        if (!(event.state && event.state.sfGuide) && /^#\/?(home|$)/.test(location.hash || "#/home")) window.scrollTo({ top: 0, behavior: "smooth" });
+      });
       document.addEventListener("click", function (event) {
         if (event.target.closest("[data-est-data-retry]")) { dataPromise = null; mount(); return; }
         var link = event.target.closest("[data-est-services]");
@@ -2844,6 +2888,9 @@ return {
         if (goHome) { location.hash = "#/home"; setTimeout(scrollToEstimator, 450); setTimeout(scrollToEstimator, 1200); }
         else {
           if (link.hasAttribute("data-quick-go")) applyQuickToGuide();
+          /* An entry for the jump, so the phone's Back button returns to the
+             top of the page instead of leaving the site (review item 29). */
+          try { if (!(history.state && history.state.sfGuide)) history.pushState({ sfGuide: true }, "", location.href); } catch (e) { /* noop */ }
           scrollToEstimator();
         }
       });
@@ -2908,11 +2955,6 @@ return {
       '<li><b data-est-stat="listings">' + (s.listings ? fmt(s.listings) : "Monthly") + '</b><span data-est-stat="listings-label">' + (s.listings ? "bank &amp; Pag‑IBIG listings" + (s.month ? ", " + esc(s.month) : "") : "bank &amp; Pag‑IBIG listings") + '</span></li>';
   }
 
-  function compactMoney(n) {
-    n = Number(n) || 0;
-    if (n >= 1e6) return "₱" + (Math.round(n / 1e4) / 100).toFixed(2) + "M";
-    return "₱" + fmt(Math.round(n / 1e3)) + "K";
-  }
 
   function quickRound(n) { return Math.round((Number(n) || 0) / 1e4) * 1e4; }
 
@@ -2933,14 +2975,14 @@ return {
     return '<span class="sf-quick-caption">Starting figure · ' + esc(titleCase(r.municipality)) + '</span>' +
       '<strong class="sf-quick-figure" data-quick-figure data-value="' + quickRound(r.marketGuideEstimate) + '">' + money(quickRound(r.marketGuideEstimate)) + '</strong>' +
       '<div class="sf-quick-range" aria-hidden="true"><span style="left:' + pos.toFixed(1) + '%"></span></div>' +
-      '<p class="sf-quick-range-text"><span>' + compactMoney(r.low) + '</span><span class="sf-quick-range-mid">Likely range</span><span>' + compactMoney(r.high) + '</span></p>' +
+      '<p class="sf-quick-range-text"><span>' + money(quickRound(r.low)) + '</span><span class="sf-quick-range-mid">Likely range</span><span>' + money(quickRound(r.high)) + '</span></p>' +
       '<p class="sf-quick-note">Town-wide figure for a ' + fmt(r.area) + ' sqm lot' + (r.improvement > 0 ? ' with a ' + fmt(r.floorArea) + ' sqm house under 5 years old' : '') + '. Your barangay, street and house details sharpen it.</p>';
   }
 
   function quickSay() {
     var r = quick.result;
     if (!quick.municipality || !r || r.available === false || !(r.marketGuideEstimate > 0)) return "";
-    return "Starting figure for " + titleCase(r.municipality) + ": " + money(quickRound(r.marketGuideEstimate)) + ". Likely range " + compactMoney(r.low) + " to " + compactMoney(r.high) + ".";
+    return "Starting figure for " + titleCase(r.municipality) + ": " + money(quickRound(r.marketGuideEstimate)) + ". Likely range " + money(quickRound(r.low)) + " to " + money(quickRound(r.high)) + ".";
   }
 
   function quickMarkup() {
@@ -3024,8 +3066,8 @@ return {
       if (!r || r.available === false || !(r.marketGuideEstimate > 0)) { box.hidden = true; return; }
       var set = function (k, v) { var el = box.querySelector('[data-sample="' + k + '"]'); if (el) el.textContent = v; };
       set("value", money(quickRound(r.marketGuideEstimate)));
-      set("low", compactMoney(r.low)); set("high", compactMoney(r.high));
-      set("land", compactMoney(r.landValue)); set("house", compactMoney(r.improvement));
+      set("low", money(quickRound(r.low))); set("high", money(quickRound(r.high)));
+      set("land", money(quickRound(r.landValue))); set("house", money(quickRound(r.improvement)));
       set("bir", r.birZonalRatePerSqm > 0 ? money(r.birZonalRatePerSqm) + "/sqm" : "—");
       var recs = DATA && DATA.bankComparables && DATA.bankComparables.records || [];
       set("listings", fmt(recs.filter(function (x) { return x.municipality === SAMPLE.municipality; }).length));
