@@ -2513,3 +2513,63 @@ body.sf-menu-open .sf-sticky { display: none; }
    is 4.4:1, under the 4.5:1 the mobile readability test requires */
 .sf-site .sf-est-card .sf-est-chip.active i { color: var(--e-accent-hover); }
 .sf-site .sf-est-card .sf-est-progress b { font-size: inherit; }
+
+/* ---- Report, simplified (2026-10-15, second pass) ----------------------
+   One calm style for everything under the price: white blocks with a
+   single grey line, sentence-case labels, numbers in the ink colour. The
+   tinted green/orange/beige boxes are gone - colour now marks only what you
+   chose or what to press. Section headings lose their 01-06 numbers (the
+   sections are a reference, not a sequence). */
+.sf-site .sf-est-card .sf-est-scenario-range { margin: 0 0 4px; color: var(--e-text); font-size: 16px; }
+.sf-site .sf-est-card .sf-est-scenario-range b { color: var(--e-ink); font-weight: 600; }
+.sf-site .sf-est-card .sf-est-scenario-range span { display: block; margin-top: 2px; color: var(--e-mute); font-size: 14px; }
+.sf-site .sf-est-card .sf-est-result-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 1px; margin: 18px 0 0; padding: 0; border: 1px solid var(--e-line); border-radius: 12px; overflow: hidden; background: var(--e-line); }
+.sf-site .sf-est-card .sf-est-result-split > div { display: grid; gap: 2px; padding: 12px 14px; background: #fff; }
+.sf-site .sf-est-card .sf-est-result-split dt { margin: 0; color: var(--e-mute); font-size: 14px; font-weight: 500; }
+.sf-site .sf-est-card .sf-est-result-split dd { margin: 0; color: var(--e-ink); font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.sf-site .sf-est-card .sf-est-result-more { margin-top: 14px; border-top: 1px solid var(--e-line); }
+.sf-site .sf-est-card .sf-est-result-more > summary { padding: 14px 0 0; color: var(--e-ink); font-size: 15px; font-weight: 600; cursor: pointer; }
+.sf-site .sf-est-card .sf-est-result-more[open] > summary { margin-bottom: 12px; }
+.sf-site .sf-est-card .sf-est-result-more p { color: var(--e-text); font-size: 16px; line-height: 1.6; }
+.sf-site .sf-est-card .sf-est-result-bir,
+.sf-site .sf-est-card .sf-est-bir-primary,
+.sf-site .sf-est-card .sf-est-asking { display: grid; gap: 2px; margin: 0 0 14px; padding: 14px 16px; border: 1px solid var(--e-line); border-radius: 12px; background: #fff; box-shadow: none; }
+.sf-site .sf-est-card .sf-est-result-bir span,
+.sf-site .sf-est-card .sf-est-bir-primary span,
+.sf-site .sf-est-card .sf-est-asking span { color: var(--e-mute); font-size: 14px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.sf-site .sf-est-card .sf-est-result-bir b,
+.sf-site .sf-est-card .sf-est-bir-primary b,
+.sf-site .sf-est-card .sf-est-asking b { color: var(--e-ink); font-family: var(--sf-font); font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.sf-site .sf-est-card .sf-est-result-bir small,
+.sf-site .sf-est-card .sf-est-bir-primary small,
+.sf-site .sf-est-card .sf-est-asking small { color: var(--e-mute); }
+
+/* report sections */
+.sf-site .sf-est-card .sf-est-report { display: grid; gap: 8px; }
+.sf-site .sf-est-card .sf-est-rsec { padding: 0; border: 1px solid var(--e-line); border-radius: 14px; background: #fff; box-shadow: none; }
+.sf-site .sf-est-card .sf-est-rsec[open] { box-shadow: none; }
+.sf-site .sf-est-card .sf-est-rsec-head { min-height: 56px; padding: 14px 18px; }
+.sf-site .sf-est-card .sf-est-rsec-head h4 { margin: 0; color: var(--e-ink); font-size: 17px; font-weight: 650; }
+.sf-site .sf-est-card .sf-est-rsec-body { padding: 0 18px 20px; }
+.sf-site .sf-est-card .sf-est-rsec p,
+.sf-site .sf-est-card .sf-est-rsec li { color: var(--e-text); font-size: 16px; line-height: 1.65; }
+.sf-site .sf-est-card .sf-est-report-group { padding: 16px 0 0; border-top: 1px solid var(--e-line); }
+.sf-site .sf-est-card .sf-est-report-group:first-child { padding-top: 0; border-top: 0; }
+.sf-site .sf-est-card .sf-est-report-group h5 { margin: 0 0 8px; color: var(--e-ink); font-size: 16px; font-weight: 650; letter-spacing: 0; text-transform: none; }
+.sf-site .sf-est-card .sf-est-price-card { padding: 14px 16px; border: 1px solid var(--e-line); border-radius: 12px; background: #fff; box-shadow: none; }
+.sf-site .sf-est-card .sf-est-price-card span { color: var(--e-mute); font-size: 14px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.sf-site .sf-est-card .sf-est-price-card b { color: var(--e-ink); font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.sf-site .sf-est-card .sf-est-price-card small { color: var(--e-mute); line-height: 1.45; }
+.sf-site .sf-est-card .sf-est-price-sweet { border-color: var(--e-accent); box-shadow: inset 0 0 0 1px var(--e-accent); }
+.sf-site .sf-est-card .sf-est-decision-grid > div { border: 1px solid var(--e-line); border-radius: 12px; background: #fff; }
+
+/* ---- Improvements: nothing can overlap, whatever the font or zoom ----
+   The legacy "body label { 12px !important }" also hits these <label>s; the
+   size and line height are fixed here, the checkbox sits in its own column,
+   and the name and price both wrap instead of running over the border. */
+.sf-site .sf-est-card .sf-est-feat-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+.sf-site .sf-est-card .sf-est-feat { display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: start; column-gap: 12px; min-height: 64px; padding: 12px 14px; font-size: 15px !important; line-height: 1.35; }
+.sf-site .sf-est-card .sf-est-feat input { margin-top: 2px; }
+.sf-site .sf-est-card .sf-est-feat span { display: grid; gap: 4px; min-width: 0; }
+.sf-site .sf-est-card .sf-est-feat b { display: block; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.sf-site .sf-est-card .sf-est-feat small { display: block; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }

@@ -195,7 +195,7 @@ chk("central-estimate-and-range-in-summary", !!q('.sf-est-result-summary') && !!
     chk("estimate-result-is-large", !!q('.sf-est-result-value') && parseFloat(getComputedStyle(q('.sf-est-result-value')).fontSize) >= 40, "font=" + (q('.sf-est-result-value') && getComputedStyle(q('.sf-est-result-value')).fontSize));
     chk("asking-price-amount-is-large", !!q('.sf-est-result-value') && parseFloat(getComputedStyle(q('.sf-est-result-value')).fontSize) >= 32, "font=" + (q('.sf-est-result-value') && getComputedStyle(q('.sf-est-result-value')).fontSize));
     const reportText = (q('.sf-est-report') || { textContent: "" }).textContent;
-     chk("guide-section-label", /Your guide, section by section/.test(document.body.innerText), "");
+     chk("guide-section-label", /Full report/.test(document.body.innerText), "");
      chk("pricing-strategy-has-no-duplicate-asking-card", qa('[data-est-pricing-body] .sf-est-recommended-ask').length === 0 && qa('.sf-est-result-summary .sf-est-recommended-ask').length === 0, "pricing-body cards=" + qa('[data-est-pricing-body] .sf-est-recommended-ask').length);
       chk("computed-cards-open-without-contact", qa('.sf-est-price-lock').length === 0 && /Transaction taxes/.test(q('[data-est-pricing-body]').textContent) && /₱/.test(q('[data-est-pricing-body]').textContent), "");
     chk("taxes-fees-commissions-shown", /Taxes, fees & commissions/.test(reportText) && /Broker commission/.test(reportText), "");

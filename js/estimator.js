@@ -1793,12 +1793,20 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       '<span class="sf-est-result-evidence">' + badge + '</span></div>' +
       '<strong class="sf-est-result-value">' + money(r.marketGuideEstimate) + '</strong>' +
       '<p class="sf-est-scenario-range">Planning range <b>' + money(r.low) + ' – ' + money(r.high) + '</b><span>85%–130% scenarios, not guaranteed offers or statistical confidence.</span></p>' +
+      /* The two numbers that make the estimate, then the bank line; the method
+         notes (BIR card, multiple, context, reference status, independence) sit
+         under one disclosure so the card reads as an answer, not a document. */
+      '<dl class="sf-est-result-split"><div><dt>Land</dt><dd>' + money(r.landValue) + '</dd></div>' +
+        (r.improvement > 0 ? '<div><dt>House</dt><dd>' + money(r.improvement) + '</dd></div>' : '') +
+        '<div><dt>Per sqm of lot</dt><dd>' + money(r.perSqm) + '</dd></div></dl>' +
+      bankSummaryLineHtml(r) +
+      '<details class="sf-est-result-more"><summary>How this number is worked out</summary>' +
       '<div class="sf-est-result-bir"><span>' + esc(r.birReferenceLabel) + '</span><b>' + money(r.birZonalValue) + '</b><small>' + money(r.birZonalRatePerSqm) + '/sqm · ' + (r.birReferenceConfirmed ? "tax-reference figure, separate from the estimate" : "derived fallback, not confirmed parcel tax FMV") + '</small></div>' +
       multipleHtml +
-      bankSummaryLineHtml(r) +
       '<p class="sf-est-result-context">' + context + '</p>' +
       '<p class="sf-est-result-reference-label"><b>' + esc(r.referenceVerification.label) + '</b> — published values unchanged; indexing is a separate scenario.</p>' +
       '<p class="sf-est-result-bir-note">SEA ESTATES is independent of the BIR. Confirm the applicable schedule with the relevant Revenue District Office.</p>' +
+      '</details>' +
       '</section>';
   }
 
@@ -1829,11 +1837,11 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
      * number and the evidence behind it, which is when the next-step question
      * forms. The bottom CTA still exists for people who read to the end. */
     out += nextStepCard();
-    out += '<p class="sf-est-report-label">Your guide, section by section <span>Value, evidence, limitations and next steps</span></p>';
+    out += '<p class="sf-est-report-label">Full report <span>Every figure, source and limitation behind the estimate</span></p>';
     out += '<div class="sf-est-report">';
     reportSections(r).forEach(function (sec, i) {
       out += '<details class="sf-est-rsec"' + (i === 0 ? " open" : "") + '>' +
-        '<summary class="sf-est-rsec-head"><b>' + zeroPad(i + 1) + "</b><h4>" + esc(sec.t) + "</h4><span class=\"sf-est-rsec-toggle\" aria-hidden=\"true\"></span></summary>" +
+        '<summary class="sf-est-rsec-head"><h4>' + esc(sec.t) + "</h4><span class=\"sf-est-rsec-toggle\" aria-hidden=\"true\"></span></summary>" +
         '<div class="sf-est-rsec-body">' + sec.h + "</div></details>";
     });
     out += "</div>";
@@ -1863,7 +1871,6 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
     return "Make sure you chose a municipality, barangay, classification and a lot area above.";
   }
 
-  function zeroPad(n) { return n < 10 ? "0" + n : String(n); }
 
   function coverageTag(coverage) {
     var label = coverage === "limited" ? "Limited data" : coverage === "unavailable" ? "Unavailable" : "BIR street data";
