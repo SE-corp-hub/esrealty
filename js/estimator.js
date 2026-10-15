@@ -938,6 +938,11 @@
     }).join("");
   }
 
+  function classificationLabelShort() {
+    var map = { RR: "Residential", CR: "Commercial", I: "Industrial", A50: "Agricultural" };
+    return map[est.classification] || String(est.classification || "");
+  }
+
   function simpleClassOptions() {
     /* The reference offers exactly four options with Residential as the
        default. The internal codes RR / CR / I / A50 map to those four; a saved
@@ -1093,11 +1098,43 @@
     out += '<div class="sf-est-step-head"><div><h3>Tell us about your property</h3><p class="sf-est-step-subtitle">Location and lot area match the right BIR reference.</p></div></div>';
     out += '<div class="sf-est-fields">';
 
+    /* 2026-10-15 simplification: the visible questions are the five that set
+       the value - type, town, barangay, street, lot area. Purpose, sale stage,
+       classification (default Residential), expected price and corner lot sit
+       under "More options". Answers carried from the home quick estimate show as
+       one summary line with a Change button instead of being asked again. */
+    var carried = est.fromQuick && !est.quickEdit && est.municipality && est.area > 0;
+    if (carried) {
+      out += '<div class="sf-est-carried sf-est-span2" data-est-carried><span><b>' + esc(titleCase(est.municipality)) + '</b> · ' + (est.type === "house_lot" ? "House &amp; lot" : "Vacant lot") + ' · ' + esc(fmt(est.area)) + ' sqm</span>' +
+        '<button type="button" class="sf-est-carried-edit" data-est-quick-edit aria-label="Change town, property type or lot area">Change</button></div>';
+    } else {
+      out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">Property type</span>' +
+        chipRow([
+          { label: "Vacant lot", value: "vacant_lot", active: est.type === "vacant_lot" },
+          { label: "House & lot", value: "house_lot", active: est.type === "house_lot" }
+        ], "type") + "</label>";
+      out += '<label class="sf-est-field"><span class="sf-est-label">Municipality</span>' +
+        '<select data-est-muni><option value="">— choose —</option>' + muniOptions() + "</select></label>";
+    }
+    out += '<label class="sf-est-field' + (carried ? ' sf-est-span2' : '') + '"><span class="sf-est-label">Barangay</span><span>' + (carried ? 'Choose the barangay in ' + esc(titleCase(est.municipality)) : 'Choose after selecting the municipality') + '</span>' +
+      '<select data-est-barangay>' + barangayOptions() + "</select></label>";
+
+    out += '<div class="sf-est-field sf-est-span2 sf-est-street-field"><span class="sf-est-label">Street <em>(optional)</em></span><span>Skip to use the barangay rate.</span>' +
+      '<div class="sf-est-street-input-wrap"><input data-est-street-q type="search" placeholder="' + (est.allOther ? "Street not listed — choose another street" : "Type to search streets…") + '" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="sf-est-street-options" aria-expanded="false" aria-label="Search the BIR street list" value="' + esc(est.allOther ? "" : est.streetLabel) + '">' +
+      (est.allOther ? '<span class="sf-est-street-selected"><i aria-hidden="true">✓</i>Using all-other-streets rate</span>' : '') + '</div>' +
+      '<div id="sf-est-street-options" class="sf-est-street-list" data-est-street-list role="listbox" aria-label="BIR streets"></div></div>';
+    out += '<button type="button" class="sf-est-street-fallback sf-est-span2" data-est-street-fallback' + (!est.barangay ? " disabled" : "") + '>My street is not listed — use the best available BIR reference</button>';
+    if (!carried) {
+      out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">Lot area (sqm)</span>' +
+        '<input data-est-area type="number" min="20" max="100000" step="1" inputmode="decimal" placeholder="e.g. 200" value="' + esc(est.area != null ? est.area : "") + '"></label>';
+    }
+
+    var moreSummary = [est.purpose, est.classification && est.classification !== "RR" ? classificationLabelShort() : "", est.corner ? "Corner lot" : "", est.salePrice ? "Price entered" : ""].filter(Boolean).join(" · ");
+    out += '<details class="sf-est-more sf-est-span2"' + panelOpenAttr("more") + '><summary><span class="sf-est-more-title">More options</span><span class="sf-est-more-sub">' + esc(moreSummary || "Purpose, classification, price, corner lot") + '</span></summary><div class="sf-est-fields">';
     out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">What do you need this valuation for?</span>' +
       chipRow((DATA.config.purposes || []).map(function (p) {
         return { label: p, value: p, active: est.purpose === p };
       }), "purpose") + "</label>";
-
     if (est.purpose === "Selling") {
       /* The reference's four selling-stage options, verbatim values shared with
          the internal guide (js/app.js saleStage) so a saved answer keeps meaning
@@ -1110,38 +1147,15 @@
           { label: "I already have a buyer", value: "have_a_buyer", active: est.stage === "have_a_buyer" }
         ], "stage") + "</label>";
     }
-
-    out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">Property type</span>' +
-      chipRow([
-        { label: "Vacant lot", value: "vacant_lot", active: est.type === "vacant_lot" },
-        { label: "House & lot", value: "house_lot", active: est.type === "house_lot" }
-      ], "type") + "</label>";
-
-    out += '<label class="sf-est-field"><span class="sf-est-label">Municipality</span>' +
-      '<select data-est-muni><option value="">— choose —</option>' + muniOptions() + "</select></label>";
-
-    out += '<label class="sf-est-field"><span class="sf-est-label">Barangay</span><span>Choose after selecting the municipality</span>' +
-      '<select data-est-barangay>' + barangayOptions() + "</select></label>";
-
-    out += '<div class="sf-est-field sf-est-span2 sf-est-street-field"><span class="sf-est-label">Street <em>(optional)</em></span><span>Skip to use the barangay rate.</span>' +
-      '<div class="sf-est-street-input-wrap"><input data-est-street-q type="search" placeholder="' + (est.allOther ? "Street not listed — choose another street" : "Type to search streets…") + '" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="sf-est-street-options" aria-expanded="false" aria-label="Search the BIR street list" value="' + esc(est.allOther ? "" : est.streetLabel) + '">' +
-      (est.allOther ? '<span class="sf-est-street-selected"><i aria-hidden="true">✓</i>Using all-other-streets rate</span>' : '') + '</div>' +
-      '<div id="sf-est-street-options" class="sf-est-street-list" data-est-street-list role="listbox" aria-label="BIR streets"></div></div>';
-    out += '<button type="button" class="sf-est-street-fallback sf-est-span2" data-est-street-fallback' + (!est.barangay ? " disabled" : "") + '>My street is not listed — use the best available BIR reference</button>';
-
     out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">Classification</span><span>Residential is the default</span>' +
       '<select data-est-class aria-label="BIR classification">' + simpleClassOptions() + "</select></label>";
     out += '<details class="sf-est-help sf-est-span2"><summary>What does BIR classification mean?</summary><p>The BIR schedule groups land by use: residential, commercial, agricultural or industrial. Choose the one that matches the property. If you are unsure, confirm the classification with the relevant Revenue District Office before relying on the guide.</p></details>';
-
-    out += '<label class="sf-est-field"><span class="sf-est-label">Lot area (sqm)</span>' +
-      '<input data-est-area type="number" min="20" max="100000" step="1" inputmode="decimal" placeholder="e.g. 200" value="' + esc(est.area != null ? est.area : "") + '"></label>';
-
-    out += '<label class="sf-est-field"><span class="sf-est-label">' + (est.purpose === "Buying" ? "Asking price or your offer" : est.purpose === "I received an offer" ? "Offer received" : "Expected selling price") + '</span><span>Optional — affects costs, not the estimate</span>' +
+    out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">' + (est.purpose === "Buying" ? "Asking price or your offer" : est.purpose === "I received an offer" ? "Offer received" : "Expected selling price") + '</span><span>Optional — affects costs, not the estimate</span>' +
       '<input data-est-sale-price type="number" min="0" max="1000000000" step="1000" inputmode="decimal" placeholder="e.g. 5000000" value="' + esc(est.salePrice != null ? est.salePrice : "") + '"></label>';
-
     /* With the lot questions, not stranded under the technical panels. */
     out += '<label class="sf-est-field sf-est-span2 sf-est-corner"><input type="checkbox" data-est-corner' + (est.corner ? " checked" : "") + ">" +
       '<span><b>Corner lot</b> <small>Frontage on two roads adds 2.5% to the land value</small></span></label>';
+    out += '</div></details>';
 out += "</div>";
     /* Built after the main field grid closes so the technical panels never
        interrupt the property questions above them. */
@@ -1855,7 +1869,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
        schedule note, "analysis complete") is folded into one disclosure
        below it - the same facts, no longer between the reader and the number. */
     var typeWord = r.type === "vacant_lot" ? "vacant lot" : (r.typeLabel || "property").toLowerCase();
-    out += '<div class="sf-est-result-head"><h3 id="sf-est-result-heading" tabindex="-1">Your property value guide</h3>' +
+    out += '<div class="sf-est-result-head"><h3 id="sf-est-result-heading" tabindex="-1">Your Value Guide</h3>' +
       '<p class="sf-est-result-for">For a ' + fmt(r.area) + ' sqm ' + esc(typeWord) + ' in ' + esc(titleCase(r.barangay)) + ', ' + esc(titleCase(r.municipality)) + ' · ' + esc(r.classificationLabel || r.classification) + '</p></div>';
     out += resultSummaryHtml(r);
     var nextScheduleCheck = manifest() && manifest().provenance && manifest().provenance.nextCurrencyReview;
@@ -2130,6 +2144,14 @@ var saleContext = $q(card, "[data-est-sale-context]");
         else if (t === "type") est.type = btn.getAttribute("data-val");
         renderLayout();
       });
+    });
+
+    var quickEdit = $q(card, "[data-est-quick-edit]");
+    if (quickEdit) quickEdit.addEventListener("click", function () {
+      est.quickEdit = true;
+      renderLayout();
+      var m = getCard() && getCard().querySelector("[data-est-muni]");
+      if (m) m.focus();
     });
 
     var muniSel = $q(card, "[data-est-muni]");
@@ -2817,7 +2839,9 @@ return {
         if (!link) return;
         event.preventDefault();
         var goHome = typeof location !== "undefined" && String(location.hash).indexOf("home") === -1;
-        if (goHome) { location.hash = "#/home"; setTimeout(scrollToEstimator, 160); }
+        /* Home renders after the route change (and re-renders once listings
+           arrive, which resets the scroll), so settle on the guide twice. */
+        if (goHome) { location.hash = "#/home"; setTimeout(scrollToEstimator, 450); setTimeout(scrollToEstimator, 1200); }
         else {
           if (link.hasAttribute("data-quick-go")) applyQuickToGuide();
           scrollToEstimator();
@@ -2921,7 +2945,7 @@ return {
 
   function quickMarkup() {
     return '<form class="sf-quick" data-est-quick novalidate aria-labelledby="sf-quick-title">' +
-      '<div class="sf-quick-head"><h2 id="sf-quick-title">Quick estimate</h2><span class="sf-quick-tag">Takes 10 seconds</span></div>' +
+      '<div class="sf-quick-head"><h2 id="sf-quick-title">Free Value Guide</h2><span class="sf-quick-tag">10-second preview</span></div>' +
       '<label class="sf-quick-field"><span class="sf-quick-label">Town or city</span>' +
         '<select data-quick-muni><option value="">Choose your town</option>' + quickMuniOptions() + '</select></label>' +
       '<div class="sf-quick-row">' +
@@ -3054,6 +3078,7 @@ return {
     est.municipalitySlug = row.slug;
     est.muniRow = row;
     est.barangay = ""; est.streetKey = ""; est.streetLabel = ""; est.allOther = false;
+    est.fromQuick = est.area > 0; est.quickEdit = false;
     est.result = null;
     var slug = row.slug, ready = muniCache[slug] ? muniCache[slug] : null;
     est.muniData = null;

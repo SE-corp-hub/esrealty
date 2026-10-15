@@ -154,25 +154,9 @@ const BP = 1024;
         panel._lastH = h;
         return false;
       })(), 4000);
-      if (panel.scrollHeight > panel.clientHeight) {
-        panel.scrollTop = panel.scrollHeight;
-        await wait(120);
-        // Re-assert after any residual reflow, then settle two frames.
-        panel.scrollTop = panel.scrollHeight;
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        const auth = Array.from(panel.querySelectorAll("[data-sf-auth]"));
-        const reachable = auth.filter(a => {
-          const r = a.getBoundingClientRect();
-          return r.bottom > 0 && r.top < window.innerHeight;
-        });
-        chk("auth-reachable-by-scrolling", reachable.length === auth.length,
-          "reachable=" + reachable.length + "/" + auth.length
-          + " scrollTop=" + Math.round(panel.scrollTop) + " scrollH=" + panel.scrollHeight + " clientH=" + panel.clientHeight);
-        panel.scrollTop = 0;
-      } else {
-        chk("auth-reachable-without-scrolling", panel.querySelectorAll("[data-sf-auth]").length > 0,
-          "panel fits and has auth actions");
-      }
+      /* Public Sign in / Create account were removed on 2026-10-15 (agents sign
+         in from the footer); the panel must not carry them either. */
+      chk("no-public-auth-in-panel", panel.querySelectorAll("[data-sf-auth]").length === 0, "auth buttons still in the menu");
 
       /* ---------- header must not overflow ---------- */
       const hr = header.getBoundingClientRect();

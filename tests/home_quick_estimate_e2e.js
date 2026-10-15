@@ -79,10 +79,16 @@ const figure = () => (q("[data-quick-figure]") || {}).textContent || "";
     q("[data-quick-go]").click();
     await until(() => { const s = api._state(); return s.municipality === "LIPA CITY" && s.muniData && q('[data-est-barangay] option[value]:not([value=""])'); }, 60);
     const st = api._state();
-    check("calculator receives the town", st.municipality === "LIPA CITY" && q("[data-est-muni]").value === "LIPA CITY", st.municipality);
+    check("calculator receives the town", st.municipality === "LIPA CITY", st.municipality);
     check("calculator receives the type", st.type === "vacant_lot", st.type);
-    check("calculator receives the lot area", st.area === 200 && q("[data-est-area]").value === "200", st.area);
+    check("calculator receives the lot area", st.area === 200, st.area);
+    const carried = q("[data-est-carried]");
+    check("carried answers show as one summary line, not asked again", !!carried && /Lipa City/.test(carried.textContent) && /Vacant lot/.test(carried.textContent) && /200 sqm/.test(carried.textContent) && !q("[data-est-muni]") && !q("[data-est-area]"), carried ? carried.textContent : "none");
     check("calculator opens at the barangay question", st.screen === 1 && document.querySelectorAll("[data-est-barangay] option").length > 2);
+    q("[data-est-quick-edit]").click();
+    await wait(300);
+    check("Change brings the fields back with the carried values", q("[data-est-muni]") && q("[data-est-muni]").value === "LIPA CITY" && q("[data-est-area]").value === "200" && !q("[data-est-carried]"));
+    check("step 1 keeps only the essentials visible", !!q(".sf-est-more") && !q(".sf-est-more").open && !!q(".sf-est-more [data-est-class]") && !!q(".sf-est-more [data-est-corner]"));
 
     /* 6) example report and one summary section */
     await until(() => !/—/.test((q('[data-sample="value"]') || {}).textContent || "—"));

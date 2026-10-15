@@ -2861,3 +2861,27 @@ body.sf-menu-open .sf-sticky { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .sf-site .sf-quick-range span, .sf-site .sf-quick-figure, .sf-site .sf-quick-result { transition: none; }
 }
+
+/* --- Calculator step 1 simplification (2026-10-15) ---------------------- */
+.sf-site .sf-est-card .sf-est-carried {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px;
+  padding: 14px 16px; border: 1px solid #F0E3D7; border-radius: 12px; background: #FDF8F3;
+  font-size: 17px; color: var(--e-ink);
+}
+.sf-site .sf-est-card .sf-est-carried b { font-weight: 700; }
+.sf-site .sf-est-card .sf-est-carried-edit {
+  min-height: 44px; padding: 0 18px; border: 1px solid var(--e-line-strong); border-radius: 999px;
+  background: #FFFFFF; color: var(--e-accent-hover); font: inherit; font-size: 15px; font-weight: 650; cursor: pointer;
+}
+.sf-site .sf-est-card .sf-est-carried-edit:hover { border-color: var(--e-accent); }
+.sf-site .sf-est-card .sf-est-carried-edit:focus-visible { outline: 2px solid var(--e-accent); outline-offset: 2px; }
+.sf-site .sf-est-card .sf-est-more { border: 1px solid var(--e-line); border-radius: 12px; background: #FFFFFF; }
+.sf-site .sf-est-card .sf-est-more > summary {
+  min-height: 52px; padding: 14px 16px; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+}
+.sf-site .sf-est-card .sf-est-more-title { color: var(--e-ink); font-size: 16px; font-weight: 650; }
+.sf-site .sf-est-card .sf-est-more-sub { color: var(--e-mute); font-size: 15px; }
+.sf-site .sf-est-card .sf-est-more > .sf-est-fields { padding: 4px 16px 16px; }
+@media (max-width: 640px) {
+  .sf-site .sf-est-card .sf-est-more > .sf-est-fields { grid-template-columns: minmax(0, 1fr); padding: 4px 12px 14px; }
+}

@@ -81,7 +81,9 @@
      * "No properties found". The state filter is still available in the form and
      * as a removable chip; it just must not be applied silently. */
     { href: "#/search", label: "Properties" },
-    { href: "#/property-value", label: "Get My Property Value", cta: true }
+    /* The calculator itself (scrolls to it on Home). The contact page it used to
+       open is "Talk to our team", reached from Services. */
+    { href: "#/home", label: "Free Value Guide", cta: true, est: true }
   ];
 
   var SERVICES = [
@@ -125,7 +127,7 @@
   ];
 
   function navLink(item) {
-    return '<a href="' + esc(item.href) + '"' + (item.cta ? ' class="sf-nav-cta"' : "") + '>' + esc(item.label) + '</a>';
+    return '<a href="' + esc(item.href) + '"' + (item.cta ? ' class="sf-nav-cta"' : "") + (item.est ? ' data-est-services' : "") + '>' + esc(item.label) + '</a>';
   }
 
   function navChevron() {
@@ -163,12 +165,12 @@
       '<span class="sf-brand-mark">S.E</span><span><b>SEA ESTATES</b><small>Property &amp; local guidance.</small></span></a>' +
       '<nav class="sf-nav" aria-label="Primary">' + NAV.map(navLink).join("") +
       dropDown("Services", SERVICES) + dropDown("Project B.T", PROJECT_BT) + '</nav>' +
-      '<div class="sf-header-actions"><button class="sf-link-btn" data-sf-auth="signin">Sign in</button>' +
-      '<button class="sf-primary-btn" data-sf-auth="signup">Create account</button>' +
+      /* No public Sign in / Create account: visitors need no account. Agents sign
+         in from the footer. */
+      '<div class="sf-header-actions">' +
       '<button class="sf-menu-btn" data-sf-menu aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button></div>' +
       '<div class="sf-menu" data-sf-menu-panel>' + NAV.map(navLink).join("") +
-      menuGroup("Services", SERVICES) + menuGroup("Project B.T", PROJECT_BT) +
-      '<button data-sf-auth="signin">Sign in</button><button data-sf-auth="signup">Create account</button></div></header>';
+      menuGroup("Services", SERVICES) + menuGroup("Project B.T", PROJECT_BT) + '</div></header>';
   }
 
   function footer() {
@@ -213,7 +215,7 @@
          it belongs in CSS, where the width already controls it. */
       '<h1>Something is being built in Batangas.</h1>' +
       '<p class="sf-cs-lede">SEA ESTATES is preparing a new mixed-use project. Details will be shared at launch. Leave your email if you would like to hear when Project B.T. opens.</p>' +
-      '<div class="sf-cs-actions"><a class="sf-primary-btn" href="#/property-value">Get my property value</a>' +
+      '<div class="sf-cs-actions"><a class="sf-primary-btn" href="#/home" data-est-services>Start my Value Guide</a>' +
       '<a class="sf-outline-btn" href="#/search">Browse properties</a></div>' +
       '</div>' +
       '<div class="sf-cs-notify sf-reveal sf-reveal-up"><h2>Be the first to know</h2>' +
@@ -243,7 +245,7 @@
    * ------------------------------------------------------------------ */
   var PV_DEFAULT = {
     eyebrow: "Selling & property services",
-    h1: "Get my property value.",
+    h1: "Get expert help with your property.",
     cta: "Talk to our team",
     submit: "Send my request",
     lede: "Tell us about your property and what you are planning. A specialist reviews it with you and points you to the right service — professional appraisal, broker support for selling, property management, title or financing. No obligation to list with us."
@@ -962,7 +964,7 @@
     }
     return '<div class="sf-empty"><div>S.E</div><h3>No properties published yet</h3>' +
       '<p>There are no live listings on the site at the moment. Get your property value in the meantime, or tell us what you are looking for and we will come back to you.</p>' +
-      '<div class="sf-empty-actions"><a class="sf-primary-btn" href="#/property-value">Get my property value</a>' +
+      '<div class="sf-empty-actions"><a class="sf-primary-btn" href="#/home" data-est-services>Start my Value Guide</a>' +
       '<a class="sf-outline-btn" href="#/search">Refresh</a></div></div>';
   }
 
@@ -1070,7 +1072,7 @@
     "home": "SEA ESTATES | Properties & Batangas Value Guide",
     "search": "Properties for sale and rent | SEA ESTATES",
     "compare": "Compare two properties | SEA ESTATES",
-    "property-value": "Get my property value | SEA ESTATES",
+    "property-value": "Talk to our team | SEA ESTATES",
     "privacy": "Privacy Notice | SEA ESTATES",
     "project-bt": "Project B.T — Coming Soon | SEA ESTATES",
     "listing": "Property details | SEA ESTATES"

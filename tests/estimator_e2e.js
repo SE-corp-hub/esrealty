@@ -157,7 +157,7 @@ function setInput(sel, v) { const e = q(sel); e.value = v; e.dispatchEvent(new E
     }
     chk("screen3-is-revealed", !!screen3 && screen3.getBoundingClientRect().bottom > 0 && screen3.getBoundingClientRect().top < window.innerHeight, "top=" + (screen3 && screen3.getBoundingClientRect().top) + " bottom=" + (screen3 && screen3.getBoundingClientRect().bottom) + " scrollY=" + window.scrollY + " h=" + (screen3 && screen3.getBoundingClientRect().height) + " ancestors=" + revealAncestors.join(" | "));
     await waitFor(() => q('[data-est-screen="4"]'), 90, ESP);
-    chk("result-heading-is-clear", !!q('#sf-est-result-heading') && /Your property value guide/.test(q('#sf-est-result-heading').textContent), "");
+    chk("result-heading-is-clear", !!q('#sf-est-result-heading') && /Your Value Guide/.test(q('#sf-est-result-heading').textContent), "");
     /* 2026-10-15 refresh: the price comes straight after one heading line; no
        hero banner, eyebrow or "04" badge in front of it. */
     chk("selling-result-design", !!q('.sf-est-selling-result') && !!q('.sf-est-nextstep') && !q('.sf-est-result-hero') && !!q('.sf-est-result-head') && q('.sf-est-result-head').compareDocumentPosition(q('.sf-est-result-value')) === Node.DOCUMENT_POSITION_FOLLOWING, "");

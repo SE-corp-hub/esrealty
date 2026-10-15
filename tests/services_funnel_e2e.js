@@ -62,7 +62,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
 
     /* ---- the default landing keeps the first-person CTA promise ---- */
     await go("#/property-value", 2200);
-    chk("default-landing-hero", /Get my property value/.test((q(".sf-pv-hero h1") || {}).textContent || ""), "h1=" + ((q(".sf-pv-hero h1") || {}).textContent));
+    chk("default-landing-hero", /Get expert help with your property/.test((q(".sf-pv-hero h1") || {}).textContent || ""), "h1=" + ((q(".sf-pv-hero h1") || {}).textContent));
     chk("default-landing-no-calculator", !q(".sf-pv [data-est-root]"), "calculator mounted on the default landing");
     chk("default-cta-scrolls-to-form", (q(".sf-pv-actions .sf-primary-btn") || {}).getAttribute("data-sf-scroll") === "sf-pv-form", "cta target missing");
     chk("default-no-obligation-note", /no obligation/i.test((q(".sf-pv") || {}).textContent || ""), "no obligation note missing");

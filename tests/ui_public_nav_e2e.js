@@ -55,8 +55,11 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     chk("nav-no-standalone-shophouse", !desktop().includes("#/shophouse"), JSON.stringify(desktop()));
     const d = desktop(), m = mobile();
     m.forEach((href, i) => chk("nav-parity-" + i, d.indexOf(href) > -1, "mobile " + href + " missing from desktop"));
-    chk("nav-has-property-value", d.includes("#/property-value"), JSON.stringify(d));
-    chk("nav-property-value-is-cta", !!document.querySelector(".sf-nav a.sf-nav-cta[href='#/property-value']"), "cta missing");
+    /* Since 2026-10-15 the highlighted nav item opens the calculator itself
+       (Free Value Guide); the contact page is reached from Services. */
+    chk("nav-value-guide-is-cta", !!document.querySelector(".sf-nav a.sf-nav-cta[data-est-services]") && /Free Value Guide/.test(document.querySelector(".sf-nav a.sf-nav-cta").textContent), "cta missing");
+    chk("services-reach-contact-page", d.some(h => h.indexOf("#/property-value") === 0), JSON.stringify(d));
+    chk("no-public-auth-in-header", !document.querySelector(".sf-header [data-sf-auth]"), "Sign in / Create account still in the header");
 
     /* ---- dropdown open/close behaviour ---- */
     const summary = svc.querySelector("summary");
@@ -75,7 +78,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
 
     /* ---- route titles ---- */
     await go("#/property-value", 1600);
-    chk("title-property-value", document.title === "Get my property value | SEA ESTATES", "title=" + document.title);
+    chk("title-property-value", document.title === "Talk to our team | SEA ESTATES", "title=" + document.title);
     await go("#/property-value?service=broker", 1600);
     chk("title-property-value-broker", document.title === "Talk to a licensed broker | SEA ESTATES", "title=" + document.title);
     await go("#/project-bt", 1600);
@@ -97,12 +100,12 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     chk("cs-notify-email-only", document.querySelectorAll("[data-sf-notify] input").length === 2, "inputs=" + document.querySelectorAll("[data-sf-notify] input").length);
     chk("cs-notify-consent-required", !!document.querySelector("[data-sf-notify] input[name=consent][required]"), "consent missing");
     chk("cs-hides-project-detail", !/floor plan|price|unit|₱|lot size|square meter/i.test(document.querySelector(".sf-cs").textContent), "leaked project detail");
-    chk("cs-offers-next-step", !!document.querySelector(".sf-cs-actions a[href='#/property-value']"), "no next step");
+    chk("cs-offers-next-step", !!document.querySelector(".sf-cs-actions a[data-est-services]"), "no next step");
 
     /* ---- Get My Property Value page ---- */
     await go("#/property-value", 1700);
     chk("pv-page", !!document.querySelector(".sf-pv"), "pv=" + !!document.querySelector(".sf-pv"));
-    chk("pv-first-person-h1", /Get my/i.test((document.querySelector(".sf-pv-hero h1") || {}).textContent || ""), "h1=" + ((document.querySelector(".sf-pv-hero h1") || {}).textContent));
+    chk("pv-help-h1", /Get expert help/i.test((document.querySelector(".sf-pv-hero h1") || {}).textContent || ""), "h1=" + ((document.querySelector(".sf-pv-hero h1") || {}).textContent));
     chk("pv-what-happens", document.querySelectorAll(".sf-pv-steps-list li").length === 3, "steps=" + document.querySelectorAll(".sf-pv-steps-list li").length);
     chk("pv-team-call-step", /call with our team/i.test(document.querySelector(".sf-pv-steps-list").textContent), "no call step");
     const form = document.querySelector(".sf-pv-form[data-sf-consult]");
