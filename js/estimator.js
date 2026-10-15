@@ -1963,7 +1963,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       /* Three steps, matching the reference's Location -> Details -> Report
          progression. There is no review screen and the calculating screen is
          not a step: Details advances straight to the calculation. */
-      var progress = '<ol class="sf-est-progress" aria-label="Value guide progress">' + ["Location", "Details", "Report"].map(function (label, i) { return '<li' + (stage === i + 1 ? ' aria-current="step"' : stage > i + 1 ? ' class="done"' : "") + '><b>' + (i + 1) + '</b><span>' + label + '</span></li>'; }).join("") + '</ol>';
+      var progress = '<ol class="sf-est-progress" aria-label="Value guide progress">' + ["Location", "Details", "Report"].map(function (label, i) { return '<li' + (stage === i + 1 ? ' aria-current="step"' : stage > i + 1 ? ' class="done"' : "") + '><b aria-hidden="true"></b><span>' + label + '</span></li>'; }).join("") + '</ol>';
       card.innerHTML = progress + out; bindCard(card);
       if (screenChanged) {
         var step = card.querySelector(".sf-est-step");

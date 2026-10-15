@@ -2509,3 +2509,7 @@ body.sf-menu-open .sf-sticky { display: none; }
   .sf-site .sf-est-card .sf-est-time-inputs .sf-est-fields,
   .sf-site .sf-est-card .sf-est-about .sf-est-fields { grid-template-columns: minmax(0, 1fr); }
 }
+/* the tick on a chosen pill uses the darker accent: #B4521F on the soft fill
+   is 4.4:1, under the 4.5:1 the mobile readability test requires */
+.sf-site .sf-est-card .sf-est-chip.active i { color: var(--e-accent-hover); }
+.sf-site .sf-est-card .sf-est-progress b { font-size: inherit; }
