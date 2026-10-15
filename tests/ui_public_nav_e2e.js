@@ -126,8 +126,8 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     chk("consult-handler-reads-name", readsName, "handler no longer maps name -> full_name");
     chk("pv-form-name-field-matches-handler", !!form.querySelector("[name=name]"), "property-value form has no input[name=name]");
     chk("pv-form-no-stray-full_name-input", !form.querySelector("[name=full_name]"), "input[name=full_name] would post null");
-    const homeForm = await go("#/home", 1700).then(() => document.querySelector("#sf-contact [data-sf-consult]"));
-    chk("home-consult-name-field-matches-handler", !!(homeForm && homeForm.querySelector("[name=name]")), "home consult form drifted from the handler");
+    const homeBand = await go("#/home", 1700).then(() => document.querySelector("#sf-contact"));
+    chk("home-band-links-to-request-form", !!(homeBand && homeBand.querySelector('a[href="#/property-value"]')) && !homeBand.querySelector("[data-sf-consult]"), "home band should link, not repeat the form");
     await go("#/property-value", 1500);
     chk("pv-no-obligation-note", /no obligation/i.test(document.querySelector(".sf-pv").textContent), "missing no-obligation note");
     chk("pv-no-false-claims", !/\d+\s*(properties sold|clients|homes sold|happy families)/i.test(document.querySelector(".sf-pv").textContent), "fabricated stat found");

@@ -2885,3 +2885,58 @@ body.sf-menu-open .sf-sticky { display: none; }
 @media (max-width: 640px) {
   .sf-site .sf-est-card .sf-est-more > .sf-est-fields { grid-template-columns: minmax(0, 1fr); padding: 4px 12px 14px; }
 }
+
+/* --- Review items 6-18 (2026-10-15) ------------------------------------ */
+/* 12: content is visible as soon as it renders. Scroll-hidden reveals left
+   blank areas on fast scrolls, in screenshots and in print. */
+.sf-site .sf-reveal, .sf-site .sf-reveal.sf-reveal-right, .sf-site .sf-reveal.sf-reveal-zoom { opacity: 1 !important; transform: none !important; }
+.sf-site .sf-blur span, .sf-site .sf-pv-steps-list li, .sf-site .sf-pv-faq-item { animation: none !important; opacity: 1 !important; filter: none !important; transform: none !important; }
+
+/* 8: home - services beyond the first four open on request */
+.sf-site .sf-services-more { max-width: var(--sf-maxw); margin: 14px auto 0; }
+.sf-site .sf-services-more > summary {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 22px; cursor: pointer;
+  border: 1px solid var(--sf-accent-line); border-radius: 999px; background: #FFFFFF;
+  color: var(--sf-accent-hover); font-size: 16px; font-weight: 650; list-style: none;
+}
+.sf-site .sf-services-more > summary::-webkit-details-marker { display: none; }
+.sf-site .sf-services-more > summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) translateY(-2px); }
+.sf-site .sf-services-more[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+.sf-site .sf-services-more[open] > summary { margin-bottom: 14px; }
+.sf-site .sf-services-more > summary:focus-visible { outline: 2px solid var(--sf-accent); outline-offset: 2px; }
+
+/* 8: home - short closing band */
+.sf-site .sf-cta-short .sf-cta-band { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 40px; }
+.sf-site .sf-cta-short .sf-cta-band > div { max-width: 40rem; }
+.sf-site .sf-cta-short h2 { margin: 0; }
+.sf-site .sf-cta-short p { margin: 10px 0 0; font-size: 17px; line-height: 1.55; }
+.sf-site .sf-cta-short .sf-contact-details:empty { display: none; }
+.sf-site .sf-cta-short .sf-cta-go {
+  flex: none; min-height: 54px; padding: 12px 28px; border-radius: 999px;
+  background: var(--sf-accent); color: #FFFFFF; font-size: 17px; font-weight: 700; text-decoration: none;
+}
+.sf-site .sf-cta-short .sf-cta-go:hover { background: #97441A; }
+@media (max-width: 640px) { .sf-site .sf-cta-short .sf-cta-go { width: 100%; justify-content: center; } }
+
+/* 11: wide screens show the form beside the copy, so the jump button only
+   appears on phones and tablets */
+@media (min-width: 900px) { .sf-site .sf-pv-actions { display: none; } }
+
+/* 6: empty-state buttons never squeeze into a circle */
+.sf-site .sf-empty-actions .sf-primary-btn,
+.sf-site .sf-empty-actions .sf-outline-btn { white-space: normal; min-height: 48px; padding: 12px 22px; border-radius: 999px; line-height: 1.3; text-align: center; justify-content: center; }
+
+/* 17: errors under the field */
+.sf-site .sf-field-err { display: block; margin-top: 6px; color: #B42318; font-size: 15px; font-weight: 600; line-height: 1.4; text-transform: none; letter-spacing: 0; }
+.sf-site [aria-invalid="true"]:not([type="checkbox"]) { border-color: #B42318 !important; box-shadow: 0 0 0 3px rgba(180, 35, 24, .12) !important; }
+.sf-site input[type="checkbox"][aria-invalid="true"] { outline: 2px solid #B42318; outline-offset: 2px; }
+.sf-site .sf-consent .sf-field-err { flex-basis: 100%; }
+/* the legacy ".sf-empty > div" icon-circle rule also caught the button row */
+.sf-site .sf-empty > .sf-empty-actions {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; place-items: initial;
+  width: 100%; max-width: 30rem; height: auto; margin-top: 20px; border-radius: 0; background: none;
+}
+@media (max-width: 640px) { .sf-site .sf-empty > .sf-empty-actions > * { flex: 1 1 100%; } }
+.sf-site label.sf-consent { flex-wrap: wrap; }
+.sf-site label.sf-consent > span:not(.sf-field-err) { flex: 1 1 0; min-width: 0; }
+.sf-site label.sf-consent > .sf-field-err { flex: 1 1 100%; margin-top: 4px; }

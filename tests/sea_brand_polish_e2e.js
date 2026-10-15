@@ -22,7 +22,8 @@ async function until(fn) { for (let i = 0; i < 80; i++) { if (fn()) return true;
     check("actions before supporting proof text", !!(site.querySelector(".sf-est-hero-actions").compareDocumentPosition(site.querySelector(".sf-est-proof")) & Node.DOCUMENT_POSITION_FOLLOWING));
     const featured = site.querySelector(".sf-featured"), services = site.querySelector(".sf-services");
     check("available listings before service catalogue", !featured || !!(featured.compareDocumentPosition(services) & Node.DOCUMENT_POSITION_FOLLOWING));
-    check("Home Project B.T. entry clear", /Coming Soon/.test(site.querySelector(".sf-home-project").textContent) && !!site.querySelector('.sf-home-project a[href="#/project-bt"]'));
+    /* The Home Project B.T. block was removed on 2026-10-15 (shorter page); it stays in the nav. */
+    check("Project B.T. reachable from the nav", !!site.querySelector('.sf-nav a[href="#/project-bt"]') && !site.querySelector(".sf-home-project"));
     const help = document.querySelector(".sf-est-help");
     check("classification help initially closed", help && !help.open);
     help.querySelector("summary").click();

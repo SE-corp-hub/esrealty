@@ -186,7 +186,7 @@
   function privacyPage() {
     return shell('<section class="sf-section sf-privacy-page"><div class="sf-section-head"><div><p class="sf-eyebrow">YOUR INFORMATION</p><h1>Privacy notice</h1></div><p>How SEA ESTATES handles information submitted through this website.</p></div>' +
       '<div class="sf-privacy-content">' +
-      '<p><b>Who is responsible?</b> SEA ESTATES operates this website and handles the inquiries submitted through it. For a privacy-related request, <a href="#/home?section=contact">contact our team</a> and write “Privacy request” in your message.</p>' +
+      '<p><b>Who is responsible?</b> SEA ESTATES operates this website and handles the inquiries submitted through it. For a privacy-related request, <a href="#/property-value">contact our team</a> and write “Privacy request” in your message.</p>' +
       '<h2>Information used by the property guide</h2><p>The guide uses property details you enter, such as municipality, barangay, street, BIR classification, lot area, property type, and optional house, ownership, and selling details. The estimate is calculated in your browser. To look for available listing context, the selected municipality and property type may be queried through the Vercel-hosted market-search service; your name and contact details are not needed for that search.</p>' +
       '<h2>When you send an inquiry or request a report</h2><p>We receive the contact details and message you submit, together with the property details and estimate snapshot needed to respond. Requests are recorded in SEA ESTATES CRM and inquiry records hosted by Supabase. Where report delivery is configured, your report and email address are sent through Resend so the report can be delivered.</p>' +
       '<h2>How we use and share information</h2><p>We use submitted information to respond to your request, prepare or deliver a requested report, coordinate a property inquiry with the relevant broker or agent, maintain service records, and protect the service from abuse. Technical request information may also be processed to prevent abuse. We do not sell personal information; Supabase, Vercel, Resend, and any relevant listing agent may process information only to provide the requested service.</p>' +
@@ -220,7 +220,7 @@
       '</div>' +
       '<div class="sf-cs-notify sf-reveal sf-reveal-up"><h2>Be the first to know</h2>' +
       '<p>Leave your email and we will let you know when Project B.T opens. No other mail from us.</p>' +
-      '<form data-sf-notify>' +
+      '<form data-sf-notify novalidate>' +
       /* Visible label, not .sr-only. The label used to wrap the input and carry
        * .sr-only, which clipped the FIELD as well as the label text: the input
        * rendered 31px wide inside a 1x1 box, so the notify form could not be
@@ -345,8 +345,7 @@
       '<p class="sf-eyebrow sf-reveal sf-reveal-up">' + esc(copy.eyebrow) + '</p>' +
       '<h1 class="sf-reveal sf-reveal-up">' + esc(copy.h1) + '</h1>' +
       '<p class="sf-pv-lede sf-reveal sf-reveal-up">' + esc(copy.lede) + '</p>' +
-      '<div class="sf-pv-actions sf-reveal sf-reveal-up"><a class="sf-primary-btn" href="#sf-pv-form" data-sf-scroll="sf-pv-form">' + esc(copy.cta) + '</a>' +
-      '<a class="sf-outline-btn" href="#/search">Browse properties</a></div>' +
+      '<div class="sf-pv-actions sf-reveal sf-reveal-up"><a class="sf-primary-btn" href="#sf-pv-form" data-sf-scroll="sf-pv-form">' + esc(copy.cta) + '</a></div>' +
       pvTrustRow("sf-reveal sf-reveal-up") +
       '</div>' +
 
@@ -355,7 +354,7 @@
       '<div class="sf-pv-hero-form sf-reveal sf-reveal-up" id="sf-pv-form"><div class="sf-pv-form-card">' +
       '<h2 class="sf-pv-h2">Tell us what you need</h2>' +
       '<p class="sf-pv-form-sub">A few details and the service you are after. We reply within one business day.</p>' +
-      '<form class="sf-pv-form" data-sf-consult>' +
+      '<form class="sf-pv-form" data-sf-consult novalidate>' +
       '<div class="sf-pv-field-row"><label>Full name<input name="name" required maxlength="160" autocomplete="name" placeholder="Juan dela Cruz"></label>' +
       '<label>Mobile number<input name="phone" required maxlength="50" autocomplete="tel" inputmode="tel" placeholder="09xx xxx xxxx"></label></div>' +
       '<label>Email<input type="email" name="email" maxlength="254" autocomplete="email" placeholder="you@example.com"></label>' +
@@ -449,11 +448,7 @@
         return '<details class="sf-pv-faq-item"><summary><span class="sf-pv-faq-ico">' + pair[2] + '</span><h3>' + esc(pair[0]) + '</h3><span class="sf-pv-faq-chev" aria-hidden="true"></span></summary><div class="sf-pv-faq-body"><p>' + pair[1] + '</p></div></details>';
       }).join("") +
       '<p class="sf-pv-faq-more">Still unsure? <a href="#sf-pv-form" data-sf-scroll="sf-pv-form">Ask the team directly</a> — a specialist replies within one business day.</p>' +
-      '</div>' +
-
-      '<div class="sf-pv-close sf-reveal sf-reveal-up"><div><h2 class="sf-pv-h2">Ready when you are.</h2>' +
-      '<p>Send your details and a specialist replies within one business day. No obligation to sell or list.</p></div>' +
-      '<a class="sf-primary-btn" href="#sf-pv-form" data-sf-scroll="sf-pv-form">' + esc(copy.submit) + '</a></div></section>');
+      '</div></section>');
   }
 
   /* Contact details arrive asynchronously. They used to trigger a full
@@ -812,7 +807,6 @@
     }
     if (siteContact.address) out.push('<span>' + esc(siteContact.address) + '</span>');
     if (siteContact.hours) out.push('<span>' + esc(siteContact.hours) + '</span>');
-    if (!out.length) out.push('<span>Contact details available soon.</span>');
     return out.join("");
   }
 
@@ -822,13 +816,19 @@
     return '<section class="sf-section sf-services" id="sf-services"><div class="sf-section-head sf-reveal"><div>' +
       '<p class="sf-eyebrow">HOW WE CAN HELP</p><h2 class="sf-blur"><span>Help</span> <span>with</span> <span>your</span> <span>next</span> <span>property</span> <span>move.</span></h2></div>' +
       '<p>Buying, selling, renting or managing a property? Choose the support you need.</p></div>' +
-      '<div class="sf-services-grid">' + SERVICES.map(function (item, i) {
-        return '<a class="sf-service-card sf-reveal sf-reveal-up" href="' + esc(item.href) + '">' +
-          '<span class="sf-service-ico">' + (SERVICE_ICONS[i] || "") + '</span>' +
-          '<span class="sf-service-num">' + (i < 9 ? "0" : "") + (i + 1) + '</span>' +
-          '<h3>' + esc(item.label) + '</h3><p>' + esc(item.note) + '</p>' +
-          '<span class="sf-service-go" aria-hidden="true">&rarr;</span></a>';
-      }).join("") + '</div></section>';
+      /* The four most asked-for services show; the rest open on request, so the
+         section stays short on a phone. */
+      '<div class="sf-services-grid">' + SERVICES.slice(0, 4).map(serviceCard).join("") + '</div>' +
+      '<details class="sf-services-more"><summary>See all ' + SERVICES.length + ' services</summary>' +
+      '<div class="sf-services-grid">' + SERVICES.slice(4).map(function (item, i) { return serviceCard(item, i + 4); }).join("") + '</div></details></section>';
+  }
+
+  function serviceCard(item, i) {
+    return '<a class="sf-service-card" href="' + esc(item.href) + '">' +
+      '<span class="sf-service-ico">' + (SERVICE_ICONS[i] || "") + '</span>' +
+      '<span class="sf-service-num">' + (i < 9 ? "0" : "") + (i + 1) + '</span>' +
+      '<h3>' + esc(item.label) + '</h3><p>' + esc(item.note) + '</p>' +
+      '<span class="sf-service-go" aria-hidden="true">&rarr;</span></a>';
   }
 
   /* Obvious placeholder rows - a bare number like "321321", or "sample3" - are
@@ -942,11 +942,12 @@
       homeHero() +
       guideSummarySection() +
       featuredSection() +
-      '<section class="sf-home-project sf-reveal" aria-labelledby="sf-home-project-title"><div><p class="sf-eyebrow">COMING NEXT</p><h2 id="sf-home-project-title">Project B.T. <span class="sf-home-project-status">Coming Soon</span></h2><p>Details will be shared at launch. Leave your email on the project page to hear when it opens.</p></div><a class="sf-outline-btn" href="#/project-bt">See Project B.T. →</a></section>' +
       servicesSection() +
 
-      '<section class="sf-cta" id="sf-contact"><div class="sf-cta-band"><div class="sf-reveal"><p class="sf-eyebrow">LET’S TALK</p><h2>What are you <em>planning next?</em></h2><p>Buying, selling, renting or reviewing a property? Share the location and your questions with our team.</p><div class="sf-contact-details">' + contactDetails() + '</div></div>' +
-      '<form class="sf-cta-form sf-reveal sf-reveal-right" data-sf-consult><label>Full name<input name="name" required maxlength="160" autocomplete="name" placeholder="Your name"></label><label>Email<input type="email" name="email" required maxlength="254" autocomplete="email" placeholder="you@email.com"></label><label>Phone<input name="phone" type="tel" required maxlength="50" autocomplete="tel" placeholder="Mobile number"></label><label>What would you like help with?<textarea name="message" rows="2" maxlength="2000" placeholder="Property location, your plans, and any questions..."></textarea></label><label class="sf-consent"><input type="checkbox" name="consent" required><span>I consent to SEA ESTATES contacting me about this request. See our <a href="#/privacy">Privacy Notice</a>.</span></label><button type="submit">Ask our team →</button><p class="sf-form-status" aria-live="polite"></p></form></div></section>'
+      /* A short closing band instead of a second long form: the full request
+         form lives on the Talk to our team page. */
+      '<section class="sf-cta sf-cta-short" id="sf-contact"><div class="sf-cta-band"><div><h2>Questions? Talk to our team.</h2><p>Buying, selling, renting or reviewing a property? Send the location and your plans, and a specialist replies within one business day.</p><div class="sf-contact-details">' + contactDetails() + '</div></div>' +
+      '<a class="sf-hero-btn sf-cta-go" href="#/property-value">Message our team</a></div></section>'
     );
   }
 
@@ -963,9 +964,9 @@
         '<a class="sf-outline-btn" href="' + esc(clearLink(active.map(function (f) { return f.def.name; }))) + '">Clear all filters</a></div>';
     }
     return '<div class="sf-empty"><div>S.E</div><h3>No properties published yet</h3>' +
-      '<p>There are no live listings on the site at the moment. Get your property value in the meantime, or tell us what you are looking for and we will come back to you.</p>' +
-      '<div class="sf-empty-actions"><a class="sf-primary-btn" href="#/home" data-est-services>Start my Value Guide</a>' +
-      '<a class="sf-outline-btn" href="#/search">Refresh</a></div></div>';
+      '<p>There are no live listings on the site at the moment. Tell us what you are looking for and we will come back to you, or check your own property with the free Value Guide.</p>' +
+      '<div class="sf-empty-actions"><a class="sf-primary-btn" href="#/property-value?service=broker">Tell us what you need</a>' +
+      '<a class="sf-outline-btn" href="#/home" data-est-services>Start my Value Guide</a></div></div>';
   }
 
   function searchPage(params) {
@@ -979,13 +980,16 @@
       : rows.length ? rows.map(card).join("")
       : emptyResults(params);
     var page = Number(result.page || 1), pages = Number(result.total_pages || 0);
+    var nothingListed = !viewState.loading && !rows.length && !activeFilters(params).length && !compareIds.length;
     var pager = pages > 1 ? '<div class="sf-pager"><button data-sf-page="' + (page - 1) + '"' + (page <= 1 ? " disabled" : "") + '>Previous</button><span>Page ' + page + ' of ' + pages + '</span><button data-sf-page="' + (page + 1) + '"' + (page >= pages ? " disabled" : "") + '>Next</button></div>' : "";
-     return shell('<section class="sf-search-page"><div class="sf-search-intro"><p class="sf-eyebrow">PROPERTY SEARCH</p><h1>Find a property that fits.</h1><p>Browse current property inventory across the Philippines.</p></div>' +
+     return shell('<section class="sf-search-page"><div class="sf-search-intro"><p class="sf-eyebrow">PROPERTY SEARCH</p><h1>Find a property that fits.</h1><p>Browse the properties SEA ESTATES has listed for sale or rent.</p></div>' +
       '<div class="sf-filter-stick">' + searchFields(params, true) + '</div>' + activeFilterChips(params) +
-      compareTray() + '<p class="sf-compare-status" role="status" aria-live="polite" data-sf-compare-status>' + esc(compareMessage) + '</p>' +
-      '<div class="sf-results-bar"><p><b>' + esc(total) + '</b> ' + (Number(total) === 1 ? "property" : "properties") + '</p>' +
+      /* With nothing listed, compare, sort and view switches have nothing to act
+         on: the empty state alone explains the page. */
+      (nothingListed ? '' : compareTray()) + '<p class="sf-compare-status" role="status" aria-live="polite" data-sf-compare-status>' + esc(compareMessage) + '</p>' +
+      (nothingListed ? '' : '<div class="sf-results-bar"><p><b>' + esc(total) + '</b> ' + (Number(total) === 1 ? "property" : "properties") + '</p>' +
       '<div><label class="sf-visually-hidden" for="sf-sort">Sort properties</label><select id="sf-sort" data-sf-sort><option value="date_desc"' + (params.get("sort") === "date_desc" || !params.get("sort") ? " selected" : "") + '>Newest</option><option value="price_asc"' + (params.get("sort") === "price_asc" ? " selected" : "") + '>Price: Low to high</option><option value="price_desc"' + (params.get("sort") === "price_desc" ? " selected" : "") + '>Price: High to low</option></select>' +
-      '<button data-sf-mode="grid" aria-pressed="' + (viewState.mode === "grid") + '" class="' + (viewState.mode === "grid" ? "active" : "") + '">Grid</button><button data-sf-mode="list" aria-pressed="' + (viewState.mode === "list") + '" class="' + (viewState.mode === "list" ? "active" : "") + '">List</button><button data-sf-mode="map" aria-pressed="' + (viewState.mode === "map") + '" class="' + (viewState.mode === "map" ? "active" : "") + '">Map</button></div></div>' +
+      '<button data-sf-mode="grid" aria-pressed="' + (viewState.mode === "grid") + '" class="' + (viewState.mode === "grid" ? "active" : "") + '">Grid</button><button data-sf-mode="list" aria-pressed="' + (viewState.mode === "list") + '" class="' + (viewState.mode === "list" ? "active" : "") + '">List</button><button data-sf-mode="map" aria-pressed="' + (viewState.mode === "map") + '" class="' + (viewState.mode === "map" ? "active" : "") + '">Map</button></div></div>') +
       (viewState.mode === "map"
         ? '<div class="sf-map-wrap"><div id="sf-map"></div><p class="sf-map-hint" id="sf-map-hint">Loading map…</p></div>'
         : '<div class="sf-property-grid ' + (viewState.mode === "list" ? "list" : "") + '">' + cards + '</div>') + pager + '</section>');
@@ -1062,7 +1066,7 @@
       (listing.details && listing.details.license_to_sell ? '<section class="sf-dhsud"><span class="sf-badge">' + esc(listing.details.license_to_sell) + '</span> DHSUD License to Sell number for this property.</section>' : '') +
       '<section><h2>Location</h2><div class="sf-detail-map" id="sf-detail-map"><span>' + esc(locationText(listing)) + '</span></div></section></article>' +
       '<aside class="sf-contact-card"><p>Listed at</p><h2>' + esc(money(listing.display_price, listing.offer_type === "rent" ? "/mo" : "")) + '</h2>' +
-      '<button class="sf-outline-btn" data-sf-save="' + esc(listing.id) + '">♡ Save this property</button><form data-sf-inquiry="' + esc(listing.id) + '"><h3>Request more information</h3><label>Full name<input name="full_name" required maxlength="160"></label><label>Email<input type="email" name="email" maxlength="254"></label><label>Phone<input name="phone" required maxlength="50"></label><label>Message<textarea name="message" rows="4" maxlength="5000" placeholder="I would like to know more about this property."></textarea></label><label class="sf-consent"><input type="checkbox" name="consent" required><span>I consent to the processing of my contact details for this inquiry. See our <a href="#/privacy">Privacy Notice</a>.</span></label><button type="submit">Send inquiry</button><p class="sf-form-status" aria-live="polite"></p></form></aside></div></section>');
+      '<button class="sf-outline-btn" data-sf-save="' + esc(listing.id) + '">♡ Save this property</button><form novalidate data-sf-inquiry="' + esc(listing.id) + '"><h3>Request more information</h3><label>Full name<input name="full_name" required maxlength="160"></label><label>Email<input type="email" name="email" maxlength="254"></label><label>Phone<input name="phone" required maxlength="50"></label><label>Message<textarea name="message" rows="4" maxlength="5000" placeholder="I would like to know more about this property."></textarea></label><label class="sf-consent"><input type="checkbox" name="consent" required><span>I consent to the processing of my contact details for this inquiry. See our <a href="#/privacy">Privacy Notice</a>.</span></label><button type="submit">Send inquiry</button><p class="sf-form-status" aria-live="polite"></p></form></aside></div></section>');
   }
 
   /* document.title was never set anywhere, so every route shipped the same
@@ -1437,6 +1441,56 @@
       if (!active || !event.target.matches("[data-sf-sort]")) return;
       var r = route(); r.params.set("sort", event.target.value); r.params.delete("page"); go("search?" + r.params.toString());
     });
+    /* Plain-language errors under each field (2026-10-15) instead of the
+       browser's pop-up, which is easy to miss and disappears. The forms carry
+       novalidate so this runs; typed answers are kept. */
+    var FIELD_MSG = {
+      name: "Enter your name.", full_name: "Enter your name.",
+      phone: "Enter your mobile number, for example 0917 123 4567.",
+      email: "Enter your email, for example name@example.com.",
+      consent: "Tick this box so our team can contact you.",
+      message: "Tell us briefly what you need."
+    };
+    function checkFields(form) {
+      Array.prototype.forEach.call(form.querySelectorAll(".sf-field-err"), function (el) { el.remove(); });
+      var first = null;
+      Array.prototype.forEach.call(form.elements, function (el) {
+        if (!el.name || !el.willValidate || el.type === "submit") return;
+        el.removeAttribute("aria-invalid"); el.removeAttribute("aria-describedby");
+        var bad = !el.checkValidity();
+        if (!bad && el.name === "phone" && el.value.trim()) bad = String(el.value).replace(/\D/g, "").length < 10;
+        if (!bad) return;
+        var msg = FIELD_MSG[el.name] || "Fill in this field.";
+        if (el.name === "email" && el.value.trim()) msg = "That email does not look complete. Use the form name@example.com.";
+        if (el.name === "phone" && el.value.trim()) msg = "That number looks too short. Use the form 0917 123 4567.";
+        var err = document.createElement("span");
+        err.className = "sf-field-err"; err.id = "sf-err-" + el.name + "-" + Math.random().toString(36).slice(2, 7); err.textContent = msg;
+        (el.closest("label") || el.parentNode).appendChild(err);
+        el.setAttribute("aria-invalid", "true"); el.setAttribute("aria-describedby", err.id);
+        if (!first) first = el;
+      });
+      if (first) first.focus();
+      return !first;
+    }
+    document.addEventListener("input", function (event) {
+      var el = event.target;
+      if (!el || !el.getAttribute || el.getAttribute("aria-invalid") !== "true") return;
+      var ok = el.checkValidity() && !(el.name === "phone" && String(el.value).replace(/\D/g, "").length < 10);
+      if (!ok) return;
+      el.removeAttribute("aria-invalid");
+      var err = el.getAttribute("aria-describedby") && document.getElementById(el.getAttribute("aria-describedby"));
+      if (err) err.remove();
+      el.removeAttribute("aria-describedby");
+    });
+    document.addEventListener("change", function (event) {
+      var el = event.target;
+      if (el && el.type === "checkbox" && el.getAttribute("aria-invalid") === "true" && el.checked) {
+        el.removeAttribute("aria-invalid");
+        var err = el.getAttribute("aria-describedby") && document.getElementById(el.getAttribute("aria-describedby"));
+        if (err) err.remove();
+      }
+    });
+
     document.addEventListener("submit", function (event) {
       if (!active) return;
       var search = event.target.closest("[data-sf-search]");
@@ -1448,6 +1502,7 @@
       var inquiry = event.target.closest("[data-sf-inquiry]");
       if (inquiry) {
         event.preventDefault();
+        if (!checkFields(inquiry)) return;
         var status = inquiry.querySelector(".sf-form-status"); var button = inquiry.querySelector("button[type=submit]"); var data = new FormData(inquiry);
         button.disabled = true; status.textContent = "Sending…";
         API.inquire(inquiry.getAttribute("data-sf-inquiry"), { full_name: data.get("full_name"), email: data.get("email"), phone: data.get("phone"), message: data.get("message"), contact_type: "buyer", consent: data.get("consent") === "on" }).then(function () {
@@ -1459,6 +1514,7 @@
       var notify = event.target.closest("[data-sf-notify]");
       if (notify) {
         event.preventDefault();
+        if (!checkFields(notify)) return;
         var notifyStatus = notify.querySelector(".sf-form-status");
         var notifyButton = notify.querySelector("button[type=submit]");
         var notifyData = new FormData(notify);
@@ -1483,6 +1539,7 @@
       var consult = event.target.closest("[data-sf-consult]");
       if (consult) {
         event.preventDefault();
+        if (!checkFields(consult)) return;
         var consultStatus = consult.querySelector(".sf-form-status");
         var consultButton = consult.querySelector("button[type=submit]");
         var consultData = new FormData(consult);
@@ -1519,9 +1576,9 @@
           consent: consultData.get("consent") === "on"
         }).then(function () {
           consult.reset();
-          if (consultStatus) { consultStatus.textContent = "Your request has been received. The SEA ESTATES team will review your details and follow up using the contact information you provided."; consultStatus.className = "sf-form-status success"; }
+          if (consultStatus) { consultStatus.textContent = "Sent. Thank you — a specialist will reply within one business day."; consultStatus.className = "sf-form-status success"; }
         }).catch(function (error) {
-          setConsultError(error.message || "Could not send. Please try again.");
+          setConsultError((error && error.message ? error.message + " " : "") + "Your answers are still here. Check your connection and press Send again.");
         }).finally(function () { consultButton.disabled = false; consult.removeAttribute("aria-busy"); });
       }
     });
