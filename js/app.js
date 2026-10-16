@@ -289,7 +289,7 @@
   }
 
   function defaultState() {
-    return { deals: [], current: null, view: "dashboard", wizardStep: 1, theme: "light", dealTab: "overview", appraisal: null, appraisalTab: "setup", appraisals: [], market: null, pms: { properties: [], units: [], owners: [], tenants: [], leases: [], payments: [], maintenance: [], expenses: [], documents: [] }, pmsTab: "properties", listings: [], favorites: [], listingFilters: {}, listingDetail: null, lsTab: "catalog", leads: [], leadFilters: {}, leadDetail: null, leadMode: "pipeline", leadCalendarMonth: "", lang: "en", users: [], transactions: [], financingScenarios: [], financingDraft: null, salesPlaybooks: [], playbookFilters: { q: "", stage: "", category: "", propertyType: "", status: "" }, commission: { settings: { grossPct: 3, brokerShare: 40, agentShare: 50, referralShare: 10 }, payouts: [] }, docVault: [], siteVisits: [], campaigns: [], listingStats: {}, valueGuide: { version: "2026.09.4", approvedBy: "", approvedAt: "", proxyFactors: { residential: 1, commercial: 1.7, agricultural: 0.5, industrial: 1.35 }, marketBandMid: { residential: 2.5, commercial: 2.5, agricultural: 1.5, industrial: 2 }, construction: { wood_prefab: 16000, mixed_chb: 25000, rca_steel: 32000 } }, siteContact: { eyebrow: "PROPERTY GUIDANCE", title: "What are you planning next?", description: "Tell SEA ESTATES whether you are buying, selling, renting, or reviewing a property. Include the location and any questions you would like us to help with.", phone: "+63 900 000 0000", email: "hello@esrealty.ph", address: "Batangas, Philippines", hours: "Monday–Saturday, 9:00 AM–6:00 PM" }, adminTab: "overview", txDetail: null, usersTab: "pending",
+    return { deals: [], current: null, view: "dashboard", wizardStep: 1, theme: "light", dealTab: "overview", appraisal: null, appraisalTab: "setup", appraisals: [], market: null, pms: { properties: [], units: [], owners: [], tenants: [], leases: [], payments: [], maintenance: [], expenses: [], documents: [] }, pmsTab: "properties", listings: [], favorites: [], listingFilters: {}, listingDetail: null, lsTab: "catalog", leads: [], leadFilters: {}, leadDetail: null, leadMode: "pipeline", leadCalendarMonth: "", lang: "en", users: [], transactions: [], financingScenarios: [], financingDraft: null, salesPlaybooks: [], playbookFilters: { q: "", stage: "", category: "", propertyType: "", status: "" }, commission: { settings: { grossPct: 3, brokerShare: 40, agentShare: 50, referralShare: 10 }, payouts: [] }, docVault: [], siteVisits: [], campaigns: [], listingStats: {}, valueGuide: { version: "2026.09.4", approvedBy: "", approvedAt: "", proxyFactors: { residential: 1, commercial: 1.7, agricultural: 0.5, industrial: 1.35 }, marketBandMid: { residential: 2.5, commercial: 2.5, agricultural: 1.5, industrial: 2 }, construction: { wood_prefab: 16000, mixed_chb: 25000, rca_steel: 32000 } }, siteContact: { eyebrow: "PROPERTY GUIDANCE", title: "What are you planning next?", description: "Tell SEA ESTATES whether you are buying, selling, renting, or reviewing a property. Include the location and any questions you would like us to help with.", phone: "0905 307 9119", email: "seaestate@gmail.com", address: "Batangas, Philippines", hours: "Monday–Saturday, 9:00 AM–6:00 PM" }, adminTab: "overview", txDetail: null, usersTab: "pending",
       portfolioAccounts: [], cashEntries: [], constructionProjects: [], constructionPhases: [], constructionVendors: [], constructionInvoices: [], changeOrders: [], portfolioTab: "overview", portfolioAuditEvents: [] };
   }
   function loadState() {
@@ -2466,6 +2466,8 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
       if (topbar) topbar.classList.add("hidden");
       const main = document.querySelector(".main");
       if (main) main.classList.add("public-main");
+      renderTabbar();
+      lastScreenKey = "";
       if (window.ESREALTY_STOREFRONT) {
         window.ESREALTY_STOREFRONT.mount({
           host: $("#content"),
@@ -2559,7 +2561,11 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     updateDealPicker();
     fillIcons();
     linkFieldLabels(content);
+    enhanceTables(content);
     bindPerView();
+    renderFilterChips();
+    renderTabbar();
+    trackScreen();
     installTabKeyboard();
     enhanceTabs(content);
     if (state.view === "portfolio" && state.portfolioTab === "ledger" && typeof pfApplyLedgerFilters === "function") pfApplyLedgerFilters();
@@ -2703,8 +2709,24 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
         }
       }
     });
+    dialogState.open.forEach(o => {
+      if (overlays.indexOf(o) >= 0) return;
+      /* static pop-ups are reused: forget typed changes once one closes */
+      const c = o.querySelector(".modal-card") || o;
+      delete c.dataset.dirty;
+      delete c.dataset.unsavedWarned;
+      const w = c.querySelector(".dlg-unsaved");
+      if (w) w.remove();
+    });
     dialogState.open = dialogState.open.filter(o => overlays.indexOf(o) >= 0);
     document.documentElement.classList.toggle("modal-open", overlays.length > 0);
+    /* one history entry while any pop-up is open, so Back closes it */
+    if (overlays.length && !dialogPushed && typeof history !== "undefined" && history.pushState) {
+      try { history.pushState(Object.assign({}, history.state || {}, { esDialog: true }), ""); dialogPushed = true; } catch (e) { /* no history */ }
+    } else if (!overlays.length && dialogPushed) {
+      dialogPushed = false;
+      if (history.state && history.state.esDialog) { dialogIgnorePop = true; history.back(); }
+    }
     if (!overlays.length && dialogState.lastFocus) {
       const f = dialogState.lastFocus;
       dialogState.lastFocus = null;
@@ -2761,9 +2783,297 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     });
     if (typeof MutationObserver !== "undefined") {
       let raf = 0;
-      new MutationObserver(() => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; syncDialogs(); }); })
-        .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+      new MutationObserver(() => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          syncDialogs();
+          /* partial updates (filtered results, ledger tabs) skip render() */
+          const content = currentUser && document.getElementById("content");
+          if (content) { enhanceTables(content); renderFilterChips(); }
+        });
+      }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     }
+
+    /* Phase 6: bottom tab bar */
+    const bar = $("#tabbar");
+    if (bar) bar.addEventListener("click", e => {
+      if (e.target.closest("[data-tab-more]")) {
+        e.stopPropagation(); /* the document handler would close the drawer again */
+        $("#sidebar").classList.toggle("open");
+        return;
+      }
+      const b = e.target.closest("[data-tab-view]");
+      if (!b) return;
+      const v = b.getAttribute("data-tab-view");
+      $("#sidebar").classList.remove("open");
+      /* tapping the tab you are on goes back to its list */
+      if (state.view === v) { if (v === "leads") state.leadDetail = null; if (v === "listings") state.listingDetail = null; if (v === "transactions") state.txDetail = null; }
+      navigate(v);
+      window.scrollTo(0, 0);
+    });
+
+    /* Phase 6: agent home rows, filter chips */
+    document.addEventListener("click", e => {
+      const go = e.target.closest("[data-today-go]");
+      if (go) { navigate(go.getAttribute("data-today-go")); window.scrollTo(0, 0); return; }
+      if (e.target.closest("[data-today-add]")) { navigate("leads"); openLeadEditor(); return; }
+      const lead = e.target.closest("[data-today-lead]");
+      if (lead && !e.target.closest("[data-lead-contact]")) { state.leadDetail = lead.getAttribute("data-today-lead"); navigate("leads"); window.scrollTo(0, 0); return; }
+      const chip = e.target.closest("[data-filter-clear]");
+      if (chip) {
+        const parts = chip.getAttribute("data-filter-clear").split(":");
+        const f = parts[0] === "lf" ? state.leadFilters : state.listingFilters;
+        if (f) f[parts[1]] = typeof f[parts[1]] === "boolean" ? false : "";
+        save(); render();
+      }
+    });
+    document.addEventListener("keydown", e => {
+      if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("[data-today-lead]")) { e.preventDefault(); e.target.click(); }
+    });
+
+    /* Phase 6: unsaved changes in a pop-up */
+    const markDirty = e => {
+      if (!e.isTrusted || !e.target || !e.target.closest) return;
+      const card = e.target.closest(".modal-card");
+      if (card && card.getAttribute("role") === "dialog") card.dataset.dirty = "1";
+    };
+    document.addEventListener("input", markDirty, true);
+    document.addEventListener("change", markDirty, true);
+    document.addEventListener("click", e => {
+      const overlay = e.target.classList && e.target.classList.contains("modal-overlay") ? e.target : null;
+      let card = null, how = "x";
+      if (overlay) { card = overlay.querySelector(".modal-card"); how = "outside"; }
+      else {
+        const b = e.target.closest && e.target.closest("button");
+        if (b && b.closest(".modal-head") && isCloseButton(b)) card = b.closest(".modal-card");
+      }
+      if (!card || card.dataset.dirty !== "1" || card.dataset.unsavedWarned === "1") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      warnUnsaved(card, how);
+    }, true);
+    document.addEventListener("keydown", e => {
+      if (e.key !== "Escape" || !dialogState.open.length) return;
+      const top = dialogState.open[dialogState.open.length - 1];
+      const card = top && (top.querySelector(".modal-card") || top);
+      if (!card || card.dataset.dirty !== "1" || card.dataset.unsavedWarned === "1") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      warnUnsaved(card, "esc");
+    }, true);
+
+    /* Phase 6: Back gesture closes pop-ups first, then walks back screens */
+    window.addEventListener("popstate", e => {
+      if (dialogIgnorePop) { dialogIgnorePop = false; return; }
+      if (dialogPushed) {
+        dialogPushed = false;
+        const top = dialogState.open.filter(o => document.contains(o)).pop();
+        if (!top) return;
+        const card = top.querySelector(".modal-card") || top;
+        if (card.dataset.dirty === "1" && card.dataset.unsavedWarned !== "1") {
+          warnUnsaved(card, "back");
+          try { history.pushState(Object.assign({}, history.state || {}, { esDialog: true }), ""); dialogPushed = true; } catch (err) { /* no history */ }
+          return;
+        }
+        closeDialog(top);
+        return;
+      }
+      const st = e.state;
+      if (!currentUser || !st || !st.esScreen) return;
+      if (st.view && !navAllowed(st.view)) return;
+      state.view = st.view || state.view;
+      state.leadDetail = st.leadDetail || null;
+      state.listingDetail = st.listingDetail || null;
+      state.txDetail = st.txDetail || null;
+      $("#sidebar").classList.remove("open");
+      screenRestoring = true;
+      render();
+    });
+
+    /* Phase 6: say plainly when the phone has no connection */
+    const banner = $("#offline-banner");
+    const showNet = () => { if (banner) banner.classList.toggle("hidden", navigator.onLine !== false); };
+    window.addEventListener("offline", () => { showNet(); toast("You are offline. Changes may not be saved until your connection is back.", "err"); });
+    window.addEventListener("online", () => { showNet(); toast("Back online.", "ok"); });
+    showNet();
+  }
+
+  /* ================= PHONE SHELL, PHASE 6 (2026-10-16) =================
+   * Bottom tab bar, agent home, tables as cards, filter chips, Back-gesture
+   * history, unsaved-changes guard and the offline banner. All of it is
+   * driven from render() and bindPhoneShell(); the CSS block "BACK OFFICE ON
+   * PHONES, PHASE 6" shows it only at phone width. */
+
+  /* Bottom tab bar: the screens each role uses most, then More (the drawer).
+   * Owners and tenants have two screens, so they keep the drawer only. */
+  const TABBAR = {
+    agent: [["dashboard", "Home", "dashboard"], ["leads", "Leads", "users"], ["listings", "Listings", "home"], ["transactions", "Deals", "file"]],
+    broker: [["leads", "Leads", "users"], ["listings", "Listings", "home"], ["admin", "Team", "target"], ["transactions", "Deals", "file"]],
+    "super-admin": [["dashboard", "Home", "dashboard"], ["leads", "Leads", "users"], ["listings", "Listings", "home"], ["users", "Users", "shield"]],
+    seller: [["dashboard", "Home", "dashboard"], ["listings", "Listings", "home"], ["presell", "Pre-Selling", "layers"], ["financing", "Financing", "dollar"]],
+    buyer: [["portal", "Portal", "star"], ["listings", "Listings", "home"], ["presell", "Pre-Selling", "layers"], ["financing", "Financing", "dollar"]]
+  };
+  function renderTabbar() {
+    const bar = $("#tabbar");
+    if (!bar) return;
+    const items = currentUser ? (TABBAR[userRole()] || []).filter(t => navAllowed(t[0])) : [];
+    const show = items.length >= 2;
+    document.body.classList.toggle("has-tabbar", show);
+    bar.classList.toggle("hidden", !show);
+    if (!show) { bar.innerHTML = ""; return; }
+    const inBar = items.some(t => t[0] === state.view);
+    const drawer = $("#sidebar");
+    const drawerOpen = !!(drawer && drawer.classList.contains("open"));
+    bar.innerHTML = items.map(t => {
+      const on = t[0] === state.view;
+      return '<button type="button" class="tabbar-item' + (on ? " active" : "") + '" data-tab-view="' + t[0] + '"' + (on ? ' aria-current="page"' : "") + ">" + icon(t[2], 22) + "<span>" + esc(t[1]) + "</span></button>";
+    }).join("") +
+      '<button type="button" class="tabbar-item' + (inBar ? "" : " active") + '" data-tab-more aria-controls="sidebar" aria-expanded="' + drawerOpen + '">' + icon("menu", 22) + "<span>" + (lang === "fil" ? "Iba pa" : "More") + "</span></button>";
+  }
+
+  /* Agent home: what to do today, before the listings dashboard. */
+  function agentTodayHTML() {
+    const leads = leadScope();
+    const due = leads.filter(l => { const s = leadFollowupState(l); return s && s.due; })
+      .sort((a, b) => String(a.nextFollowUp || "").localeCompare(String(b.nextFollowUp || "")));
+    const time = l => new Date(l.createdAt || 0).getTime() || 0;
+    const fresh = leads.filter(l => l.status === "new").sort((a, b) => time(b) - time(a));
+    const active = leads.filter(l => ["contacted", "site-visit", "offer", "negotiation"].indexOf(l.status) >= 0).length;
+    const won = leads.filter(l => l.status === "closed").length;
+    const statusLabel = s => (LEAD_STATUSES.find(x => x[0] === s) || [s, s])[1];
+    const hasBudget = l => l.budget || l.askingPrice || l.rentBudget;
+    const row = l => {
+      const fu = leadFollowupState(l);
+      return '<div class="today-lead" data-today-lead="' + esc(l.id) + '" role="button" tabindex="0" aria-label="Open lead ' + esc(l.name || "Unnamed") + '">' +
+        '<div class="today-lead-top">' + leadAvatar(l.name) +
+        '<div class="grow"><div class="lead-card-name">' + esc(l.name || "Unnamed") + '</div><div class="lead-card-sub dim tiny">' + esc(statusLabel(l.status)) + (hasBudget(l) ? " · " + leadBudget(l) : "") + "</div></div>" +
+        (fu ? '<span class="badge ' + fu.cls + '">' + esc(fu.label) + "</span>" : "") + "</div>" +
+        leadContactButtons(l) + "</div>";
+    };
+    const list = (items, empty) => items.length
+      ? '<div class="today-list">' + items.slice(0, 5).map(row).join("") + "</div>" + (items.length > 5 ? '<button type="button" class="btn btn-ghost today-more" data-today-go="leads">See all ' + items.length + "</button>" : "")
+      : '<div class="empty"><div class="dim">' + empty + "</div></div>";
+    return '<div class="hero today-hero"><div><h1>Today</h1><p>Follow-ups due, new leads and your pipeline, with one-tap calling.</p></div><div class="actions">' +
+      (leadCanManage() ? '<button type="button" class="btn btn-primary" data-today-add>' + icon("plus", 15) + " Add Lead</button>" : "") +
+      '<button type="button" class="btn btn-ghost" data-today-go="leads">' + icon("users", 15) + " Open CRM</button></div></div>" +
+      '<div class="grid grid-4 mb-24">' +
+        kpi("Follow-ups due", String(due.length), due.length ? "call these first" : "all caught up", due.length ? "red" : "green", "calendar") +
+        kpi("New leads", String(fresh.length), "not contacted yet", "blue", "users") +
+        kpi("In pipeline", String(active), "contacted to negotiating", "gold", "layers") +
+        kpi("Closed / won", String(won), "all time", "green", "check") + "</div>" +
+      '<section class="card card-pad mb-24 today-section"><h2 class="mb-16">Follow-ups due</h2>' + list(due, "No follow-ups due today.") + "</section>" +
+      '<section class="card card-pad mb-24 today-section"><h2 class="mb-16">New leads</h2>' + list(fresh, "No new leads right now.") + "</section>";
+  }
+
+  /* Tables: four or more columns become one card per row on phones (labels
+   * come from the header row); narrower tables just drop the forced width.
+   * Runs after every render and after partial updates, and skips tables it
+   * has already handled. */
+  function enhanceTables(root) {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll(".table-wrap table").forEach(t => {
+      if (t.classList.contains("tbl-stack") || t.classList.contains("tbl-fit")) return;
+      const rows = Array.prototype.slice.call(t.rows || []);
+      const head = rows.find(r => r.cells.length && Array.prototype.every.call(r.cells, c => c.tagName === "TH"));
+      if (!head) {
+        /* label / value tables (no header row) only need the forced width gone */
+        if (rows.length && Math.max.apply(null, rows.map(r => r.cells.length)) <= 3) t.classList.add("tbl-fit");
+        return;
+      }
+      const labels = [];
+      Array.prototype.forEach.call(head.cells, c => { for (let i = 0; i < (c.colSpan || 1); i++) labels.push(c.textContent.trim()); });
+      if (labels.length < 4) { t.classList.add("tbl-fit"); return; }
+      head.classList.add("tbl-head");
+      rows.forEach(r => {
+        if (r === head || r.parentElement && r.parentElement.tagName === "THEAD") return;
+        let col = 0;
+        Array.prototype.forEach.call(r.cells, c => {
+          const span = c.colSpan || 1;
+          if (span > 1) c.classList.add("tbl-full");
+          else if (labels[col]) c.setAttribute("data-label", labels[col]);
+          col += span;
+        });
+      });
+      t.classList.add("tbl-stack");
+    });
+  }
+
+  /* Filter chips: on a phone the filters fold away, so the active ones are
+   * listed under the search box, each with a one-tap remove. */
+  const FILTER_FIELDS = {
+    lf: { type: "lf-type", status: "lf-status", source: "lf-source", agent: "lf-agent", minBudget: "lf-minb" },
+    ls: { type: "ls-type", status: "ls-status", city: "ls-city", minPrice: "ls-minp", maxPrice: "ls-maxp", minBeds: "ls-minb", minArea: "ls-mina", financing: "ls-fin", rfo: "ls-rfo", favOnly: "ls-fav", furnishing: "ls-furnishing", pet: "ls-pet", balcony: "ls-balcony", dropOnly: "ls-drop" }
+  };
+  function renderFilterChips() {
+    [["lf", state && state.leadFilters], ["ls", state && state.listingFilters]].forEach(pair => {
+      const key = pair[0], f = pair[1] || {};
+      const card = document.getElementById(key + "-filters");
+      if (!card) return;
+      const next = card.nextElementSibling;
+      let box = next && next.classList.contains("filter-chips") ? next : null;
+      const chips = Object.keys(FILTER_FIELDS[key]).filter(k => f[k] !== "" && f[k] != null && f[k] !== false && f[k] !== 0 && f[k] !== "0").map(k => {
+        const el = document.getElementById(FILTER_FIELDS[key][k]);
+        const field = el && el.closest(".field");
+        const lab = field && field.querySelector(":scope > label");
+        let name = (lab && lab.textContent.replace(/\s+/g, " ").trim()) || k;
+        let val = String(f[k]);
+        if (el && el.tagName === "SELECT") val = el.selectedOptions[0] ? el.selectedOptions[0].text : val;
+        else if (el && el.type === "checkbox") { const cl = el.closest("label"); name = cl ? cl.textContent.trim() : name; val = ""; }
+        else if (el) val = el.value || val;
+        const text = val ? name + ": " + val : name;
+        return '<button type="button" class="filter-chip" data-filter-clear="' + key + ":" + k + '" aria-label="Remove filter ' + esc(text) + '">' + esc(text) + ' <span aria-hidden="true">×</span></button>';
+      });
+      if (!chips.length) { if (box) box.remove(); return; }
+      const html = chips.join("");
+      if (!box) { box = document.createElement("div"); box.className = "filter-chips"; box.setAttribute("aria-label", "Active filters"); card.insertAdjacentElement("afterend", box); }
+      if (box.innerHTML !== html) box.innerHTML = html;
+    });
+  }
+
+  /* Back gesture: each screen (and an open lead, listing or deal) gets a
+   * history entry, so Android Back and iPhone swipe-back return to the
+   * previous screen instead of leaving the back office. */
+  let screenRestoring = false, lastScreenKey = "";
+  function screenKey() {
+    return [state.view, state.view === "leads" ? state.leadDetail || "" : "", state.view === "listings" ? state.listingDetail || "" : "", state.view === "transactions" ? state.txDetail || "" : ""].join("|");
+  }
+  function trackScreen() {
+    if (!currentUser || typeof history === "undefined" || !history.pushState) return;
+    const key = screenKey();
+    if (screenRestoring) { screenRestoring = false; lastScreenKey = key; return; }
+    if (key === lastScreenKey) return;
+    const entry = { esScreen: key, view: state.view, leadDetail: state.leadDetail || null, listingDetail: state.listingDetail || null, txDetail: state.txDetail || null };
+    try {
+      if (!lastScreenKey) history.replaceState(Object.assign({}, history.state || {}, entry), "");
+      else history.pushState(entry, "");
+    } catch (e) { /* history unavailable (sandboxed frame) */ }
+    lastScreenKey = key;
+  }
+
+  /* Pop-ups: Back closes the open pop-up instead of leaving the page, and a
+   * pop-up with typed changes asks once before × , a tap outside, Esc or
+   * Back throws them away. Cancel and Save still act at once. */
+  let dialogPushed = false, dialogIgnorePop = false;
+  function isCloseButton(b) {
+    return /^(×|✕|x)$/i.test((b.textContent || "").trim()) || /close/i.test((b.getAttribute("title") || "") + " " + (b.getAttribute("aria-label") || ""));
+  }
+  function warnUnsaved(card, how) {
+    card.dataset.unsavedWarned = "1";
+    if (card.querySelector(".dlg-unsaved")) return;
+    const msg = document.createElement("div");
+    msg.className = "dlg-unsaved";
+    msg.setAttribute("role", "alert");
+    msg.textContent = "You have unsaved changes. " + (how === "back" ? "Press Back again" : how === "outside" ? "Tap outside again" : how === "esc" ? "Press Esc again" : "Tap × again") + " to discard them, or save first.";
+    const head = card.querySelector(".modal-head");
+    if (head) head.insertAdjacentElement("afterend", msg); else card.insertAdjacentElement("afterbegin", msg);
+  }
+  function closeDialog(overlay) {
+    const card = overlay.querySelector(".modal-card") || overlay;
+    const buttons = Array.prototype.slice.call(card.querySelectorAll("button"));
+    const ctl = buttons.find(b => b.closest(".modal-head") && isCloseButton(b)) || buttons.find(b => /^(cancel|close)$/i.test((b.textContent || "").trim()));
+    if (ctl) ctl.click();
+    else overlay.classList.add("hidden");
   }
 
   function updateDealPicker() {
@@ -3337,6 +3647,8 @@ document.addEventListener("click", e=>{
         const open = sidebar.classList.contains("open");
         menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
         menuBtn.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+        const more = document.querySelector("#tabbar [data-tab-more]");
+        if (more) more.setAttribute("aria-expanded", open ? "true" : "false");
       };
       new MutationObserver(sync).observe(sidebar, { attributes: true, attributeFilter: ["class"] });
       sync();
@@ -4800,10 +5112,17 @@ function bindPerView() {
 
   /* ================= DASHBOARD ================= */
   function siteContactDefaults() {
-    return { eyebrow: "PROPERTY GUIDANCE", title: "What are you planning next?", description: "Tell SEA ESTATES whether you are buying, selling, renting, or reviewing a property. Include the location and any questions you would like us to help with.", phone: "+63 900 000 0000", email: "hello@esrealty.ph", address: "Batangas, Philippines", hours: "Monday–Saturday, 9:00 AM–6:00 PM" };
+    return { eyebrow: "PROPERTY GUIDANCE", title: "What are you planning next?", description: "Tell SEA ESTATES whether you are buying, selling, renting, or reviewing a property. Include the location and any questions you would like us to help with.", phone: "0905 307 9119", email: "seaestate@gmail.com", address: "Batangas, Philippines", hours: "Monday–Saturday, 9:00 AM–6:00 PM" };
   }
   function siteContactData() {
     state.siteContact = Object.assign(siteContactDefaults(), state.siteContact || {});
+    /* Accounts saved before 2026-10-16 still carry the old placeholder number
+     * and address, and the public contact band read them from here. Swap them
+     * for the real details; the next save carries the fix to the server. */
+    const real = siteContactDefaults();
+    if (/^\+63 900 000 0000$/.test(String(state.siteContact.phone || "").trim())) state.siteContact.phone = real.phone;
+    if (/^hello@esrealty\.ph$/i.test(String(state.siteContact.email || "").trim())) state.siteContact.email = real.email;
+    if (/SHOPHOUSE SPECIALIST/i.test(String(state.siteContact.eyebrow || ""))) { state.siteContact.eyebrow = real.eyebrow; state.siteContact.title = real.title; state.siteContact.description = real.description; }
     return state.siteContact;
   }
   function renderSiteContactAdmin() {
@@ -4862,6 +5181,7 @@ function bindPerView() {
   }
   function renderDashboard() {
     const listingDashboard = renderListingAccountDashboard();
+    if (roleIs("agent")) return agentTodayHTML() + listingDashboard;
     if (!roleIs("super-admin")) return listingDashboard;
     const ps = portfolioStats();
     let html = listingDashboard + renderSiteContactAdmin() + '<div class="hero mt-24"><div><h1>Investment overview</h1><p>Portfolio performance and analysis tools.</p></div><div class="actions"><button class="btn btn-primary" data-view="wizard">' + icon("plus", 15) + " New Investment</button></div></div>";

@@ -1,9 +1,11 @@
-# Response headers for Cloudflare Pages and Netlify.
+# Response headers for Cloudflare (Workers static assets / Pages) and Netlify.
 #
-# GitHub Pages IGNORES this file (it has no header support) — the current
-# production host therefore serves no security headers at all. It takes effect
-# when the hosting moves to Cloudflare Pages, as planned in
-# docs/hosting/migration-github-pages-to-cdn.md.
+# Production (esrealty.tradersgag6.workers.dev) is served by Cloudflare, which
+# APPLIES this file: the CSP below is enforced for every visitor. GitHub Pages
+# (tradersgag6.github.io/esrealty) ignores it. Checked live on 2026-10-16: the
+# old policy silently blocked realtime notifications (wss), address lookup
+# (Nominatim), nearby places (Overpass) and every OpenStreetMap tile and embed.
+# When the app starts calling a new host, add it here in the same change.
 #
 # CSP NOTE: script-src/style-src keep 'unsafe-inline' because the app depends on
 # inline <script> blocks (bootstrap detection, boot sentinel, SW registration)
@@ -19,13 +21,18 @@
 # uploaded photo downloads but is refused by the browser and shows as broken.
 # tradersgag6.github.io covers listings whose photos still point at the old
 # GitHub Pages host.
+#
+# connect-src: wss://*.supabase.co is realtime (live notifications);
+# nominatim / overpass are address lookup and nearby places in the back office.
+# img-src / frame-src: OpenStreetMap tiles are served from the bare host
+# tile.openstreetmap.org, and the location pop-ups embed www.openstreetmap.org.
 
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co https://tradersgag6.github.io https://images.unsplash.com https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org; connect-src 'self' https://*.supabase.co https://esrealty-market-scan.vercel.app; frame-src https://www.google.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co https://tradersgag6.github.io https://images.unsplash.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://esrealty-market-scan.vercel.app https://nominatim.openstreetmap.org https://overpass-api.de https://lz4.overpass-api.de https://overpass.kumi.systems; frame-src https://www.google.com https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
 
 # Fingerprinted, immutable-ish assets. The app shell must never be cached stale.
 /index.html

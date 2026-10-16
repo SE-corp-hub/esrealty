@@ -2279,3 +2279,73 @@ html.modal-open, html.modal-open body { overflow: hidden; }
   .main #content:has(> #broker-panel, > #team-panel) > #broker-panel,
   .main #content:has(> #broker-panel, > #team-panel) > #team-panel { order: 1; margin-top: 8px; }
 }
+
+/* ============ BACK OFFICE ON PHONES, PHASE 6 (2026-10-16) ============
+   Bottom tab bar, tables as cards, readable text, full-height form sheets,
+   filter chips and an offline banner. Every rule is phone-only except the
+   safe-area padding (0 on screens without a notch) and the hidden defaults. */
+
+/* viewport-fit=cover lets fixed bars reach the screen edge; keep content
+   clear of the notch in landscape */
+.main, .sf-site { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+
+.tabbar { display: none; }
+.filter-chips { display: none; }
+.offline-banner { margin: 0; padding: 10px 14px; background: #7C2D12; color: #FFFFFF; font-size: 14px; font-weight: 600; text-align: center; }
+.dlg-unsaved { margin: 12px 20px 0; padding: 10px 12px; border-radius: 10px; background: #FEF3C7; color: #7C2D12; font-size: 14px; font-weight: 600; }
+
+@media (max-width: 760px) {
+  /* bottom tab bar: up to five top-level screens; More opens the drawer */
+  body.has-tabbar .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 35; gap: 2px; background: var(--surface); border-top: 1px solid var(--stroke); padding: 4px max(4px, env(safe-area-inset-right, 0px)) calc(4px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px)); box-shadow: 0 -6px 20px rgba(0, 0, 0, .06); }
+  .tabbar-item { flex: 1 1 0; min-width: 0; min-height: 56px !important; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px 2px; border: 0; border-radius: 12px; background: none; color: var(--text-dim); font: inherit; font-weight: 600; cursor: pointer; }
+  .tabbar-item span { font-size: 12px; line-height: 1.2; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tabbar-item.active { color: var(--accent); background: var(--accent-dim); }
+  .tabbar-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  body.has-tabbar .main .content { padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important; }
+  body.has-tabbar .menu-btn { display: none !important; }
+  body.has-tabbar .toasts { bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important; }
+
+  /* readable text: 14 px for secondary text, 15-16 px for body and values;
+     13 px only for table headers, tile labels and badges */
+  .main:not(.public-main) #content p, .main:not(.public-main) #content td, .main:not(.public-main) #content li { font-size: 15px; }
+  .main:not(.public-main) #content .tiny, .main:not(.public-main) #content .field-hint, .main:not(.public-main) #content .k-sub,
+  .main:not(.public-main) #content .lead-card-sub, .main:not(.public-main) #content .sc-sub, .main:not(.public-main) #content label,
+  .main:not(.public-main) #content .notice-banner span, .main:not(.public-main) #content .chat-sug, .main:not(.public-main) #content .module-card p,
+  .modal-card label, .modal-card .field-hint { font-size: 14px; }
+  .main:not(.public-main) #content th, .main:not(.public-main) #content .k-label, .main:not(.public-main) #content .ls-stat-l,
+  .main:not(.public-main) #content .badge, .main:not(.public-main) #content .module-tag, .main:not(.public-main) #content .wstep { font-size: 13px; }
+  .main:not(.public-main) #content .lead-card-name { font-size: 16px; }
+  .main:not(.public-main) #content .lead-card-budget, .main:not(.public-main) #content .tx-price { font-size: 15px; }
+
+  /* tab strips wrap instead of hiding tabs off screen */
+  .main:not(.public-main) #content .tabs-row, .main:not(.public-main) #content .users-access .tabs { flex-wrap: wrap; overflow: visible; row-gap: 4px; }
+
+  /* filter chips show what is active while the filters are folded */
+  .filter-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: -12px 0 16px; }
+  .filters-open + .filter-chips { display: none; }
+  .filter-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 12px; border: 1px solid var(--stroke); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; cursor: pointer; }
+  .filter-chip span[aria-hidden] { font-size: 16px; line-height: 1; color: var(--text-dim); }
+}
+
+/* tables with four or more columns become one card per row on phones;
+   two- and three-column tables just drop the forced 560 px width */
+@media (max-width: 640px) {
+  .table-wrap:has(table.tbl-stack), .table-wrap:has(table.tbl-fit) { padding-bottom: 0; overflow-x: visible; }
+  .table-wrap:has(table.tbl-stack)::after, .table-wrap:has(table.tbl-fit)::after { content: none; }
+  .table-wrap table.tbl-fit { min-width: 0; }
+  .table-wrap table.tbl-fit td, .table-wrap table.tbl-fit th { padding-left: 6px; padding-right: 6px; overflow-wrap: anywhere; }
+  .table-wrap table.tbl-stack, .table-wrap table.tbl-stack > tbody, .table-wrap table.tbl-stack > thead { display: block; min-width: 0; width: 100%; }
+  .table-wrap table.tbl-stack tr.tbl-head, .table-wrap table.tbl-stack > thead { display: none; }
+  .table-wrap table.tbl-stack tr { display: block; margin: 0 0 10px; padding: 6px 12px; border: 1px solid var(--stroke); border-radius: 12px; background: var(--surface); }
+  .table-wrap table.tbl-stack tr > td, .table-wrap table.tbl-stack tr > th { display: block; position: relative; min-height: 34px; padding: 7px 0 7px 44%; border: 0; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+  .table-wrap table.tbl-stack tr > td + td, .table-wrap table.tbl-stack tr > th + td, .table-wrap table.tbl-stack tr > td + th { border-top: 1px solid var(--stroke); }
+  .table-wrap table.tbl-stack tr > [data-label]::before { content: attr(data-label); position: absolute; left: 0; top: 7px; width: 42%; text-align: left; font-size: 13px; font-weight: 600; color: var(--text-dim); }
+  .table-wrap table.tbl-stack tr > td:not([data-label]), .table-wrap table.tbl-stack tr > td[colspan], .table-wrap table.tbl-stack tr > td.tbl-full { padding-left: 0; text-align: left; }
+
+  /* forms open as full-height sheets: header and buttons stay in reach */
+  body .modal-overlay:has(.modal-card :is(input, select, textarea)) { padding: 0 !important; align-items: stretch; }
+  body .modal-overlay .modal-card:has(:is(input, select, textarea)) { width: 100% !important; max-width: none !important; min-height: 100%; max-height: none !important; margin: 0 !important; border: 0; border-radius: 0; display: flex; flex-direction: column; }
+  body .modal-overlay .modal-card:has(:is(input, select, textarea)) .modal-head { position: sticky; top: 0; z-index: 3; background: var(--surface); }
+  body .modal-overlay .modal-card:has(:is(input, select, textarea)) .modal-body { flex: 1 1 auto; max-height: none !important; overflow: visible !important; }
+  body .modal-overlay .modal-card:has(:is(input, select, textarea)) .modal-foot { position: sticky; bottom: 0; z-index: 3; background: var(--surface); padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+}

@@ -2,7 +2,7 @@
 <html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SEA ESTATES — Properties &amp; Batangas Value Guide</title>
 <meta name="description" content="Browse available properties and use the free BATANGAS VALUE GUIDE. Review a BIR zonal reference separately from the SEA ESTATES planning estimate, or ask our team about your next move.">
 <meta name="author" content="SEA ESTATES">
@@ -273,7 +273,12 @@
       </div>
     </header>
 
+    <div class="offline-banner hidden" id="offline-banner" role="status">You are offline. Changes you make now may not be saved until your connection is back.</div>
     <div class="content" id="content" data-module="view" data-testid="content"></div>
+    <!-- Bottom tab bar on phones: built per role by renderTabbar() in js/app.js;
+         buttons carry data-tab-view (not data-view) so the sidebar stays the
+         first [data-view] match for scripts and tests. -->
+    <nav class="tabbar hidden" id="tabbar" aria-label="Main sections"></nav>
   </main>
 
   <!-- ===== PRINT REPORT ===== -->

@@ -140,7 +140,7 @@ async function go(view) {
     const cancel = Array.prototype.find.call(dlg.querySelectorAll("button"), b => /cancel/i.test(b.textContent));
     if (cancel) cancel.click();
     await until(() => !shown(q("#ld-name")));
-    await wait(250);
+    await until(() => !document.documentElement.classList.contains("modal-open"), 40);
     check("closing the pop-up unlocks the page", !document.documentElement.classList.contains("modal-open"));
 
     /* 6) transaction select box and stat tiles */
@@ -156,6 +156,69 @@ async function go(view) {
     const tiles = Array.prototype.find.call(document.querySelectorAll("#content .grid"), g => g.querySelector(":scope > .kpi"));
     const cols = tiles ? getComputedStyle(tiles).gridTemplateColumns.split(" ").filter(Boolean).length : 0;
     check(phone ? "stat tiles sit two per row on a phone" : "stat tiles sit in a row on desktop", phone ? cols === 2 : cols >= 2, cols + " columns");
+
+    /* ---- Phase 6 ---- */
+    /* 7) wide tables become cards on a phone and stay tables on desktop */
+    await go("portal");
+    const wide = q("#content .table-wrap table.tbl-stack");
+    check("wide tables are marked for the card layout", !!wide);
+    if (wide) {
+      const row = Array.prototype.find.call(wide.rows, r => !r.classList.contains("tbl-head"));
+      const disp = row ? getComputedStyle(row).display : "";
+      if (phone) {
+        check("each table row is a card on a phone", disp === "block" && !!row.querySelector("[data-label]"), disp);
+        check("no table needs sideways swiping", Array.prototype.every.call(document.querySelectorAll("#content .table-wrap"), w => w.scrollWidth <= w.clientWidth + 2));
+      } else check("tables stay tables on desktop", disp === "table-row", disp);
+    }
+    check("offline banner hidden while online", !shown(q("#offline-banner")));
+
+    /* 8) agent: bottom tab bar, Today home, Back gesture, filter chips */
+    await login("agent");
+    await go("dashboard");
+    const tabs = Array.prototype.slice.call(document.querySelectorAll("#tabbar .tabbar-item"));
+    if (phone) {
+      check("bottom tab bar shows for agents", shown(q("#tabbar")) && tabs.map(t => t.textContent.trim()).join(",") === "Home,Leads,Listings,Deals,More", tabs.map(t => t.textContent.trim()).join(","));
+      check("tab bar marks the current screen", !!q('#tabbar [data-tab-view="dashboard"][aria-current="page"]'));
+      check("tab bar buttons are large touch targets", tabs.every(t => rect(t).height >= 48), tabs.map(t => Math.round(rect(t).height)).join(","));
+      check("menu button gives way to the More tab", !shown(q("#menu-btn")));
+      q("#tabbar [data-tab-more]").click(); await wait(200);
+      check("More tab opens the drawer", q("#sidebar").classList.contains("open") && q("#tabbar [data-tab-more]").getAttribute("aria-expanded") === "true");
+      q("#sidebar").classList.remove("open"); await wait(150);
+    } else {
+      check("no bottom tab bar on desktop", !shown(q("#tabbar")));
+    }
+    check("agent home starts with today's work", /Today/.test((q("#content h1") || {}).textContent || "") && /Follow-ups due/.test(q("#content").textContent) && /New leads/.test(q("#content").textContent));
+    if (phone) {
+      q('#tabbar [data-tab-view="leads"]').click();
+      await until(() => q(".lead-card"));
+      history.back();
+      await until(() => q(".today-hero"), 40);
+      check("Back returns to the previous screen", !!q(".today-hero") && /Dashboard/.test(q("#topbar-title").textContent), q("#topbar-title").textContent);
+      history.forward();
+      await until(() => q(".lead-card"), 40);
+      const typeSel = q("#lf-type");
+      typeSel.value = typeSel.options[1].value; typeSel.dispatchEvent(new Event("change", { bubbles: true }));
+      await until(() => q(".filter-chip"));
+      const chip = q(".filter-chip");
+      check("an active filter shows as a chip while filters are folded", shown(chip) && /Lead type/.test(chip.textContent), chip ? chip.textContent : "none");
+      if (chip) chip.click();
+      await until(() => !q(".filter-chip"));
+      check("the chip removes its filter", !q(".filter-chip") && q("#lf-type").value === "");
+
+      /* 9) form pop-ups are full-height sheets with an unsaved-changes guard */
+      q("[data-lead-new]").click();
+      await until(() => shown(q("#ld-name")));
+      await wait(250);
+      const sheet = q("#ld-name").closest(".modal-card");
+      check("form pop-ups open as full-height sheets", rect(sheet).top <= 1 && rect(sheet).height >= window.innerHeight - 2, Math.round(rect(sheet).top) + "/" + Math.round(rect(sheet).height));
+      sheet.dataset.dirty = "1"; /* typed changes (synthetic input events are not trusted) */
+      const closeX = Array.prototype.find.call(sheet.querySelectorAll(".modal-head button"), b => /×|close/i.test(b.textContent + (b.title || "")));
+      closeX.click(); await wait(250);
+      check("× asks once before throwing away typed changes", shown(q("#ld-name")) && !!sheet.querySelector(".dlg-unsaved"));
+      closeX.click();
+      await until(() => !shown(q("#ld-name")));
+      check("× again closes the pop-up", !shown(q("#ld-name")));
+    }
   } catch (e) { check("runner", false, e && e.stack || e); }
   window.__msOk = window.__msChecks.every(c => c.ok); window.__msDone = true;
 })();

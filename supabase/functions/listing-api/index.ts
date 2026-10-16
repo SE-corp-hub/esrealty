@@ -25,11 +25,11 @@ const MANAGED_LISTING_COLUMNS = [
 ].join(",");
 
 const DEFAULT_SITE_CONTACT = {
-  eyebrow: "TALK TO A SHOPHOUSE SPECIALIST",
-  title: "Ready to put the ground floor to work?",
+  eyebrow: "PROPERTY GUIDANCE",
+  title: "What are you planning next?",
   description: "Tell SEA ESTATES whether you are buying, selling, renting, or reviewing a property. Include the location and any questions you would like us to help with.",
-  phone: "+63 900 000 0000",
-  email: "hello@esrealty.ph",
+  phone: "0905 307 9119",
+  email: "seaestate@gmail.com",
   address: "Batangas, Philippines",
   hours: "Monday–Saturday, 9:00 AM–6:00 PM",
 };

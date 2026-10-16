@@ -299,7 +299,7 @@ async function buildPdf(p: any) {
 
   page.drawText("SEA ESTATES", { x: 48, y, size: 18, font: bold, color: navy });
   page.drawText("Batangas Value Guide - Planning Report", { x: 48, y: y - 18, size: 11, font: bold, color: tan });
-  page.drawText("SEA ESTATES · hello@esrealty.ph · esrealty.ph", { x: 48, y: y - 32, size: 8, font, color: gray });
+  page.drawText("SEA ESTATES · seaestate@gmail.com · 0905 307 9119", { x: 48, y: y - 32, size: 8, font, color: gray });
   y -= 46;
   const report = p.report || {};
   const property = report.property || {};

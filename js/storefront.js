@@ -483,8 +483,13 @@
       return;
     }
     API.siteSettings().then(function (result) {
-      /* Site settings override the built-in contact only where they are filled in. */
-      if (result && result.data) Object.keys(result.data).forEach(function (k) { var v = result.data[k]; if (v != null && String(v).trim() !== "") siteContact[k] = v; });
+      /* Site settings override the built-in contact only where they are filled in
+       * with a real value. The old defaults ("+63 900 000 0000",
+       * "hello@esrealty.ph") were still stored on the server and replaced the
+       * real number on the live contact band (found 2026-10-16), so they count
+       * as empty. */
+      var placeholder = /^(\+63 900 000 0000|hello@esrealty\.ph)$/i;
+      if (result && result.data) Object.keys(result.data).forEach(function (k) { var v = result.data[k]; if (v != null && String(v).trim() !== "" && !placeholder.test(String(v).trim())) siteContact[k] = v; });
       siteContact.contactLoaded = true;
       applyContact();
     }).catch(function () {
