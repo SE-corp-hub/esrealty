@@ -889,12 +889,6 @@ input:focus, textarea:focus, select:focus, .map-search input:focus { caret-color
 .pf-proof-card-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .pf-proof-card-body b { font-size: 13px; overflow-wrap: anywhere; }
 .pf-mode-badge { font-weight: 600; }
-#pf-construction-modal .modal-body, #pf-phase-modal .modal-body, #pf-vendor-modal .modal-body, #pf-invoice-modal .modal-body, #pf-change-modal .modal-body { flex-direction: column; max-height: min(70vh, 620px); overflow-y: auto; }
-#pf-construction-modal .modal-body .field, #pf-phase-modal .modal-body .field, #pf-vendor-modal .modal-body .field, #pf-invoice-modal .modal-body .field, #pf-change-modal .modal-body .field { width: 100%; }
-#pf-construction-modal .modal-foot, #pf-phase-modal .modal-foot, #pf-vendor-modal .modal-foot, #pf-invoice-modal .modal-foot, #pf-change-modal .modal-foot { flex-wrap: wrap; }
-#pf-construction-modal .modal-body, #pf-phase-modal .modal-body, #pf-vendor-modal .modal-body, #pf-invoice-modal .modal-body, #pf-change-modal .modal-body { flex-direction: column; max-height: min(70vh, 620px); overflow-y: auto; }
-#pf-construction-modal .modal-body .field, #pf-phase-modal .modal-body .field, #pf-vendor-modal .modal-body .field, #pf-invoice-modal .modal-body .field, #pf-change-modal .modal-body .field { width: 100%; }
-#pf-construction-modal .modal-foot, #pf-phase-modal .modal-foot, #pf-vendor-modal .modal-foot, #pf-invoice-modal .modal-foot, #pf-change-modal .modal-foot { flex-wrap: wrap; }
 .plot-status { margin-top: 8px; font-size: 12px; color: var(--text-dim); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .plot-syncbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
 .plot-sync-ref { background: transparent; border: none; }
@@ -940,8 +934,14 @@ body .modal-card { width: 100%; max-width: 660px; background: var(--surface); bo
 body .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--stroke); }
 body .modal-head h3 { font-size: 16px; font-weight: 700; }
 body .modal-body { padding: 20px; display: flex; flex-wrap: wrap; gap: 12px; }
-body .modal-body .field { width: calc(50% - 6px); }
-body .modal-body .field.col-full { width: 100%; }
+/* Half width only for fields laid straight into the flex body. A field inside
+   a .grid already sits in a column; halving it again squeezed every input in
+   Add Lead / Add Listing to a quarter of the pop-up (2026-10-16). */
+body .modal-body > .field { width: calc(50% - 6px); }
+body .modal-body > .field.col-full { width: 100%; }
+/* A grid inside the flex body is a flex item; without this it shrinks to its
+   content and leaves a gap at the right on wider phones. */
+body .modal-body > .grid, body .modal-body > .form-grid { width: 100%; }
 body .modal-body textarea.input { resize: vertical; min-height: 64px; }
 body .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--stroke); }
 .pms-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -2193,3 +2193,89 @@ body .chip, body .sf-chip { font-size: 12px !important; }
 @keyframes sf2-window-warm { 0%, 100% { opacity: .28; } 50% { opacity: .6; } }
 
 @keyframes sf-gold-flow { to { background-position: 200% 0; } }
+
+/* ============ BACK OFFICE ON PHONES (2026-10-16) ============
+   Every back-office user works on a phone, so the app shell has to work at
+   360 px: one-row header with the extras behind a "More" button, full-width
+   pop-up fields, one main action per screen with the rest under "More",
+   collapsible filters, a swipeable stat strip, two-column stat tiles and
+   44 px contact buttons on lead cards. Desktop layout is unchanged. */
+
+/* Pop-up fields sit two per row only where two fit. */
+@media (max-width: 640px) {
+  body .modal-body .field { width: 100%; }
+}
+
+/* Header extras: inline on desktop, behind the "More" button on phones. */
+body .topbar-more-btn { display: none; }
+.topbar-extra, .tb-more-row { display: contents; }
+.tb-more-label { display: none; }
+
+/* Page actions: inline on desktop, under "More" on phones. */
+body .actions-more-btn { display: none; }
+.actions-more, .actions-more-menu { display: contents; }
+.filters-toggle-field { display: none; }
+
+/* Contact buttons on lead cards. */
+.lead-card-contact { display: flex; flex-wrap: wrap; gap: 6px; }
+.lead-card-contact .lead-contact-btn { flex: 1 1 0; min-width: 64px; min-height: 40px; padding: 0 8px; justify-content: center; font-size: 14px; text-decoration: none; }
+
+/* Bulk-select box on transaction cards: a 44 px target around the checkbox. */
+.tx-bulk-label { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border: 1px solid var(--stroke); border-radius: 10px; background: var(--surface); cursor: pointer; }
+.tx-bulk-label input { width: 20px; height: 20px; margin: 0; }
+
+/* Open pop-ups lock the page behind them; the dialog takes focus without a ring. */
+html.modal-open, html.modal-open body { overflow: hidden; }
+.modal-card[tabindex="-1"]:focus { outline: none; }
+
+@media (max-width: 760px) {
+  /* one 56 px header row: menu, title, bell, More */
+  body .topbar { flex-wrap: nowrap !important; gap: 6px; min-height: 56px; padding: 6px 10px !important; }
+  body .topbar-title { order: 0 !important; flex: 1 1 auto; min-width: 0; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body .topbar-actions { order: 0 !important; width: auto !important; flex-wrap: nowrap !important; gap: 4px; position: relative; }
+  body .topbar-actions .icon-btn, body .topbar-more-btn { width: 44px; height: 44px; }
+  body .topbar-more-btn { display: inline-flex; align-items: center; justify-content: center; }
+  .topbar-extra { display: none; position: absolute; right: 0; top: calc(100% + 8px); z-index: 320; min-width: 248px; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px; background: var(--surface); border: 1px solid var(--stroke); border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, .18); }
+  .topbar-actions.more-open .topbar-extra { display: flex; }
+  .tb-more-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 2px 4px 2px 10px; }
+  .tb-more-label { display: block; font-size: 16px; color: var(--text); }
+  body .topbar-extra .deal-picker { order: 0 !important; width: 100%; max-width: none; font-size: 14px; padding: 10px 12px; }
+  body .topbar-extra #tb-new-deal { width: 100%; justify-content: center; min-height: 44px; }
+
+  /* page actions: the main button fills the row, everything else under More */
+  .main .hero .actions { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+  .main .hero .actions > .crm-switch { flex: 1 1 100%; }
+  .main .hero .actions > .btn { flex: 1 1 auto; }
+  .actions-more { display: block; position: relative; flex: 0 0 auto; }
+  body .actions-more-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
+  .actions-more-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 232px; flex-direction: column; gap: 2px; padding: 6px; background: var(--surface); border: 1px solid var(--stroke); border-radius: 14px; box-shadow: 0 16px 40px rgba(0, 0, 0, .18); }
+  .actions-more.open .actions-more-menu { display: flex; }
+  .main .hero .actions .actions-more-menu .btn { flex: none; width: 100%; justify-content: flex-start; min-height: 44px; border: 0; box-shadow: none; }
+
+  /* filters: search stays visible, the rest open from the Filters button */
+  .filters-toggle-field { display: flex; }
+  .filters-collapsible { padding: 12px; }
+  .filters-collapsible:not(.filters-open) .field:not(.filter-keep) { display: none; }
+  .filters-collapsible:not(.filters-open) > .grid + .grid { display: none; }
+  .filters-collapsible:not(.filters-open) > .grid:first-child { grid-template-columns: minmax(0, 1fr) auto !important; align-items: end; }
+  .filters-toggle { min-height: 44px; white-space: nowrap; }
+
+  /* CRM stats: one swipeable row instead of four rows of tiles */
+  .main .lead-stats { display: flex; overflow-x: auto; gap: 8px; scroll-snap-type: x proximity; padding-bottom: 4px; }
+  .main .lead-stats .ls-stat { flex: 0 0 auto; min-width: 116px; scroll-snap-align: start; }
+
+  /* stat tiles: two per row when a grid holds only tiles */
+  .main .grid:has(> .kpi):not(:has(> :not(.kpi))) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px; }
+  .main .grid:has(> .kpi):not(:has(> :not(.kpi))) > .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .main .kpi { padding: 12px 14px; }
+  .main .kpi .k-value { font-size: 17px; overflow-wrap: anywhere; }
+
+  /* contact buttons reach the 44 px touch size on phones */
+  .lead-card-contact .lead-contact-btn { min-height: 44px; }
+
+  /* CRM: the linked-broker / linked-agents panels are reference info, so on
+     a phone they move below the lead list instead of pushing it down */
+  .main #content:has(> #broker-panel, > #team-panel) { display: flex; flex-direction: column; }
+  .main #content:has(> #broker-panel, > #team-panel) > #broker-panel,
+  .main #content:has(> #broker-panel, > #team-panel) > #team-panel { order: 1; margin-top: 8px; }
+}

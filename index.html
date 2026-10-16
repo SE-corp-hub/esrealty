@@ -158,12 +158,12 @@
       
       <div class="nav-section" data-section="ANALYSIS">ANALYSIS</div>
       <div class="nav-dropdown">
-        <button class="nav-item nav-dropdown-trigger" data-dropdown="analysis">
+        <button class="nav-item nav-dropdown-trigger" data-dropdown="analysis" aria-expanded="false" aria-controls="nav-menu-analysis">
           <span class="nav-ic" data-ic="chart"></span>
           <span>Analysis</span>
           <span class="nav-chevron" data-ic="chevron-down"></span>
         </button>
-        <div class="nav-dropdown-menu" data-dropdown-menu="analysis">
+        <div class="nav-dropdown-menu" id="nav-menu-analysis" data-dropdown-menu="analysis">
           <button class="nav-dropdown-item" data-view="deal"><span class="nav-ic" data-ic="chart"></span>Deal Analysis</button>
           <button class="nav-dropdown-item" data-view="appraisal"><span class="nav-ic" data-ic="scale"></span>Appraisal</button>
           <!-- Value Guide reuses the public estimator's calculation and the
@@ -176,12 +176,12 @@
 
       <div class="nav-section" data-section="WORKSPACE">WORKSPACE</div>
       <div class="nav-dropdown">
-        <button class="nav-item nav-dropdown-trigger" data-dropdown="workspace">
+        <button class="nav-item nav-dropdown-trigger" data-dropdown="workspace" aria-expanded="false" aria-controls="nav-menu-workspace">
           <span class="nav-ic" data-ic="layers"></span>
           <span>Workspace</span>
           <span class="nav-chevron" data-ic="chevron-down"></span>
         </button>
-        <div class="nav-dropdown-menu" data-dropdown-menu="workspace">
+        <div class="nav-dropdown-menu" id="nav-menu-workspace" data-dropdown-menu="workspace">
           <button class="nav-dropdown-item" data-view="leads"><span class="nav-ic" data-ic="users"></span>CRM / Leads</button>
           <button class="nav-dropdown-item" data-view="listings"><span class="nav-ic" data-ic="home"></span>Listings</button>
           <button class="nav-dropdown-item" data-view="presell"><span class="nav-ic" data-ic="layers"></span>Pre-Selling</button>
@@ -196,12 +196,12 @@
 
       <div class="nav-section" data-section="BROKERAGE">BROKERAGE</div>
       <div class="nav-dropdown">
-        <button class="nav-item nav-dropdown-trigger" data-dropdown="brokerage">
+        <button class="nav-item nav-dropdown-trigger" data-dropdown="brokerage" aria-expanded="false" aria-controls="nav-menu-brokerage">
           <span class="nav-ic" data-ic="target"></span>
           <span>Brokerage</span>
           <span class="nav-chevron" data-ic="chevron-down"></span>
         </button>
-        <div class="nav-dropdown-menu" data-dropdown-menu="brokerage">
+        <div class="nav-dropdown-menu" id="nav-menu-brokerage" data-dropdown-menu="brokerage">
           <button class="nav-dropdown-item" data-view="playbook"><span class="nav-ic" data-ic="target"></span>Sales Playbook</button>
           <button class="nav-dropdown-item" data-view="users"><span class="nav-ic" data-ic="users"></span>Users & Access</button>
           <button class="nav-dropdown-item" data-view="admin"><span class="nav-ic" data-ic="briefcase"></span>Brokerage Admin</button>
@@ -210,12 +210,12 @@
 
       <div class="nav-section" data-section="ACCOUNT">ACCOUNT</div>
       <div class="nav-dropdown">
-        <button class="nav-item nav-dropdown-trigger" data-dropdown="account">
+        <button class="nav-item nav-dropdown-trigger" data-dropdown="account" aria-expanded="false" aria-controls="nav-menu-account">
           <span class="nav-ic" data-ic="users"></span>
           <span>Account</span>
           <span class="nav-chevron" data-ic="chevron-down"></span>
         </button>
-        <div class="nav-dropdown-menu" data-dropdown-menu="account">
+        <div class="nav-dropdown-menu" id="nav-menu-account" data-dropdown-menu="account">
           <button class="nav-dropdown-item" data-view="portal"><span class="nav-ic" data-ic="star"></span>My Buyer Portal</button>
           <button class="nav-dropdown-item" data-view="settings"><span class="nav-ic" data-ic="settings"></span>Settings</button>
         </div>
@@ -253,17 +253,23 @@
   <!-- ===== MAIN ===== -->
   <main class="main" data-module="app-shell">
     <header class="topbar">
-      <button class="icon-btn menu-btn" id="menu-btn" title="Toggle menu"><span data-ic="menu"></span></button>
+      <button class="icon-btn menu-btn" id="menu-btn" type="button" title="Toggle menu" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false"><span data-ic="menu"></span></button>
       <div class="topbar-title" id="topbar-title" data-testid="topbar-title">Dashboard</div>
       <div class="topbar-actions">
               <div class="notif-wrap hidden" id="notif-wrap">
         <button class="icon-btn" id="notif-bell" title="Notifications"><span data-ic="bell"></span><span class="notif-badge hidden" id="notif-badge"></span></button>
         <div class="notif-panel hidden" id="notif-panel"></div>
       </div>
-      <button class="icon-btn" id="language-toggle" title="Switch to Filipino">EN</button>
-        <div class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode"><span data-ic="sun"></span></div>
-        <div class="deal-picker" id="deal-picker" title="Current deal">No deal loaded</div>
-        <button class="btn btn-primary" id="tb-new-deal" data-testid="tb-new-deal"><span class="ic-sm" data-ic="plus"></span>New Investment</button>
+        <!-- On phones the extras below fold behind this button (styles.css,
+             "BACK OFFICE ON PHONES"); on desktop the wrapper is display:contents
+             and the controls sit inline exactly as before. -->
+        <button class="icon-btn topbar-more-btn" id="topbar-more" type="button" title="More options" aria-label="More options" aria-haspopup="true" aria-expanded="false" aria-controls="topbar-extra"><span data-ic="more"></span></button>
+        <div class="topbar-extra" id="topbar-extra">
+          <div class="tb-more-row"><span class="tb-more-label">Language</span><button class="icon-btn" id="language-toggle" type="button" title="Switch to Filipino">EN</button></div>
+          <div class="tb-more-row"><span class="tb-more-label">Light or dark</span><div class="theme-toggle" id="theme-toggle" role="button" tabindex="0" title="Toggle light/dark mode" aria-label="Toggle light or dark mode"><span data-ic="sun"></span></div></div>
+          <div class="deal-picker" id="deal-picker" title="Current deal">No deal loaded</div>
+          <button class="btn btn-primary" id="tb-new-deal" data-testid="tb-new-deal"><span class="ic-sm" data-ic="plus"></span>New Investment</button>
+        </div>
       </div>
     </header>
 

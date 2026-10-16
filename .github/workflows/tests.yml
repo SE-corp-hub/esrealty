@@ -113,6 +113,10 @@ jobs:
       # both attempts.
       - name: e2e estimator_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test estimator_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test estimator_e2e
+      - name: e2e backoffice_mobile_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test backoffice_mobile_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test backoffice_mobile_e2e
+      - name: e2e backoffice_mobile_e2e (mobile)
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test backoffice_mobile_e2e -Mobile || pwsh -NoProfile -File tests/run_all.ps1 -Test backoffice_mobile_e2e -Mobile
       - name: e2e home_quick_estimate_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test home_quick_estimate_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test home_quick_estimate_e2e
       - name: e2e home_quick_estimate_e2e (mobile)

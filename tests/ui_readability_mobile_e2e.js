@@ -168,7 +168,8 @@
     checks.push({ name: label + " touch targets >=44px", ok: smallTouchTargets.length === 0, detail: smallTouchTargets.slice(0, 5).join(" | ") || "all ok" });
   }
 
-  var allowedOverflow = [".table-wrap",".crm-calendar",".cal-head",".cal-week",".cal-grid",".cal-legend",".lead-board",".pb-grid",".bt-table-wrap",".bt-map-card",".sf-thumbs",".users-access .tabs",".tabs-row",".sf-carousel",".ls-carousel",".sf-marquee-track"];
+  /* .lead-stats: the CRM stat strip swipes sideways on phones by design (2026-10-16). */
+  var allowedOverflow = [".table-wrap",".lead-stats",".crm-calendar",".cal-head",".cal-week",".cal-grid",".cal-legend",".lead-board",".pb-grid",".bt-table-wrap",".bt-map-card",".sf-thumbs",".users-access .tabs",".tabs-row",".sf-carousel",".ls-carousel",".sf-marquee-track"];
 
   try {
     await wait(800);

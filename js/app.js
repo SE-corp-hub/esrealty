@@ -235,7 +235,9 @@
     eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
     play: '<polygon points="5 3 19 12 5 21 5 3"/>',
     map: '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
-    activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'
+    activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+    more: '<circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/>',
+    filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>'
   };
   /* Icons are decorative here: every one sits next to a text label or inside a
    * button that already has an accessible name. Exposing them added 32 stray
@@ -771,7 +773,7 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     if (!u) return;
     psModal("Reserve Unit " + u.unit_no,
       psField("Client name *", psText("psf-res-name", u.reserved_for || "")) +
-      psField("Client account email (optional - links their Buyer Portal)", psText("psf-res-email", "", "buyer@email.com")),
+      psField("Client account email (optional - links their Buyer Portal)", psText("psf-res-email", "", "buyer@email.com", "email")),
       "Reserve Unit");
     const saveBtn = document.querySelector("#ps-modal [data-ps-save]");
     if (saveBtn) saveBtn.setAttribute("data-ps-reserve", unitId);
@@ -2504,6 +2506,15 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
       }
       if (hasActive && menu) menu.classList.add("open");
     });
+    /* A short menu (an agent sees 7 screens) opens every group, so on a phone
+     * any screen is one tap after opening the drawer instead of two. Long
+     * menus (super-admin, 20 screens) keep the accordion. */
+    navShortMenu = $$("#nav [data-view]").filter(b => !b.classList.contains("nav-hidden")).length <= 10;
+    if (navShortMenu) $$("#nav .nav-dropdown").forEach(dd => {
+      const trigger = dd.querySelector(".nav-dropdown-trigger");
+      const menu = dd.querySelector(".nav-dropdown-menu");
+      if (trigger && menu && !trigger.classList.contains("nav-hidden")) { menu.classList.add("open"); trigger.setAttribute("aria-expanded", "true"); }
+    });
     const langIndex = lang === "fil" ? 1 : 0;
     $$("#nav .nav-item").forEach(b => {
       const label = LANG_NAV[b.getAttribute("data-view")];
@@ -2547,6 +2558,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     content.innerHTML = map[state.view] ? map[state.view]() : "";
     updateDealPicker();
     fillIcons();
+    linkFieldLabels(content);
     bindPerView();
     installTabKeyboard();
     enhanceTabs(content);
@@ -2614,6 +2626,144 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
   function hideAuth() {
     $("#auth-screen").classList.add("hidden");
     $("#sidebar").classList.toggle("hidden", !currentUser);
+  }
+
+  /* ================= PHONE SHELL =================
+   * Every back-office user works on a phone (2026-10-16). These helpers back
+   * the "BACK OFFICE ON PHONES" block in styles.css: the header More menu,
+   * the page-level More menus, the Filters toggle, contact buttons on lead
+   * cards, and dialog semantics for every .modal-overlay. On desktop the CSS
+   * shows the same controls inline, so the wide layout does not change. */
+  const filtersOpen = {};
+  let navShortMenu = false;
+  let fieldSeq = 0;
+  function moreActions(itemsHtml, badgeHtml) {
+    if (!itemsHtml) return "";
+    return '<div class="actions-more"><button type="button" class="btn btn-ghost actions-more-btn" aria-haspopup="true" aria-expanded="false">' + icon("more", 15) + " More" + (badgeHtml || "") + '</button><div class="actions-more-menu">' + itemsHtml + "</div></div>";
+  }
+  function filtersActiveCount(f) {
+    return Object.keys(f || {}).filter(k => k !== "q" && k !== "sort" && f[k] !== "" && f[k] != null && f[k] !== false && f[k] !== 0 && f[k] !== "0").length;
+  }
+  function filtersToggle(key, f) {
+    const open = !!filtersOpen[key];
+    const n = filtersActiveCount(f);
+    return '<div class="field filter-keep filters-toggle-field"><button type="button" class="btn btn-ghost filters-toggle" data-filters-toggle="' + key + '" aria-expanded="' + open + '" aria-controls="' + key + '-filters">' + icon("filter", 15) + ' <span class="filters-toggle-text">' + (open ? "Hide filters" : "Filters") + "</span>" + (n ? ' <span class="badge gold">' + n + "</span>" : "") + "</button></div>";
+  }
+  function filtersCardClass(key) { return "filters-collapsible" + (filtersOpen[key] ? " filters-open" : ""); }
+  /* Call / WhatsApp / Viber straight from the lead card: an agent's most
+   * common action, previously three small badges inside the lead detail. */
+  function leadContactButtons(l) {
+    let d = phNormalizeMobile(l && l.phone).replace(/[^\d]/g, "");
+    if (/^0\d{9,10}$/.test(d)) d = "63" + d.slice(1);
+    if (!/^\d{10,15}$/.test(d)) return "";
+    const who = esc(l.name || "this lead");
+    return '<div class="lead-card-contact">' +
+      '<a class="btn btn-primary lead-contact-btn" data-lead-contact="call" href="tel:+' + d + '" aria-label="Call ' + who + '">' + icon("phone", 15) + " Call</a>" +
+      '<a class="btn btn-ghost lead-contact-btn" data-lead-contact="whatsapp" href="https://wa.me/' + d + '" target="_blank" rel="noopener" aria-label="WhatsApp ' + who + '">WhatsApp</a>' +
+      '<a class="btn btn-ghost lead-contact-btn" data-lead-contact="viber" href="viber://chat?number=%2B' + d + '" aria-label="Viber ' + who + '">Viber</a>' +
+      "</div>";
+  }
+  /* Most forms are built as <div class="field"><label>…</label><input></div>
+   * with no for/id link, so a tap on the label did nothing and screen readers
+   * announced the inputs without names. */
+  function linkFieldLabels(root) {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll(".field").forEach(f => {
+      const label = f.querySelector(":scope > label");
+      if (!label || label.htmlFor || label.querySelector("input, select, textarea")) return;
+      const ctl = f.querySelector(":scope > input:not([type=hidden]), :scope > select, :scope > textarea") ||
+        f.querySelector("input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea");
+      if (!ctl) return;
+      if (!ctl.id) ctl.id = "fld-" + (++fieldSeq);
+      label.htmlFor = ctl.id;
+    });
+  }
+  /* Every open .modal-overlay becomes a real dialog: role and name for screen
+   * readers, focus moved inside (the card itself, so a phone keyboard does not
+   * pop up uninvited), the page behind locked, and focus handed back to the
+   * control that opened it once the last dialog closes. */
+  const dialogState = { open: [], lastFocus: null };
+  function syncDialogs() {
+    const overlays = $$(".modal-overlay").filter(o => !o.classList.contains("hidden") && o.getClientRects().length > 0);
+    overlays.forEach(o => {
+      const card = o.querySelector(".modal-card") || o;
+      if (card.getAttribute("role") !== "dialog") {
+        card.setAttribute("role", "dialog");
+        card.setAttribute("aria-modal", "true");
+        const h = card.querySelector(".modal-head h3, .modal-head h2, h2, h3");
+        if (h) { if (!h.id) h.id = "dlg-title-" + (++fieldSeq); card.setAttribute("aria-labelledby", h.id); }
+      }
+      linkFieldLabels(card);
+      if (dialogState.open.indexOf(o) < 0) {
+        if (!dialogState.open.length) dialogState.lastFocus = document.activeElement;
+        dialogState.open.push(o);
+        if (!card.contains(document.activeElement)) {
+          if (!card.hasAttribute("tabindex")) card.setAttribute("tabindex", "-1");
+          try { card.focus({ preventScroll: true }); } catch (e) {}
+        }
+      }
+    });
+    dialogState.open = dialogState.open.filter(o => overlays.indexOf(o) >= 0);
+    document.documentElement.classList.toggle("modal-open", overlays.length > 0);
+    if (!overlays.length && dialogState.lastFocus) {
+      const f = dialogState.lastFocus;
+      dialogState.lastFocus = null;
+      if (f !== document.body && document.contains(f) && typeof f.focus === "function") { try { f.focus({ preventScroll: true }); } catch (e) {} }
+    }
+  }
+  function bindPhoneShell() {
+    const tbMore = $("#topbar-more"), tbActions = document.querySelector(".topbar-actions");
+    const setMore = open => {
+      if (!tbMore || !tbActions) return;
+      tbActions.classList.toggle("more-open", open);
+      tbMore.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+    if (tbMore && tbActions) tbMore.addEventListener("click", e => { e.stopPropagation(); setMore(!tbActions.classList.contains("more-open")); });
+    const closePageMenus = except => $$(".actions-more.open").forEach(m => {
+      if (m === except) return;
+      m.classList.remove("open");
+      const b = m.querySelector(".actions-more-btn");
+      if (b) b.setAttribute("aria-expanded", "false");
+    });
+    document.addEventListener("click", e => {
+      if (tbActions && tbActions.classList.contains("more-open") && (!e.target.closest("#topbar-extra") || e.target.closest("#tb-new-deal"))) setMore(false);
+      const moreBtn = e.target.closest(".actions-more-btn");
+      if (moreBtn) {
+        const box = moreBtn.closest(".actions-more");
+        const open = !box.classList.contains("open");
+        closePageMenus(box);
+        box.classList.toggle("open", open);
+        moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        return;
+      }
+      if (e.target.closest(".actions-more-menu")) setTimeout(() => closePageMenus(null), 0);
+      else closePageMenus(null);
+      const ft = e.target.closest("[data-filters-toggle]");
+      if (ft) {
+        const key = ft.getAttribute("data-filters-toggle");
+        filtersOpen[key] = !filtersOpen[key];
+        const card = ft.closest(".filters-collapsible");
+        if (card) card.classList.toggle("filters-open", filtersOpen[key]);
+        ft.setAttribute("aria-expanded", filtersOpen[key] ? "true" : "false");
+        const t = ft.querySelector(".filters-toggle-text");
+        if (t) t.textContent = filtersOpen[key] ? "Hide filters" : "Filters";
+      }
+    });
+    document.addEventListener("keydown", e => {
+      if (e.key !== "Escape") return;
+      if (tbActions && tbActions.classList.contains("more-open")) { setMore(false); if (tbMore) tbMore.focus(); }
+      const openMenu = document.querySelector(".actions-more.open");
+      if (openMenu) {
+        closePageMenus(null);
+        const b = openMenu.querySelector(".actions-more-btn");
+        if (b) b.focus();
+      }
+    });
+    if (typeof MutationObserver !== "undefined") {
+      let raf = 0;
+      new MutationObserver(() => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; syncDialogs(); }); })
+        .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    }
   }
 
   function updateDealPicker() {
@@ -3100,7 +3250,7 @@ document.addEventListener("change", e => {
         const dropdown = dropdownTrigger.closest(".nav-dropdown");
         const menu = dropdown.querySelector(".nav-dropdown-menu");
         const isOpen = dropdownTrigger.getAttribute("aria-expanded") === "true";
-        document.querySelectorAll(".nav-dropdown-menu.open").forEach(m => {
+        if (!isOpen && !navShortMenu) document.querySelectorAll(".nav-dropdown-menu.open").forEach(m => {
           if (m !== menu) { m.classList.remove("open"); m.closest(".nav-dropdown").querySelector(".nav-dropdown-trigger").setAttribute("aria-expanded", "false"); }
         });
         menu.classList.toggle("open");
@@ -3177,12 +3327,30 @@ document.addEventListener("click", e=>{
       if(delProof){ pfRemoveProof(delProof.getAttribute("data-pf-proof-remove"), delProof.getAttribute("data-pf-proof-id")); return; }
     });
     $("#menu-btn").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
+    /* The drawer opens and closes from several places (menu button, outside
+     * tap, picking a screen, Esc), so its expanded state is read back from the
+     * drawer itself rather than set at each call site. */
+    (() => {
+      const sidebar = $("#sidebar"), menuBtn = $("#menu-btn");
+      if (!sidebar || !menuBtn || typeof MutationObserver === "undefined") return;
+      const sync = () => {
+        const open = sidebar.classList.contains("open");
+        menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        menuBtn.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+      };
+      new MutationObserver(sync).observe(sidebar, { attributes: true, attributeFilter: ["class"] });
+      sync();
+    })();
     $("#theme-toggle").addEventListener("click", () => {
       const newTheme = state.theme === "dark" ? "light" : "dark";
       state.theme = newTheme;
       document.documentElement.setAttribute("data-theme", newTheme);
       save();
     });
+    $("#theme-toggle").addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); }
+    });
+    bindPhoneShell();
     const languageToggle = $("#language-toggle");
     if (languageToggle) languageToggle.addEventListener("click", toggleLang);
     $("#tb-new-deal").addEventListener("click", () => {
@@ -9143,8 +9311,8 @@ premise: "Fee Simple / As Improved",
   }
 
   /* ---- PMS editors & persistence ---- */
-  function pmsTxt(id, value, ph) {
-    return '<input class="input" id="' + id + '" type="text" value="' + esc(value == null ? "" : value) + '" placeholder="' + (ph || "") + '">';
+  function pmsTxt(id, value, ph, type) {
+    return '<input class="input" id="' + id + '" type="' + (type || "text") + '"' + (type ? ' autocomplete="off"' : "") + ' value="' + esc(value == null ? "" : value) + '" placeholder="' + (ph || "") + '">';
   }
   function pmsNum(id, value) {
     return '<input class="input input-num" id="' + id + '" type="text" inputmode="decimal" autocomplete="off" value="' + (C.num(value, 0) > 0 ? C.fmtNum(value) : "") + '" placeholder="0">';
@@ -9321,8 +9489,8 @@ premise: "Fee Simple / As Improved",
   function openOwnerEditor(id) {
     const d = id ? pms().owners.find(x => x.id === id) || {} : {};
     let body = pmsField("Name *", pmsTxt("pms-own-name", d.name, "Full name"), "", true) +
-      pmsField("Email *", pmsTxt("pms-own-email", d.email, "you@email.com"), d.authUserId ? "This email is linked to the owner's Users account and cannot be changed here." : "Creates a pending Users account with a one-time temporary password.") +
-      pmsField("Phone", pmsTxt("pms-own-phone", d.phone, "+63 9xx xxx xxxx")) +
+      pmsField("Email *", pmsTxt("pms-own-email", d.email, "you@email.com", "email"), d.authUserId ? "This email is linked to the owner's Users account and cannot be changed here." : "Creates a pending Users account with a one-time temporary password.") +
+      pmsField("Phone", pmsTxt("pms-own-phone", d.phone, "+63 9xx xxx xxxx", "tel")) +
       pmsField("Company", pmsTxt("pms-own-company", d.company)) +
       pmsField("Bank", pmsTxt("pms-own-bank", d.bank)) +
       pmsField("Account Number", pmsTxt("pms-own-acct", d.account_number)) +
@@ -9342,8 +9510,8 @@ premise: "Fee Simple / As Improved",
     const ownerOpts = pmsActiveOwners().map(o => [o.id, o.name + (o.company ? " — " + o.company : "")]);
     if (!ownerOpts.length) ownerOpts.push(["", "— No owners yet —"]);
     let body = pmsField("Name *", pmsTxt("pms-ten-name", d.name, "Full name"), "", true) +
-      pmsField("Email *", pmsTxt("pms-ten-email", d.email, "you@email.com"), d.authUserId ? "This email is linked to the tenant's Users account and cannot be changed here." : "Creates a pending Users account with a one-time temporary password on the first lease.") +
-      pmsField("Phone", pmsTxt("pms-ten-phone", d.phone, "+63 9xx xxx xxxx")) +
+      pmsField("Email *", pmsTxt("pms-ten-email", d.email, "you@email.com", "email"), d.authUserId ? "This email is linked to the tenant's Users account and cannot be changed here." : "Creates a pending Users account with a one-time temporary password on the first lease.") +
+      pmsField("Phone", pmsTxt("pms-ten-phone", d.phone, "+63 9xx xxx xxxx", "tel")) +
       pmsField("Employment", pmsTxt("pms-ten-emp", d.employment, "e.g. Accountant, Acme Corp")) +
       pmsField("Monthly Income (\u20B1)", pmsNum("pms-ten-income", d.monthly_income)) +
       pmsField("Owner", pmsSel("pms-ten-owner", ownerOpts, d.owner_id || ""), "The landlord this tenant rents from.") +
@@ -11863,10 +12031,16 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const can = listingCanManage();
     const opt = (opts, val, allLabel) => '<option value="">' + esc(allLabel || "All") + "</option>" + opts.map(o => '<option value="' + o[0] + '"' + (val === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>").join("");
     const cityOpts = '<option value="">All cities</option>' + lsCityList().map(c => '<option value="' + esc(c) + '"' + (f.city === c ? " selected" : "") + ">" + esc(c) + "</option>").join("");
+    const openInquiries = (state.portalInquiries || []).filter(x => (x.status || "new") !== "converted").length;
     let html = '<div class="hero"><div><h1>Listings</h1><p>Browse the brokerage portfolio — filter, save favorites, and manage property listings.</p></div><div class="actions">' +
-      (can ? '<button class="btn btn-primary" data-ls-new>' + icon("plus", 15) + " Add Listing</button>" : "") + '<button class="btn btn-ghost" data-ls-inquiries>' + icon("chat", 15) + ' Inquiries' + ((state.portalInquiries || []).filter(x => (x.status || "new") !== "converted").length ? ' <span class="badge gold">' + (state.portalInquiries || []).filter(x => (x.status || "new") !== "converted").length + "</span>" : "") + '</button><button class="btn btn-ghost" data-ls-export>' + icon("download", 15) + " Export CSV</button></div></div>";
-    html += '<div class="card card-pad mb-24" id="ls-filters"><div class="grid grid-4">' +
-      '<div class="field"><label>Search</label><input class="input" id="ls-q" type="text" value="' + esc(f.q || "") + '" placeholder="Title, city, developer…"></div>' +
+      (can ? '<button class="btn btn-primary" data-ls-new>' + icon("plus", 15) + " Add Listing</button>" : "") +
+      moreActions(
+        '<button class="btn btn-ghost" data-ls-inquiries>' + icon("chat", 15) + ' Inquiries' + (openInquiries ? ' <span class="badge gold">' + openInquiries + "</span>" : "") + "</button>" +
+        '<button class="btn btn-ghost" data-ls-export>' + icon("download", 15) + " Export CSV</button>",
+        openInquiries ? ' <span class="badge gold" aria-label="' + openInquiries + ' open inquiries">' + openInquiries + "</span>" : "") + "</div></div>";
+    html += '<div class="card card-pad mb-24 ' + filtersCardClass("ls") + '" id="ls-filters"><div class="grid grid-4">' +
+      '<div class="field filter-keep"><label>Search</label><input class="input" id="ls-q" type="text" enterkeyhint="search" value="' + esc(f.q || "") + '" placeholder="Title, city, developer…"></div>' +
+      filtersToggle("ls", f) +
       '<div class="field"><label>Property type</label><select class="input" id="ls-type">' + opt(LISTING_TYPES, f.type) + "</select></div>" +
       '<div class="field"><label>Status</label><select class="input" id="ls-status">' + opt(LISTING_STATUSES, f.status) + "</select></div>" +
       '<div class="field"><label>City / Municipality</label><select class="input" id="ls-city">' + cityOpts + "</select></div>" +
@@ -13110,6 +13284,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         '<div class="dim tiny">' + icon("pin", 11) + " " + esc(l.source ? leadSourceLabel(l.source) : "—") + "</div>" +
       "</div>" +
       (l.listingTitle ? '<div class="lead-card-listing dim tiny">' + icon("home", 11) + " " + esc(l.listingTitle) + "</div>" : "") +
+      leadContactButtons(l) +
       '<div class="lead-card-foot"><span class="dim tiny">' + icon("calendar", 11) + " " + esc(leadDaysSince(l)) + "</span>" +
       (l.assignedTo ? '<span class="dim tiny">' + icon("users", 11) + " " + esc(l.assignedTo) + "</span>" : "") +
       ((l.agentNextRecheck || (l.agent && l.agent.nextRecheck)) ? '<span class="dim tiny">' + icon("spark", 11) + " agent " + esc(new Date(l.agentNextRecheck || l.agent.nextRecheck).toLocaleDateString()) + "</span>" : "") + "</div>" +
@@ -13338,10 +13513,11 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       '<div class="crm-switch"><button data-lead-mode="pipeline" class="' + (mode === "pipeline" ? "on" : "") + '">' + icon("layers", 14) + ' Pipeline</button><button data-lead-mode="calendar" class="' + (mode === "calendar" ? "on" : "") + '">' + icon("calendar", 14) + ' Calendar</button></div>' +
       (can && mode === "calendar" ? '<button class="btn btn-primary" data-cal-new>' + icon("plus", 15) + " Add Event</button>" : "") +
       (can ? '<button class="btn btn-primary" data-lead-new>' + icon("plus", 15) + " Add Lead</button>" : "") +
-      (can ? '<button class="btn btn-ghost" data-lead-agent-all title="Run the CRM Autopilot on every lead in scope">' + icon("play", 15) + " Run Agent</button>" : "") +
-      '<button class="btn btn-ghost" data-lead-sheet>' + icon("doc", 15) + " Call Sheet</button>" +
-      '<button class="btn btn-ghost" data-lead-digest>' + icon("trending", 15) + " Weekly Digest</button>" +
-      '<button class="btn btn-ghost" data-lead-csv>' + icon("download", 15) + " Export CSV</button></div></div>";
+      moreActions(
+        (can ? '<button class="btn btn-ghost" data-lead-agent-all title="Run the CRM Autopilot on every lead in scope">' + icon("play", 15) + " Run Agent</button>" : "") +
+        '<button class="btn btn-ghost" data-lead-sheet>' + icon("doc", 15) + " Call Sheet</button>" +
+        '<button class="btn btn-ghost" data-lead-digest>' + icon("trending", 15) + " Weekly Digest</button>" +
+        '<button class="btn btn-ghost" data-lead-csv>' + icon("download", 15) + " Export CSV</button>") + "</div></div>";
     html += '<div class="lead-stats">' +
       '<div class="ls-stat"><div class="ls-stat-v">' + leads.length + '</div><div class="ls-stat-l dim">Total leads</div></div>' +
       '<div class="ls-stat"><div class="ls-stat-v">' + newCount + '</div><div class="ls-stat-l dim">New</div></div>' +
@@ -13355,8 +13531,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     html += leadTeamPanel();
     if (mode === "calendar") html += '<div id="lead-results">' + leadCalendarHTML() + "</div>";
     else {
-      html += '<div class="card card-pad mb-24" id="lf-filters"><div class="grid grid-4">' +
-        '<div class="field"><label>Search</label><input class="input" id="lf-q" type="text" value="' + esc(f.q || "") + '" placeholder="Name, email, phone, ref…"></div>' +
+      html += '<div class="card card-pad mb-24 ' + filtersCardClass("lf") + '" id="lf-filters"><div class="grid grid-4">' +
+        '<div class="field filter-keep"><label>Search</label><input class="input" id="lf-q" type="text" enterkeyhint="search" value="' + esc(f.q || "") + '" placeholder="Name, email, phone, ref…"></div>' +
+        filtersToggle("lf", f) +
         '<div class="field"><label>Lead type</label><select class="input" id="lf-type">' + opt(LEAD_TYPES, f.type) + "</select></div>" +
         '<div class="field"><label>Status</label><select class="input" id="lf-status">' + opt(LEAD_STATUSES, f.status) + "</select></div>" +
         '<div class="field"><label>Source</label><select class="input" id="lf-source">' + opt(LEAD_SOURCES, f.source) + "</select></div>" +
@@ -13646,7 +13823,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   }
   function leadSelOpt(opts, val) { return opts.map(o => '<option value="' + o[0] + '"' + (val === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>").join(""); }
   function leadFld(label, inner, hint) { return '<div class="field"><label>' + label + "</label>" + inner + (hint ? '<div class="field-hint">' + hint + "</div>" : "") + "</div>"; }
-  function leadTxt(id, v, ph) { return '<input class="input" id="' + id + '" type="text" value="' + esc(v == null ? "" : v) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : "") + ">"; }
+  /* type "tel"/"email" brings up the right phone keyboard. autocomplete is off
+   * because these are the CLIENT's details: the browser would otherwise offer
+   * the agent's own number and address. */
+  function leadTxt(id, v, ph, type) { return '<input class="input" id="' + id + '" type="' + (type || "text") + '"' + (type ? ' autocomplete="off"' : "") + ' value="' + esc(v == null ? "" : v) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : "") + ">"; }
   function leadNum(id, v) { return '<input class="input input-num" id="' + id + '" type="text" inputmode="decimal" value="' + (C.num(v, 0) > 0 ? C.fmtNum(v) : "") + '" placeholder="0">'; }
   function openLeadEditor(id) {
     if (!leadCanManage()) { toast("You don't have permission to manage leads", "err"); return; }
@@ -13682,8 +13862,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       '<div class="grid grid-2">' +
         leadFld("Full name *", leadTxt("ld-name", l.name, "e.g. Maria Santos")) +
         leadFld("Lead type", '<select class="input" id="ld-type">' + leadSelOpt(LEAD_TYPES, l.type || "buyer") + "</select>") +
-        leadFld("Email", leadTxt("ld-email", l.email, "name@email.com")) +
-        leadFld("Phone", leadTxt("ld-phone", l.phone, "+63 9xx xxx xxxx")) +
+        leadFld("Email", leadTxt("ld-email", l.email, "name@email.com", "email")) +
+        leadFld("Phone", leadTxt("ld-phone", l.phone, "+63 9xx xxx xxxx", "tel")) +
         leadFld("Status", '<select class="input" id="ld-status">' + leadSelOpt(LEAD_STATUSES, l.status || "new") + "</select>") +
         leadFld("Source", '<select class="input" id="ld-source">' + leadSelOpt(LEAD_SOURCES, l.source || (state.utmLanded && state.utmLanded.source) || "listing") + "</select>" + (state.utmLanded && state.utmLanded.source ? '<div class="field-hint">UTM source "' + esc(state.utmLanded.source) + '" from "' + esc(state.utmLanded.campaign || "campaign") + '" — keep to attribute accurately.</div>' : "")) +
         leadFld("Assigned agent", '<select class="input" id="ld-agent">' + agentOpts + "</select>") +
@@ -14063,6 +14243,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         if (ed) { e.stopPropagation(); openLeadEditor(ed.getAttribute("data-lead-edit")); return; }
         const snz = e.target.closest("[data-lead-snooze]");
         if (snz) { e.stopPropagation(); leadSnooze(snz.getAttribute("data-lead-snooze"), Number(snz.getAttribute("data-snz-days")) || 0); return; }
+        if (e.target.closest("[data-lead-contact]")) return; /* call/chat links on the card dial out; they do not open the lead */
         const open = e.target.closest("[data-lead-open]");
         if (open) { state.leadDetail = open.getAttribute("data-lead-open"); save(); render(); return; }
         const back = e.target.closest("[data-lead-back]");
@@ -16415,7 +16596,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     return '<div class="tx-card card card-pad" data-tx-open="' + esc(t.id) + '">' +
       '<div class="row spread"><div class="grow"><div class="tx-title">' + esc(t.title || "Untitled transaction") + "</div>" +
       '<div class="dim tiny">' + esc(t.ref || "") + " · " + esc(t.buyerName || "Buyer") + (t.sellerName ? " ← " + esc(t.sellerName) : "") + (lt ? " · " + esc(lt) : "") + '</div></div><div class="row" style="gap:6px">' +
-      (can ? '<label style="background:#fff;border:1px solid #cbd4df;border-radius:5px;padding:2px 5px;cursor:pointer" title="Select for bulk actions"><input type="checkbox" data-tx-bulk="' + esc(t.id) + '"' + ((window._txBulkSel || []).indexOf(t.id) >= 0 ? " checked" : "") + '></label>' : "") +
+      (can ? '<label class="tx-bulk-label" title="Select for bulk actions"><input type="checkbox" aria-label="Select for bulk actions" data-tx-bulk="' + esc(t.id) + '"' + ((window._txBulkSel || []).indexOf(t.id) >= 0 ? " checked" : "") + '></label>' : "") +
       txStatusBadge(t.stage) + (t.feePaid ? '<span class="badge green">Fee received</span>' : "") + '<button class="btn btn-ghost btn-sm" data-tx-print="' + esc(t.id) + '" title="Print transaction">' + icon("print", 13) + ' Print</button></div></div>' +
       '<div class="row mt-8" style="gap:16px"><div><div class="tx-price">' + C.money(c.price) + '</div><div class="dim tiny">Price</div></div>' +
       '<div><div class="tx-price">' + C.money(c.monthly) + '</div><div class="dim tiny">Est. monthly (loan)</div></div>' +
@@ -16685,6 +16866,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
         if (pr) { e.stopPropagation(); printTransaction(pr.getAttribute("data-tx-print")); return; }
         const gol = e.target.closest("[data-tx-goto-listing]");
         if (gol) { state.listingDetail = gol.getAttribute("data-tx-goto-listing"); state.view = "listings"; lsStatBump(state.listingDetail, "views"); lsCarIndex = 0; save(); render(); return; }
+        if (e.target.closest(".tx-bulk-label") && !e.target.closest("[data-tx-bulk]")) return; /* the 44 px box around the checkbox selects; it does not open the card */
         const open = e.target.closest("[data-tx-open]");
         if (open) { state.txDetail = open.getAttribute("data-tx-open"); save(); render(); return; }
         const back = e.target.closest("[data-tx-back]");
@@ -17224,8 +17406,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const fields =
       '<div class="grid grid-2">' +
       '<div class="field"><label>Full name</label><input class="input" id="st-name" type="text" value="' + esc(d.name) + '"></div>' +
-      '<div class="field"><label>Email</label><input class="input" id="st-email" type="email" value="' + esc(d.email) + '"' + (cloud ? " disabled" : "") + '><div class="field-hint">' + (cloud ? "Your login email is managed by Supabase and cannot be changed here." : "Demo mode: you can edit your email.") + "</div></div>" +
-      '<div class="field"><label>Phone</label><input class="input" id="st-phone" type="text" value="' + esc(d.phone) + '" placeholder="+63 ..."></div>' +
+      '<div class="field"><label>Email</label><input class="input" id="st-email" type="email" autocomplete="email" value="' + esc(d.email) + '"' + (cloud ? " disabled" : "") + '><div class="field-hint">' + (cloud ? "Your login email is managed by Supabase and cannot be changed here." : "Demo mode: you can edit your email.") + "</div></div>" +
+      '<div class="field"><label>Phone</label><input class="input" id="st-phone" type="tel" autocomplete="tel" value="' + esc(d.phone) + '" placeholder="+63 ..."></div>' +
       (userRole() === "owner" ? "" :
       '<div class="field"><label>Agency / company</label><input class="input" id="st-agency" type="text" value="' + esc(d.agency) + '" placeholder="e.g. Villanueva & Co."></div>' +
       '<div class="field"><label>PRC license no. (brokers)</label><input class="input" id="st-prc" type="text" value="' + esc(d.prc) + '" placeholder="12-digit PRC license"><div class="field-hint">Required for brokers per RA 9646.</div></div>' +
@@ -17553,8 +17735,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     return '<div class="card card-pad mt-16" id="ls-inq"><h3>Inquire about this property</h3>' +
       '<div class="grid grid-2 mt-8">' +
       '<div class="field"><label>Full name *</label><input class="input" id="lq-name" type="text" placeholder="Juan Dela Cruz"></div>' +
-      '<div class="field"><label>Mobile / phone *</label><input class="input" id="lq-phone" type="text" placeholder="+63 9xx xxx xxxx"></div>' +
-      '<div class="field"><label>Email</label><input class="input" id="lq-email" type="email" placeholder="you@email.com"></div>' +
+      '<div class="field"><label>Mobile / phone *</label><input class="input" id="lq-phone" type="tel" autocomplete="tel" placeholder="+63 9xx xxx xxxx"></div>' +
+      '<div class="field"><label>Email</label><input class="input" id="lq-email" type="email" autocomplete="email" placeholder="you@email.com"></div>' +
       '<div class="field"><label>I am a</label><select class="input" id="lq-type"><option value="buyer">Buyer / Client</option><option value="renter">Renter</option><option value="investor">Investor</option><option value="seller">Seller</option></select></div>' +
       '<div class="field" style="grid-column:span 2"><label>Budget / message</label><textarea class="input" id="lq-msg" rows="3" placeholder="Hi, I would like to know more about this property…"></textarea></div>' +
       "</div>" +
