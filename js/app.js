@@ -494,9 +494,11 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     const row = PC.toRow(kind, rec, pmsBooks ? pmsMyBook() : null);
     row.updated_by = currentUser.id;
     let known = synced[rec.id] && synced[rec.id].v;
+    // Payments read back what the database added (the receipt number).
+    const back = kind === "payments" ? "updated_at,data" : "updated_at";
     let res;
     if (!known) {
-      res = await SB.from(table).insert(row).select("updated_at");
+      res = await SB.from(table).insert(row).select(back);
       // Already there (an earlier save got through but its answer was lost): update it instead.
       if (res.error && /duplicate|23505/i.test(String(res.error.message || res.error.code || ""))) {
         const cur = await SB.from(table).select("updated_at").eq("id", row.id).maybeSingle();
@@ -505,7 +507,7 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
       }
     }
     if (!res) {
-      res = await SB.from(table).update(row).eq("id", row.id).eq("updated_at", known).select("updated_at");
+      res = await SB.from(table).update(row).eq("id", row.id).eq("updated_at", known).select(back);
       if (!res.error && (!res.data || !res.data.length)) {
         // Someone saved this record on another device since it was loaded: keep theirs.
         const cur = await SB.from(table).select("*").eq("id", row.id).maybeSingle();
@@ -526,7 +528,20 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
       toast("Property Management save failed: " + esc(friendlyErr(res.error.message)), "err");
       return;
     }
-    synced[rec.id] = { fp: synced[rec.id] && synced[rec.id].fp !== fp && synced[rec.id].fp !== null ? synced[rec.id].fp : fp, v: res.data && res.data[0] ? res.data[0].updated_at : known };
+    let nextFp = synced[rec.id] && synced[rec.id].fp !== fp && synced[rec.id].fp !== null ? synced[rec.id].fp : fp;
+    const saved = res.data && res.data[0] && res.data[0].data;
+    if (saved && saved.receipt_no) {
+      const live = pms()[kind].find(x => x.id === rec.id);
+      if (live && live.receipt_no !== saved.receipt_no) {
+        const untouched = PC.fingerprint(live) === fp;
+        live.receipt_no = saved.receipt_no;
+        live.receipt_issued = saved.receipt_issued || "";
+        // The copy on screen now matches the database: no need to save it again.
+        if (untouched) nextFp = PC.fingerprint(live);
+        if (state.view === "pms") render();
+      }
+    }
+    synced[rec.id] = { fp: nextFp, v: res.data && res.data[0] ? res.data[0].updated_at : known };
   }
   // A phone going to the background or being locked: save now, not in half a second.
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && pmsSaveTimer) pmsFlush(); });
@@ -559,6 +574,8 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
       if (!r.error && Array.isArray(r.data)) r.data.forEach(x => { if (!next[extra[0]].some(y => y.id === x.id)) next[extra[0]].push(x); });
     }
     state.pms = next;
+    // Tenants: their repair requests, and whether they can send proof and requests.
+    if (currentUser.role === "tenant") await pmsLoadMyRequests();
     if (pmsBooks && currentUser.role === "super-admin") {
       const r = await SB.rpc("pms_books");
       pmsBookList = !r.error && Array.isArray(r.data) ? r.data : [];
@@ -8961,12 +8978,24 @@ premise: "Fee Simple / As Improved",
     { value: "expired", label: "Expired", color: "red" },
     { value: "terminated", label: "Terminated", color: "purple" }
   ];
+  /* Payment statuses (PMS analysis B14). Only "paid" counts as money received.
+   * Owed rows are worked out from the rent ledger: "overdue" once the due date
+   * has passed, "due" until then. Whether a paid month came in late is shown
+   * from the dates ("12 days after due"), never typed in. "late" is kept only
+   * to show older records that used it. */
   const PAYMENT_STATUSES = [
     { value: "paid", label: "Paid", color: "green" },
-    { value: "due", label: "Payment Due", color: "gold" },
-    { value: "pending", label: "Pending", color: "gold" },
-    { value: "late", label: "Late", color: "red" }
+    { value: "pending", label: "Not cleared yet", color: "gold" },
+    { value: "submitted", label: "Sent by tenant", color: "blue" },
+    { value: "rejected", label: "Not accepted", color: "purple" },
+    { value: "overdue", label: "Overdue", color: "red" },
+    { value: "due", label: "Due", color: "gold" },
+    { value: "late", label: "Late (old entry)", color: "red" }
   ];
+  // What a manager can choose when recording money: received, or not cleared yet (a check).
+  const PAYMENT_FORM_STATUSES = ["paid", "pending"];
+  // Filter choices on the Payments list; "owed" is every unpaid month, due or overdue.
+  const PAYMENT_FILTERS = [{ value: "owed", label: "Owed (due or overdue)" }].concat(PAYMENT_STATUSES.filter(s => s.value !== "late"));
   const PAYMENT_METHODS = ["Cash", "Bank Transfer", "GCash", "Maya", "Check"];
   const MAINT_PRIORITIES = [["high", "High"], ["medium", "Medium"], ["low", "Low"]];
   const MAINT_CATEGORIES = ["Plumbing", "Electrical", "HVAC", "Structural", "Pest Control", "General Repair", "Other"];
@@ -9105,8 +9134,8 @@ premise: "Fee Simple / As Improved",
     if (tab === "properties") return PROPERTY_STATUSES;
     if (tab === "units") return UNIT_STATUSES;
     if (tab === "leases") return LEASE_STATUSES;
-    if (tab === "payments") return PAYMENT_STATUSES;
-    if (tab === "maintenance") return MAINT_STATUSES;
+    if (tab === "payments") return PAYMENT_FILTERS;
+    if (tab === "maintenance") return MAINT_STATUSES.concat([{ value: "from-tenant", label: "Sent by tenants (new)" }]);
     return null;
   }
   // How many tenants a unit takes: its own capacity setting (1 unless set),
@@ -9169,6 +9198,8 @@ premise: "Fee Simple / As Improved",
     const arrears = pmsArrearsFor(leases);
     const ending = leases.filter(l => pmsAutoStatus(l) === "expiring");
     const openWork = pmsActiveMaintenance().filter(m => m.status === "open" || m.status === "in progress");
+    const tenantAsks = pmsActiveMaintenance().filter(m => m.source === "tenant" && m.status === "open");
+    const sentPays = payments.filter(p => p.status === "submitted");
     const occupied = units.filter(u => pmsUnitTenantCount(u.id) > 0).length;
     const nb = PMS_NEW[tab];
     // Phones see four figures, what needs doing, then the records (PMS analysis P1).
@@ -9182,7 +9213,9 @@ premise: "Fee Simple / As Improved",
       kpi("Collected", C.money(collectedMonth), "this month · " + C.money(collected) + " all time", "green", "dollar") +
       kpi("Overdue", C.money(arrears), owing.length ? owing.length + (owing.length === 1 ? " lease owes rent" : " leases owe rent") : "nobody is behind", arrears > 0 ? "red" : "green", "trending") + '</div>';
     const attention = [
-      owing.length ? '<button type="button" class="pms-att red" data-pms-goto="payments:due">' + icon("alert", 14) + " " + owing.length + (owing.length === 1 ? " lease owes rent" : " leases owe rent") + "</button>" : "",
+      owing.length ? '<button type="button" class="pms-att red" data-pms-goto="payments:owed">' + icon("alert", 14) + " " + owing.length + (owing.length === 1 ? " lease owes rent" : " leases owe rent") + "</button>" : "",
+      sentPays.length ? '<button type="button" class="pms-att blue" data-pms-goto="payments:submitted">' + icon("dollar", 14) + " " + sentPays.length + (sentPays.length === 1 ? " payment sent by a tenant" : " payments sent by tenants") + " to confirm</button>" : "",
+      tenantAsks.length ? '<button type="button" class="pms-att gold" data-pms-goto="maintenance:from-tenant">' + icon("settings", 14) + " " + tenantAsks.length + (tenantAsks.length === 1 ? " repair request" : " repair requests") + " from tenants</button>" : "",
       ending.length ? '<button type="button" class="pms-att gold" data-pms-goto="leases:expiring">' + icon("calendar", 14) + " " + ending.length + (ending.length === 1 ? " lease ends" : " leases end") + " within 30 days</button>" : "",
       openWork.length ? '<button type="button" class="pms-att blue" data-pms-goto="maintenance:">' + icon("settings", 14) + " " + openWork.length + (openWork.length === 1 ? " repair open" : " repairs open") + "</button>" : ""
     ].join("");
@@ -9411,6 +9444,7 @@ premise: "Fee Simple / As Improved",
     const sf = state.pmsStatusFilter || "";
     const pf = state.pmsPropertyFilter || "";
     const lf = state.pmsLeaseFilter || "";
+    const today = pmsToday();
     let list = pmsActivePayments();
     pmsActiveLeases().forEach(l => {
       if (l.rent_type === "lease" || (!pmsLeaseLive(l) && pmsLeaseArrears(l) <= 0)) return;
@@ -9425,7 +9459,8 @@ premise: "Fee Simple / As Improved",
           date: u.due,
           month: u.key,
           method: "",
-          status: "due",
+          // B14: owed rows say plainly whether the due date has passed.
+          status: u.due < today ? "overdue" : "due",
           notes: "",
           synthetic: true,
           createdAt: 0,
@@ -9434,13 +9469,15 @@ premise: "Fee Simple / As Improved",
       });
     });
     list.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-    if (sf) list = list.filter(p => p.status === sf);
+    if (sf === "owed") list = list.filter(p => p.synthetic);
+    else if (sf) list = list.filter(p => p.status === sf);
     if (pf) list = list.filter(p => p.property_id === pf);
     if (lf) list = list.filter(p => p.lease_id === lf);
-    if (q) list = list.filter(p => (pmsLeaseLabel(pms().leases.find(l => l.id === p.lease_id)) + " " + pmsMonthText(p.month) + " " + p.method + " " + p.amount).toLowerCase().indexOf(q) !== -1);
+    if (q) list = list.filter(p => (pmsLeaseLabel(pms().leases.find(l => l.id === p.lease_id)) + " " + pmsMonthText(p.month) + " " + p.method + " " + p.amount + " " + (p.receipt_no || "") + " " + (p.reference || "")).toLowerCase().indexOf(q) !== -1);
     if (!list.length) return pmsEmpty("No payments match", "Adjust your filters or record a payment.");
     const canManage = pmsCan("manage");
-    const paid = pmsPaySum(list, ["paid"]), pending = pmsPaySum(list, ["pending"]), late = pmsPaySum(list, ["late"]), due = pmsPaySum(list, ["due"]);
+    const sum = st => list.filter(p => p.status === st).reduce((s, p) => s + C.num(p.amount, 0), 0);
+    const paid = sum("paid"), pending = sum("pending"), late = sum("late"), due = sum("due"), overdue = sum("overdue"), sent = sum("submitted");
     let banner = "";
     if (lf) {
       const lease = pms().leases.find(x => x.id === lf);
@@ -9448,27 +9485,59 @@ premise: "Fee Simple / As Improved",
     }
     let h = banner + '<div class="table-wrap"><table class="data"><tr><th>Date</th><th>Tenant / Lease</th><th>Period</th><th class="num">Amount</th><th>Method</th><th>Status</th><th>Proof</th>' + (canManage ? "<th>Actions</th>" : "") + '</tr>';
     list.forEach(p => {
-      const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
+      const lease = pms().leases.find(l => l.id === p.lease_id);
       h += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td>' +
-        '<td>' + esc(pmsLeaseLabel(pms().leases.find(l => l.id === p.lease_id))) + '</td>' +
+        '<td>' + esc(pmsLeaseLabel(lease)) + '</td>' +
         '<td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td>' +
-        '<td class="num">' + C.money(p.amount) + (p.synthetic ? '<div class="dim tiny">still owed</div>' : "") + '</td>' +
-        '<td>' + esc(p.method || "—") + '</td>' +
-        '<td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td>' +
+        '<td class="num">' + C.money(p.amount) + (p.synthetic ? '<div class="dim tiny">' + (p.status === "overdue" ? pmsOverdueText(p.date) : "still owed") + '</div>' : "") + '</td>' +
+        '<td>' + esc(p.method || "—") + (p.reference ? '<div class="dim tiny">Ref ' + esc(p.reference) + '</div>' : "") + '</td>' +
+        '<td>' + pmsPaymentStatusCell(p, lease) + '</td>' +
         '<td>' + pmsProofCell(p) + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-email-payment="' + esc(p.id) + '" data-lease-id="' + esc(p.lease_id || "") + '" data-payment-amount="' + esc(String(p.amount || 0)) + '" data-payment-date="' + esc(p.date || "") + '" data-payment-month="' + esc(p.month || "") + '" data-payment-status="' + esc(p.status || "") + '" data-payment-method="' + esc(p.method || "") + '" title="Send payment details to tenant">' + icon("mail", 13) + ' Email</button>' +
-          (p.synthetic
-            ? '<button class="btn btn-primary btn-sm" data-pms-markpaid="' + esc(p.lease_id) + '|' + esc(p.month) + '|' + esc(String(p.amount || 0)) + '">' + icon("check", 13) + ' Mark paid</button>' + pmsReminderLink(p)
-            : pmsRowActions("payment", p.id, "", true)) + '</div></td>' : "") +
+        (canManage ? '<td><div class="row" style="gap:6px;flex-wrap:wrap">' + pmsPaymentActions(p) + '</div></td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
     h += '<div class="row mt-16" style="gap:8px;flex-wrap:wrap">' +
+      (overdue > 0 ? '<span class="badge red">Overdue ' + C.money(overdue) + '</span>' : "") +
       (due > 0 ? '<span class="badge gold">Due ' + C.money(due) + '</span>' : "") +
-      '<span class="badge green">Paid ' + C.money(paid) + '</span>' +
-      '<span class="badge gold">Pending ' + C.money(pending) + '</span>' +
-      '<span class="badge red">Late ' + C.money(late) + '</span></div>';
+      (paid > 0 || !sf ? '<span class="badge green">Paid ' + C.money(paid) + '</span>' : "") +
+      (sent > 0 ? '<span class="badge blue">Sent by tenants, to check ' + C.money(sent) + '</span>' : "") +
+      (pending > 0 ? '<span class="badge gold">Not cleared yet ' + C.money(pending) + '</span>' : "") +
+      (late > 0 ? '<span class="badge red">Old "late" entries ' + C.money(late) + '</span>' : "") + '</div>';
     return h;
+  }
+  function pmsOverdueText(due) {
+    const d = due ? PL().daysBetween(String(due).slice(0, 10), pmsToday()) : 0;
+    return d > 0 ? (d === 1 ? "1 day overdue" : d + " days overdue") : "overdue";
+  }
+  // The status badge, plus the receipt number and, for a paid month, how late it came in.
+  function pmsPaymentStatusCell(p, lease) {
+    const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
+    let extra = "";
+    if (p.status === "paid") {
+      const late = lease ? PL().daysLate(lease, p) : 0;
+      if (p.receipt_no) extra += '<div class="dim tiny pms-ar-no">' + esc(p.receipt_no) + '</div>';
+      if (late > 0) extra += '<div class="dim tiny">' + (late === 1 ? "1 day after due" : late + " days after due") + '</div>';
+    } else if (p.status === "submitted") {
+      extra += '<div class="dim tiny">' + esc(p.sent_at ? "on " + String(p.sent_at).slice(0, 10) : "waiting for you") + '</div>';
+    } else if (p.status === "rejected" && p.reject_reason) {
+      extra += '<div class="dim tiny">' + esc(p.reject_reason) + '</div>';
+    }
+    return pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + extra;
+  }
+  function pmsPaymentActions(p) {
+    if (p.synthetic) {
+      return '<button class="btn btn-primary btn-sm" data-pms-markpaid="' + esc(p.lease_id) + '|' + esc(p.month) + '|' + esc(String(p.amount || 0)) + '">' + icon("check", 13) + ' Mark paid</button>' + pmsReminderLinks(p) + pmsEmailButton(p);
+    }
+    if (p.status === "submitted") {
+      return '<button class="btn btn-primary btn-sm" data-pms-confirm="' + esc(p.id) + '">' + icon("check", 13) + ' Confirm</button>' +
+        '<button class="btn btn-ghost btn-sm" data-pms-reject="' + esc(p.id) + '">Not accepted</button>';
+    }
+    return (p.status === "paid" && p.receipt_no ? '<button class="btn btn-ghost btn-sm" data-pms-print="receipt:' + esc(p.id) + '">' + icon("print", 13) + ' Receipt</button>' : "") +
+      pmsEmailButton(p) + pmsRowActions("payment", p.id, "", true);
+  }
+  function pmsEmailButton(p) {
+    return '<button class="btn btn-ghost btn-sm" data-pms-email-payment="' + esc(p.id) + '" data-lease-id="' + esc(p.lease_id || "") + '" data-payment-amount="' + esc(String(p.amount || 0)) + '" data-payment-date="' + esc(p.date || "") + '" data-payment-month="' + esc(p.month || "") + '" data-payment-status="' + esc(p.status || "") + '" data-payment-method="' + esc(p.method || "") + '" title="Send payment details to tenant">' + icon("mail", 13) + ' Email</button>';
   }
 
   function pmsListMaintenance() {
@@ -9477,7 +9546,8 @@ premise: "Fee Simple / As Improved",
     const pf = state.pmsPropertyFilter || "";
     const xf = state.pmsExtraFilter || "";
     let list = pmsActiveMaintenance();
-    if (sf) list = list.filter(m => m.status === sf);
+    if (sf === "from-tenant") list = list.filter(m => m.source === "tenant" && m.status === "open");
+    else if (sf) list = list.filter(m => m.status === sf);
     if (pf) list = list.filter(m => m.property_id === pf);
     if (xf) list = list.filter(m => m.priority === xf);
     if (q) list = list.filter(m => (m.title + " " + m.vendor + " " + m.category + " " + pmsPropertyTitle(m.property_id) + " " + pmsUnitName(m.unit_id)).toLowerCase().indexOf(q) !== -1);
@@ -9488,7 +9558,8 @@ premise: "Fee Simple / As Improved",
       const sc = MAINT_STATUSES.find(x => x.value === m.status);
       const pc = MAINT_PRIORITIES.find(x => x[0] === m.priority);
       h += '<tr><td>' + esc(String(m.date || "").slice(0, 10)) + '</td>' +
-        '<td><b>' + esc(m.title || "—") + '</b>' + (m.category ? '<div class="dim tiny">' + esc(m.category) + (m.vendor ? " \u00B7 " + esc(m.vendor) : "") + '</div>' : "") + '</td>' +
+        '<td><b>' + esc(m.title || "—") + '</b>' + (m.source === "tenant" ? ' <span class="badge blue">From tenant</span>' : "") + (m.category ? '<div class="dim tiny">' + esc(m.category) + (m.vendor ? " \u00B7 " + esc(m.vendor) : "") + '</div>' : "") +
+          (m.source === "tenant" ? '<div class="dim tiny pms-ask">' + esc(pmsTenantName(m.tenant_id)) + (m.request ? ": \u201C" + esc(m.request) + "\u201D" : "") + '</div>' : "") + '</td>' +
         '<td>' + esc(pmsPropertyTitle(m.property_id)) + (m.unit_id ? '<div class="dim tiny">' + esc(pmsUnitName(m.unit_id)) + '</div>' : "") + '</td>' +
         '<td>' + pmsStatusBadge(pc ? { color: m.priority === "high" ? "red" : m.priority === "medium" ? "gold" : "blue" } : null, pc ? pc[1] : (m.priority || "—")) + '</td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (m.status || "—")) + '</td>' +
@@ -9637,9 +9708,10 @@ premise: "Fee Simple / As Improved",
         if (total > 0) rows.push([pmsPropertyTitle(l.property_id), pmsUnitName(l.unit_id), pmsTenantName(l.tenant_id)].concat(b, [total]));
       });
     } else if (kind === "payments") {
-      rows = [["Date", "Period", "Property", "Unit", "Tenant", "Amount", "Method", "Status", "Notes"]];
+      rows = [["Date", "Period", "Property", "Unit", "Tenant", "Amount", "Method", "Status", "Notes", "Receipt No", "Reference"]];
       pmsActivePayments().slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))).forEach(p => {
-        rows.push([String(p.date || "").slice(0, 10), pmsMonthText(p.month), pmsPropertyTitle(p.property_id), pmsUnitName(p.unit_id), pmsTenantName(p.tenant_id), C.num(p.amount, 0), p.method || "", p.status || "", p.notes || ""]);
+        const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
+        rows.push([String(p.date || "").slice(0, 10), pmsMonthText(p.month), pmsPropertyTitle(p.property_id), pmsUnitName(p.unit_id), pmsTenantName(p.tenant_id), C.num(p.amount, 0), p.method || "", sc ? sc.label : (p.status || ""), p.notes || "", p.receipt_no || "", p.reference || ""]);
       });
     } else {
       rows = [["Property", "Monthly Rent", "Collected", "Arrears", "Expenses", "Finished repairs", "Net"]];
@@ -9697,13 +9769,153 @@ premise: "Fee Simple / As Improved",
     return '<div class="table-wrap"><table class="data"><tr><th>Date</th><th>Period</th><th class="num">Amount</th><th>Method</th><th>Status</th><th>Receipt</th></tr>' +
       rows.map(p => {
         const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
-        return '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td><td>' + pmsProofCell(p) + '</td></tr>';
+        const label = p.status === "submitted" ? "Sent \u2014 being checked" : sc ? sc.label : (p.status || "—");
+        const note = p.status === "rejected" && p.reject_reason ? '<div class="dim tiny">' + esc(p.reject_reason) + "</div>" : p.status === "paid" && p.receipt_no ? '<div class="dim tiny pms-ar-no">' + esc(p.receipt_no) + "</div>" : "";
+        const ar = p.status === "paid" && p.receipt_no ? '<button type="button" class="btn btn-ghost btn-sm" data-pms-print="receipt:' + esc(p.id) + '">' + icon("print", 13) + " Receipt</button>" : "";
+        const proof = pmsHasProof(p) ? pmsProofCell(p) : "";
+        return '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, label) + note + '</td><td>' + (ar || proof ? '<div class="row" style="gap:6px;flex-wrap:wrap">' + ar + proof + "</div>" : '<span class="dim">—</span>') + '</td></tr>';
       }).join("") + "</table></div>";
+  }
+  /* Tenant self-service: send proof of a payment, ask for a repair. "local" in
+   * the demo; "cloud" once the database has the tenant functions
+   * (supabase/migrations/0001); off otherwise (the portal then says to call). */
+  let pmsTenantFns = false;
+  let pmsMyRequests = [];
+  function pmsSelfService() {
+    if (!currentUser || userRole() !== "tenant") return "";
+    if (!pmsCloudAccounts()) return "local";
+    return pmsStore === "tables" && pmsTenantFns ? "cloud" : "";
+  }
+  async function pmsLoadMyRequests() {
+    const r = await SB.rpc("pms_my_repair_requests");
+    pmsTenantFns = !r.error;
+    pmsMyRequests = !r.error && Array.isArray(r.data) ? r.data : [];
+  }
+  function pmsTenantRequests(tenantIds) {
+    if (pmsSelfService() === "cloud") return pmsMyRequests;
+    return pmsActiveMaintenance().filter(m => m.source === "tenant" && tenantIds.indexOf(m.tenant_id) !== -1)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }
+  const PMS_REQUEST_STATE = { open: ["Received", "gold"], "in progress": ["Being fixed", "blue"], completed: ["Done", "green"], closed: ["Closed", "purple"] };
+  function pmsRequestRows(list) {
+    if (!list.length) return '<p class="dim">No repair requests yet.</p>';
+    return list.map(r => {
+      const st = PMS_REQUEST_STATE[r.status] || [r.status || "Received", "gold"];
+      return '<div class="pms-req-row"><div class="row spread" style="gap:8px;flex-wrap:wrap"><b>' + esc(r.title || "Repair") + '</b><span class="badge ' + st[1] + '">' + esc(st[0]) + '</span></div>' +
+        '<div class="dim tiny">' + esc(String(r.date || "").slice(0, 10)) + (r.category ? " \u00B7 " + esc(r.category) : "") + '</div>' +
+        (r.request ? '<div class="pms-req-text">' + esc(r.request) + "</div>" : "") + "</div>";
+    }).join("");
   }
   function pmsSection(title, count, inner, open, extra) {
     return '<details class="card card-pad mb-16 pms-sec"' + (open ? " open" : "") + '><summary><span class="pms-sec-title">' + esc(title) + '</span>' +
       (count !== null && count !== undefined ? ' <span class="badge blue">' + count + "</span>" : "") + (extra ? ' <span class="dim pms-sec-extra">' + extra + "</span>" : "") + "</summary>" +
       '<div class="pms-sec-body">' + inner + "</div></details>";
+  }
+
+  // Tenant dialogs. Their own small window, since tenants can't use the managers' editors.
+  function pmsTenantDialog(id, title, body, okLabel, onOk) {
+    const old = document.getElementById(id); if (old) old.remove();
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = id; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-label", title);
+    ov.innerHTML = '<div class="modal-card" style="max-width:560px;width:100%"><div class="modal-head"><h3>' + esc(title) + '</h3><button class="icon-btn" data-td-close aria-label="Close">&times;</button></div>' +
+      '<div class="modal-body">' + body + '</div>' +
+      '<div class="modal-foot"><button class="btn btn-ghost" data-td-close>Cancel</button><button class="btn btn-primary" data-td-ok>' + icon("check", 15) + " " + esc(okLabel) + "</button></div></div>";
+    document.body.appendChild(ov);
+    linkFieldLabels(ov);
+    ov.addEventListener("click", async e => {
+      if (e.target === ov || e.target.closest("[data-td-close]")) { ov.remove(); return; }
+      const ok = e.target.closest("[data-td-ok]");
+      if (!ok || ok.disabled) return;
+      ok.disabled = true;
+      try { if (await onOk(ov, ok) !== false) ov.remove(); }
+      finally { ok.disabled = false; }
+    });
+    return ov;
+  }
+  function pmsSendPaymentDialog(leaseId) {
+    const l = pms().leases.find(x => x.id === leaseId);
+    const mode = pmsSelfService();
+    if (!l || !mode) return;
+    const r = pmsLeaseLedger(l);
+    const open = r.months.filter(m => m.balance > 0);
+    const first = open[0];
+    const months = (open.length ? open : r.months.slice(-1)).slice(0, 13).map(m => [m.key, (l.rent_type === "lease" ? "Lease total" : m.label) + (m.balance > 0 ? " \u2014 " + C.money(m.balance) + (m.status === "overdue" ? " overdue" : "") : "")]);
+    const body = pmsField("Amount you paid (\u20B1) *", pmsNum("pms-tp-amount", first ? first.balance : l.rent)) +
+      pmsField("Date you paid *", pmsDate("pms-tp-date", pmsToday())) +
+      (months.length ? pmsField("For", pmsSel("pms-tp-month", months, first ? first.key : months[0][0]), "A bigger amount pays the next months too.") : "") +
+      pmsField("Paid by", pmsSel("pms-tp-method", [["GCash", "GCash"], ["Maya", "Maya"], ["Bank Transfer", "Bank transfer"], ["Cash", "Cash"], ["Check", "Check"]], "GCash")) +
+      pmsField("Reference no.", pmsTxt("pms-tp-ref", "", "From your GCash or bank receipt")) +
+      '<div class="field col-full"><label>Photo of the receipt</label><label class="btn btn-ghost btn-sm" style="margin:0">' + icon("camera", 14) + ' Choose photo<input type="file" id="pms-tp-photo" accept="image/*" style="display:none"></label><div class="field-hint" id="pms-tp-photo-name">A screenshot of the GCash or bank confirmation helps it get confirmed quickly.</div></div>' +
+      pmsField("Note", pmsTxt("pms-tp-note", "", "Anything SEA ESTATES should know"), "", true);
+    const ov = pmsTenantDialog("pms-tenant-pay", "Send proof of payment", body, "Send", async (box, btn) => {
+      const amount = C.num($("#pms-tp-amount").value, 0);
+      const date = $("#pms-tp-date").value;
+      if (amount <= 0) { toast("Enter the amount you paid", "err"); return false; }
+      if (!date) { toast("Enter the date you paid", "err"); return false; }
+      const monthEl = $("#pms-tp-month");
+      const fileEl = $("#pms-tp-photo");
+      const file = fileEl && fileEl.files && fileEl.files[0];
+      if (file && !/^image\//.test(file.type)) { toast("The photo must be an image", "err"); return false; }
+      const photo = file ? await new Promise(res => pmsReadProof(file, res)) : "";
+      if (photo === null) return false;
+      const rec = { lease_id: l.id, property_id: l.property_id, unit_id: l.unit_id, tenant_id: l.tenant_id, amount: amount, date: date,
+        month: monthEl ? monthEl.value : "", method: $("#pms-tp-method").value, reference: $("#pms-tp-ref").value.trim(), notes: $("#pms-tp-note").value.trim() };
+      if (mode === "local") {
+        pms().payments.unshift(Object.assign({ id: pmsNewId("p"), status: "submitted", sent_by: currentUser.id || currentUser.email, sent_at: new Date().toISOString(), createdAt: Date.now(), archived: false },
+          rec, photo ? { proof: photo, proofName: file.name } : {}));
+        save(); render();
+        toast("Sent. SEA ESTATES will check it and confirm.");
+        return true;
+      }
+      btn.innerHTML = icon("upload", 15) + " Sending\u2026";
+      const res = await SB.rpc("pms_tenant_send_payment", { p_lease: l.id, p_amount: amount, p_date: date, p_month: rec.month, p_method: rec.method, p_reference: rec.reference, p_note: rec.notes });
+      if (res.error) { btn.innerHTML = icon("check", 15) + " Send"; toast(friendlyErr(res.error.message), "err"); return false; }
+      let photoOk = true;
+      if (photo) {
+        try {
+          const blob = dataUrlToBlob(photo);
+          const path = res.data.book_id + "/" + res.data.id + "/" + Date.now().toString(36) + ".jpg";
+          const up = await SB.storage.from(PMS_RECEIPTS).upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false });
+          if (up.error) throw up.error;
+          const at = await SB.rpc("pms_tenant_attach_proof", { p_payment: res.data.id, p_path: path, p_name: file.name });
+          if (at.error) throw at.error;
+        } catch (e) { photoOk = false; }
+      }
+      try { await loadCloudPms(); } catch (e) { /* the list refreshes on the next visit */ }
+      render();
+      toast(photoOk ? "Sent. SEA ESTATES will check it and confirm." : "Sent, but the photo didn't upload. Mention it when SEA ESTATES calls, or send it again later.", photoOk ? "" : "err");
+      return true;
+    });
+    const fileEl = ov.querySelector("#pms-tp-photo");
+    if (fileEl) fileEl.addEventListener("change", () => { const n = ov.querySelector("#pms-tp-photo-name"); if (n && fileEl.files[0]) n.textContent = fileEl.files[0].name; });
+  }
+  function pmsRepairDialog(leaseId) {
+    const l = pms().leases.find(x => x.id === leaseId);
+    const mode = pmsSelfService();
+    if (!l || !mode) return;
+    const body = pmsField("What needs fixing? *", pmsTxt("pms-tr-title", "", "e.g. Leaking kitchen faucet"), "", true) +
+      pmsField("Kind of repair", pmsSel("pms-tr-cat", MAINT_CATEGORIES.map(c => [c, c]), "General Repair")) +
+      pmsField("Details", '<textarea class="input" id="pms-tr-details" rows="4" maxlength="2000" placeholder="Where it is, since when, and when someone can come in"></textarea>', "", true);
+    pmsTenantDialog("pms-tenant-fix", "Ask for a repair", body, "Send request", async () => {
+      const title = $("#pms-tr-title").value.trim();
+      if (title.length < 3) { toast("Say in a few words what needs fixing", "err"); return false; }
+      const details = $("#pms-tr-details").value.trim();
+      const cat = $("#pms-tr-cat").value;
+      if (mode === "local") {
+        pms().maintenance.unshift({ id: pmsNewId("m"), title: title, request: details, category: cat, priority: "medium", status: "open", date: pmsToday(),
+          property_id: l.property_id, unit_id: l.unit_id, lease_id: l.id, tenant_id: l.tenant_id, source: "tenant", sent_by: currentUser.id || currentUser.email,
+          sent_at: new Date().toISOString(), createdAt: Date.now(), archived: false });
+        save(); render();
+        toast("Request sent. SEA ESTATES will get back to you.");
+        return true;
+      }
+      const res = await SB.rpc("pms_tenant_request_repair", { p_lease: l.id, p_title: title, p_details: details, p_category: cat });
+      if (res.error) { toast(friendlyErr(res.error.message), "err"); return false; }
+      await pmsLoadMyRequests();
+      render();
+      toast("Request sent. SEA ESTATES will get back to you.");
+      return true;
+    });
   }
 
   function pmsTenantPortal() {
@@ -9719,6 +9931,7 @@ premise: "Fee Simple / As Improved",
     const leases = pmsActiveLeases().filter(l => tenantIds.indexOf(l.tenant_id) !== -1);
     const payIds = leases.map(l => l.id);
     const payments = pmsActivePayments().filter(p => payIds.indexOf(p.lease_id) !== -1);
+    const self = pmsSelfService();
     const current = leases.filter(l => { const s = pmsAutoStatus(l); return (s !== "expired" && s !== "terminated") || pmsLeaseArrears(l) > 0; });
     const past = leases.filter(l => current.indexOf(l) === -1);
     if (!leases.length) html += '<div class="card card-pad mb-16"><p class="dim">No leases on file for your account yet.</p></div>';
@@ -9727,15 +9940,26 @@ premise: "Fee Simple / As Improved",
       const ow = pms().owners.find(o => o.id === (pms().properties.find(p => p.id === l.property_id) || {}).owner_id) || pms().owners.find(o => o.id === l.owner_id);
       const line = pmsRentLine(l);
       const owed = pmsUnpaidMonths(l);
+      const sent = payments.filter(p => p.lease_id === l.id && p.status === "submitted");
+      const sentTotal = sent.reduce((s, p) => s + C.num(p.amount, 0), 0);
       html += '<section class="card card-pad mb-16 pms-rent-card">' +
         '<div class="row spread" style="flex-wrap:wrap;gap:8px;align-items:flex-start"><div><h2 class="pms-rent-place">' + esc(pmsPropertyTitle(l.property_id)) + '</h2><div class="dim">' + esc(pmsUnitName(l.unit_id)) + (ow ? " · Landlord: " + esc(ow.name) : "") + '</div></div>' + pmsStatusBadge(sc, sc ? sc.label : st) + '</div>' +
         '<div class="pms-rent-status ' + line.cls + '"><b>' + esc(line.text) + '</b>' + (line.sub ? '<span>' + esc(line.sub) + '</span>' : "") + '</div>' +
         (owed.length ? '<div class="pms-owed"><div class="pms-owed-head">What you owe</div>' + owed.map(m => '<div class="pms-owed-row"><span>' + esc(l.rent_type === "lease" ? "Lease total" : m.label) + '<small class="dim"> · due ' + esc(pmsDispDate(m.date)) + '</small></span><b>' + C.money(m.balance) + '</b></div>').join("") + '</div>' : "") +
+        (sent.length ? '<div class="pms-sent-line">' + icon("info", 14) + " You sent " + C.money(sentTotal) + (sent.length > 1 ? " in " + sent.length + " payments" : "") + ". SEA ESTATES will check it and confirm; it counts once confirmed.</div>" : "") +
         '<div class="pms-rent-meta dim">' + C.money(l.rent) + (l.rent_type === "lease" ? " for the whole lease" : " a month, due on day " + PL().dueDay(l)) + ' · ' + esc(String(l.start || "—").slice(0, 10)) + ' → ' + esc(String(l.end || "—").slice(0, 10)) + '</div>' +
-        '<div class="row mt-8" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn btn-ghost btn-sm" data-pms-print="lease:' + esc(l.id) + '">' + icon("print", 13) + ' Statement</button></div>' +
+        '<div class="row mt-8 pms-self" style="gap:8px;flex-wrap:wrap">' +
+        (self ? '<button type="button" class="btn btn-primary btn-sm" data-pms-sendpay="' + esc(l.id) + '">' + icon("upload", 13) + ' I paid: send proof</button>' +
+          '<button type="button" class="btn btn-ghost btn-sm" data-pms-askfix="' + esc(l.id) + '">' + icon("settings", 13) + ' Ask for a repair</button>' : "") +
+        '<button type="button" class="btn btn-ghost btn-sm" data-pms-print="lease:' + esc(l.id) + '">' + icon("print", 13) + ' Statement</button></div>' +
         '</section>';
     });
     html += pmsSection("Payment history", payments.length, pmsPortalPayments(payments, "No payments recorded for your account yet."), true);
+    if (self) {
+      const asks = pmsTenantRequests(tenantIds);
+      const openAsks = asks.filter(r => r.status === "open" || r.status === "in progress").length;
+      html += pmsSection("Repair requests", asks.length, pmsRequestRows(asks), openAsks > 0, openAsks ? openAsks + " open" : "");
+    }
     if (past.length) html += pmsSection("Past leases", past.length, past.map(l => '<div class="pms-past-row"><b>' + esc(pmsPropertyTitle(l.property_id)) + '</b> ' + esc(pmsUnitName(l.unit_id)) + '<div class="dim tiny">' + esc(String(l.start || "").slice(0, 10)) + ' → ' + esc(String(l.end || "").slice(0, 10)) + ' · ' + esc((LEASE_STATUSES.find(x => x.value === pmsAutoStatus(l)) || {}).label || "") + '</div></div>').join(""), false);
     return html + pmsPortalHelp("tenant");
   }
@@ -9879,6 +10103,46 @@ premise: "Fee Simple / As Improved",
       '<div class="print-foot"><span>Prepared by SEA ESTATES · Property Management System</span></div>' +
       '</div>';
     pmsPrintModal("Tenant Payable — " + pmsTenantName(l.tenant_id), body);
+  }
+
+  // Acknowledgement receipt for one paid payment (not a BIR official receipt).
+  function pmsPrintReceipt(id) {
+    const p = pms().payments.find(x => x.id === id);
+    if (!p || p.status !== "paid" || !p.receipt_no) { toast("This payment has no receipt number yet", "err"); return; }
+    const lease = pms().leases.find(x => x.id === p.lease_id);
+    const place = lease ? pmsPropertyTitle(lease.property_id) + (lease.unit_id ? " \u00B7 " + pmsUnitName(lease.unit_id) : "") : pmsPropertyTitle(p.property_id);
+    const forWhat = (lease && lease.rent_type === "lease" ? "Lease payment" : "Rent" + (p.month ? " for " + pmsMonthText(p.month) : "")) + (place ? " \u2014 " + place : "");
+    const day = d => d ? pmsDispDate(pmsDateObj(String(d).slice(0, 10))) : "\u2014";
+    const body = '<div class="print-root pms-ar" id="pms-print-root">' +
+      '<div class="print-brand"><h1>Acknowledgement Receipt</h1><div class="pms-ar-num">No. <b>' + esc(p.receipt_no) + '</b></div></div>' +
+      '<div class="print-meta">' +
+      '<div><b>Date received:</b> ' + esc(day(p.date)) + '</div>' +
+      '<div><b>Received from:</b> ' + esc(pmsTenantName(p.tenant_id || (lease && lease.tenant_id))) + '</div>' +
+      '<div><b>For:</b> ' + esc(forWhat) + '</div>' +
+      '<div><b>Paid by:</b> ' + esc(p.method || "\u2014") + (p.reference ? " \u00B7 Ref " + esc(p.reference) : "") + '</div>' +
+      '</div>' +
+      '<div class="pms-ar-amount"><div class="pms-ar-figure">' + C.money(p.amount) + '</div><div class="pms-ar-words">' + esc(PL().amountInWords(p.amount)) + '</div></div>' +
+      '<div class="pms-ar-sign"><div class="pms-ar-line"></div><div>Received by: <b>' + esc(p.received_by || "SEA ESTATES") + '</b></div></div>' +
+      '<div class="print-foot"><span>Acknowledgement receipt for money received, issued ' + esc(day(p.receipt_issued || p.date)) + '. This is not a BIR official receipt.</span></div>' +
+      '</div>';
+    pmsPrintModal("Receipt " + p.receipt_no, body);
+  }
+  // A payment a tenant sent that the manager could not match.
+  function pmsRejectDialog(id) {
+    const p = pms().payments.find(x => x.id === id);
+    if (!p || p.status !== "submitted" || !pmsCan("manage")) return;
+    const body = '<p class="col-full">' + esc(pmsTenantName(p.tenant_id)) + " sent " + C.money(p.amount) + (p.date ? " paid on " + esc(String(p.date).slice(0, 10)) : "") + ". They will see it was not accepted, with your reason.</p>" +
+      pmsField("Reason *", pmsTxt("pms-reject-reason", "", "e.g. Not in our GCash account. Please call the office."), "", true);
+    pmsModal("Payment not accepted", body, "reject", id);
+  }
+  function savePaymentReject() {
+    const id = $("#pms-modal").getAttribute("data-edit-id");
+    const rec = pms().payments.find(x => x.id === id);
+    if (!rec) { closePmsModal(); return; }
+    const reason = $("#pms-reject-reason").value.trim();
+    if (!reason) { toast("Say why, so the tenant knows what to do", "err"); return; }
+    rec.status = "rejected"; rec.reject_reason = reason.slice(0, 200); rec.rejected_at = new Date().toISOString(); rec.updatedAt = Date.now();
+    save(); closePmsModal(); toast("Marked as not accepted"); render();
   }
 
   function pmsPrintPropertyReport(id) {
@@ -10070,6 +10334,11 @@ premise: "Fee Simple / As Improved",
     const pre = !id && pmsPayPrefill ? pmsPayPrefill : null;
     pmsPayPrefill = null;
     const d = id ? pms().payments.find(x => x.id === id) || {} : (pre ? { lease_id: pre.lease_id, month: pre.month, amount: pre.amount, status: "paid" } : {});
+    // "Confirm" on a payment a tenant sent: the same form, set to Paid.
+    const confirming = !!(id && pmsConfirmId === id && d.status === "submitted");
+    pmsConfirmId = null;
+    const statusNow = confirming ? "paid" : (d.status || "paid");
+    const statusOpts = PAYMENT_STATUSES.filter(s => PAYMENT_FORM_STATUSES.indexOf(s.value) !== -1 || s.value === d.status).map(s => [s.value, s.label]);
     const proof = safePaymentProofUrl(d.proof);
     // Running leases, plus ended ones still owing; ended and settled ones stay out of the way.
     const leases = pmsActiveLeases().filter(l => l.id === d.lease_id || pmsLeaseLive(l) || pmsLeaseArrears(l) > 0);
@@ -10083,14 +10352,19 @@ premise: "Fee Simple / As Improved",
       pmsField("Payment Date", pmsDate("pms-pay-date", d.date || pmsToday())) +
       pmsField("Period (month)", pmsSel("pms-pay-month", pmsMonthOptions(monthSel, lease), monthSel), "A payment bigger than one month pays the next unpaid months too.") +
       pmsField("Method", pmsSel("pms-pay-method", PAYMENT_METHODS.map(m => [m, m]), d.method || "Cash")) +
-      pmsField("Status", pmsSel("pms-pay-status", PAYMENT_STATUSES.map(s => [s.value, s.label]), d.status || "paid")) +
+      pmsField("Status", pmsSel("pms-pay-status", statusOpts, statusNow), "Only Paid counts as money received. Use Not cleared yet for a check that hasn't cleared." + (d.receipt_no ? " Receipt " + esc(d.receipt_no) + "." : " A paid payment gets the next acknowledgement receipt number.")) +
+      pmsField("Reference no.", pmsTxt("pms-pay-ref", d.reference, "GCash / bank reference")) +
       pmsField("Notes", pmsTxt("pms-pay-notes", d.notes), "", true) +
       '<div class="field col-full"><label>Proof of Payment</label>' +
       '<label class="btn btn-ghost btn-sm" style="margin:0">' + icon("upload", 14) + ' Choose image<input type="file" id="pms-pay-proof" style="display:none" accept="image/*"></label>' +
       (proof ? '<div class="mt-8"><img src="' + esc(proof) + '" alt="Current proof of payment" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid var(--stroke)"></div>'
         : d.proofPath ? '<div class="mt-8 row" style="gap:8px;align-items:center"><span class="dim">Receipt on file.</span><button type="button" class="btn btn-ghost btn-sm" data-pms-proof="' + esc(d.id) + '">' + icon("camera", 13) + ' View</button></div>' : "") +
       '<div class="field-hint">Attach a photo or screenshot of the receipt (GCash, bank transfer, etc.). It is shrunk before saving' + (pmsReceiptsCloud() ? " and kept private: only staff, the owner and the tenant can open it" : "") + '. A new photo replaces the old one.</div></div>';
-    pmsModal(id ? "Edit Payment" : "New Payment", body, "payment", id);
+    if (d.status === "submitted" || d.sent_by) {
+      body = '<div class="col-full pms-sent-note"><b>Sent by ' + esc(pmsTenantName(d.tenant_id)) + '</b>' + (d.sent_at ? " on " + esc(String(d.sent_at).slice(0, 10)) : "") +
+        '. Check the amount and the photo against your GCash or bank record' + (confirming ? ', then save to confirm it.' : '.') + '</div>' + body;
+    }
+    pmsModal(confirming ? "Confirm Payment" : id ? "Edit Payment" : "New Payment", body, "payment", id);
     // Choosing another lease refreshes its months and suggests what it owes.
     const leaseEl = $("#pms-pay-lease");
     if (leaseEl) leaseEl.addEventListener("change", () => {
@@ -10105,19 +10379,31 @@ premise: "Fee Simple / As Improved",
     });
   }
   let pmsPayPrefill = null;
+  let pmsConfirmId = null;
   // "Mark paid" on a due row: the payment form, filled in for that month.
   function pmsMarkPaid(spec) {
     const parts = String(spec || "").split("|");
     pmsPayPrefill = { lease_id: parts[0], month: parts[1], amount: C.num(parts[2], 0) };
     openPaymentEditor(null);
   }
-  function pmsReminderLink(p) {
+  // Rent reminder by text message or Viber, written out and ready to send (P9).
+  function pmsReminderText(p, tenant, lease) {
+    const overdue = p.date && String(p.date).slice(0, 10) < pmsToday();
+    return "Hi " + (tenant.name || "") + ", this is a reminder from SEA ESTATES that your rent of " + C.money(p.amount) + " for " + pmsMonthText(p.month) + " (" + pmsPropertyTitle(lease.property_id) + ") " +
+      (overdue ? "was due on " + pmsDispDate(pmsDateObj(String(p.date).slice(0, 10))) + " and is still unpaid" : "is due" + (p.date ? " on " + pmsDispDate(pmsDateObj(String(p.date).slice(0, 10))) : "")) +
+      ". If you have already paid, you can send the proof in your tenant portal. Thank you!";
+  }
+  function pmsReminderLinks(p) {
     const lease = pms().leases.find(l => l.id === p.lease_id);
     const tenant = lease ? pms().tenants.find(t => t.id === lease.tenant_id) : null;
     const phone = tenant && String(tenant.phone || "").replace(/[^0-9+]/g, "");
     if (!phone) return "";
-    const text = "Hi " + (tenant.name || "") + ", this is a reminder from SEA ESTATES that your rent of " + C.money(p.amount) + " for " + pmsMonthText(p.month) + " (" + pmsPropertyTitle(lease.property_id) + ") is due" + (p.date ? " on " + p.date : "") + ". Thank you!";
-    return '<a class="btn btn-ghost btn-sm" href="sms:' + esc(phone) + '?&body=' + esc(encodeURIComponent(text)) + '">' + icon("chat", 13) + " Text</a>";
+    const text = pmsReminderText(p, tenant, lease);
+    // Viber wants the number in international form: 0917… becomes 63917….
+    let d = phNormalizeMobile(tenant.phone).replace(/[^\d]/g, "");
+    if (/^0\d{9,10}$/.test(d)) d = "63" + d.slice(1);
+    const viber = /^\d{10,15}$/.test(d) ? '<a class="btn btn-ghost btn-sm" data-pms-remind="viber" href="viber://chat?number=%2B' + d + '&draft=' + esc(encodeURIComponent(text)) + '">' + icon("chat", 13) + " Viber</a>" : "";
+    return '<a class="btn btn-ghost btn-sm" data-pms-remind="sms" href="sms:' + esc(phone) + '?&body=' + esc(encodeURIComponent(text)) + '">' + icon("chat", 13) + " Text</a>" + viber;
   }
   // Receipt photos open in the app: Android blocks opening a data URL in a new tab.
   function pmsShowProof(id) {
@@ -10158,10 +10444,12 @@ premise: "Fee Simple / As Improved",
   let pmsReceiptsOk = null; // false once the bucket is found missing this session
   let pmsReceiptsMoving = false;
   function pmsHasProof(p) { return !!(p && (p.proofPath || safePaymentProofUrl(p.proof))); }
+  // In the per-record cloud store the database numbers receipts (migrations/0001).
+  function pmsServerReceipts() { return pmsStore === "tables" && pmsCloudAccounts(); }
   function pmsReceiptsCloud() { return pmsStore === "tables" && pmsCloudAccounts() && pmsCanWrite() && pmsReceiptsOk !== false; }
   function pmsProofCell(p) {
     if (!pmsHasProof(p)) return '<span class="dim">—</span>';
-    return '<button type="button" class="btn btn-ghost btn-sm" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View receipt") + '">' + icon("camera", 13) + ' Receipt</button>';
+    return '<button type="button" class="btn btn-ghost btn-sm" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View the photo of the payment") + '">' + icon("camera", 13) + ' Photo</button>';
   }
   async function pmsUploadReceipt(paymentId, dataUrl) {
     const blob = dataUrlToBlob(dataUrl);
@@ -10214,7 +10502,11 @@ premise: "Fee Simple / As Improved",
       pmsField("Cost (\u20B1)", pmsNum("pms-maint-cost", d.cost)) +
       pmsField("Vendor", pmsTxt("pms-maint-vendor", d.vendor, "contractor / supplier")) +
       pmsField("Date", pmsDate("pms-maint-date", d.date)) +
-      pmsField("Notes", '<textarea class="input" id="pms-maint-notes" rows="3">' + esc(d.notes || "") + '</textarea>', "", true);
+      pmsField("Notes", '<textarea class="input" id="pms-maint-notes" rows="3">' + esc(d.notes || "") + '</textarea>', "Staff only: the tenant sees the title and status, not these notes.", true);
+    if (d.source === "tenant") {
+      body = '<div class="col-full pms-sent-note"><b>Request from ' + esc(pmsTenantName(d.tenant_id)) + '</b>' + (d.date ? " on " + esc(String(d.date).slice(0, 10)) : "") +
+        (d.request ? ': \u201C' + esc(d.request) + '\u201D' : "") + '<div class="dim tiny">Set it to In Progress when someone is on it; the tenant sees "Being fixed".</div></div>' + body;
+    }
     pmsModal(id ? "Edit Work Order" : "New Work Order", body, "maintenance", id);
   }
 
@@ -10256,6 +10548,7 @@ premise: "Fee Simple / As Improved",
     if (kind === "tenant") return saveTenantForm();
     if (kind === "lease") return saveLeaseForm();
     if (kind === "payment") return savePaymentForm();
+    if (kind === "reject") return savePaymentReject();
     if (kind === "maintenance") return saveMaintForm();
     if (kind === "expense") return saveExpenseForm();
     if (kind === "document") return saveDocumentForm();
@@ -10952,8 +11245,13 @@ premise: "Fee Simple / As Improved",
       month: $("#pms-pay-month").value.trim(),
       method: $("#pms-pay-method").value,
       status: $("#pms-pay-status").value,
+      reference: ($("#pms-pay-ref") ? $("#pms-pay-ref").value.trim() : existing.reference || ""),
       notes: $("#pms-pay-notes").value.trim()
     };
+    if (data.status === "paid" && existing.status === "submitted") data.confirmed_at = new Date().toISOString();
+    // Who the receipt says received the money: the company, or the broker for their own rentals.
+    if (data.status === "paid" && !existing.received_by) data.received_by = userRole() === "broker" ? (currentUser.name || currentUser.email || "Broker") : "SEA ESTATES";
+    if (data.status === "paid") delete data.reject_reason;
     if (existing.proofPath) { data.proofPath = existing.proofPath; data.proofName = existing.proofName || ""; }
     else if (existing.proof) { data.proof = existing.proof; data.proofName = existing.proofName || ""; }
     const fileEl = $("#pms-pay-proof");
@@ -10963,6 +11261,11 @@ premise: "Fee Simple / As Improved",
     let replacedPath = "";
     const persist = () => {
       const store = pms().payments;
+      // Receipt numbers: the database gives them in the cloud; here (demo, old store) the next free one.
+      if (data.status === "paid" && !existing.receipt_no && !pmsServerReceipts()) {
+        data.receipt_no = PL().nextReceiptNo(store, String(data.date || pmsToday()).slice(0, 4));
+        data.receipt_issued = pmsToday();
+      }
       if (id) {
         const rec = store.find(x => x.id === id);
         // The receipt is either a private file or a photo in the record, never both.
@@ -10970,7 +11273,7 @@ premise: "Fee Simple / As Improved",
       } else {
         store.unshift(Object.assign({ id: payId, createdAt: Date.now(), archived: false }, data));
       }
-      save(); closePmsModal(); toast("Payment recorded"); render();
+      save(); closePmsModal(); toast(existing.status === "submitted" && data.status === "paid" ? "Payment confirmed" : "Payment recorded"); render();
       if (replacedPath) pmsRemoveReceipt(replacedPath);
     };
     if (fileEl && fileEl.files && fileEl.files.length) {
@@ -12578,19 +12881,22 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast("The linked tenant does not have a valid email address", "err"); return; }
     const property = pmsPropertyTitle(lease.property_id);
     const unit = pmsUnitName(lease.unit_id);
-    const status = String(payment.status || "due").replace(/\b\w/g, c => c.toUpperCase());
-    const subject = "Payment details - " + property + " " + unit + " - " + (payment.month || "Lease");
+    const sc = PAYMENT_STATUSES.find(x => x.value === payment.status);
+    const status = sc ? sc.label : String(payment.status || "due");
+    const monthText = payment.month ? pmsMonthText(payment.month) : "";
+    const subject = "Payment details - " + property + " " + unit + " - " + (monthText || "Lease");
     const body = [
       "Hello " + (tenant.name || "Tenant") + ",",
       "",
       "Here are the payment details for your lease:",
       "Property: " + property,
       "Unit: " + unit,
-      "Payment period: " + (payment.month || "Not specified"),
+      "Payment period: " + (monthText || "Not specified"),
       "Amount: " + C.money(payment.amount),
       (payment.status === "paid" ? "Payment date: " : "Due date: ") + (payment.date || "Not specified"),
       "Status: " + status,
       "Payment method: " + (payment.method || "Not specified"),
+      payment.receipt_no ? "Acknowledgement receipt no.: " + payment.receipt_no : "",
       payment.notes ? "Notes: " + payment.notes : "",
       "",
       "Please contact us if you have questions about this payment.",
@@ -12664,7 +12970,15 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       const ed = e.target.closest("[data-pms-edit]");
       if (ed) { const parts = ed.getAttribute("data-pms-edit").split(":"); openPmsEditor(parts[0], parts[1]); return; }
       const ppr = e.target.closest("[data-pms-print]");
-      if (ppr) { const parts = ppr.getAttribute("data-pms-print").split(":"); if (parts[0] === "lease") pmsPrintPayable(parts[1]); return; }
+      if (ppr) { const parts = ppr.getAttribute("data-pms-print").split(":"); if (parts[0] === "lease") pmsPrintPayable(parts[1]); else if (parts[0] === "receipt") pmsPrintReceipt(parts[1]); return; }
+      const cf = e.target.closest("[data-pms-confirm]");
+      if (cf) { pmsConfirmId = cf.getAttribute("data-pms-confirm"); openPmsEditor("payment", pmsConfirmId); return; }
+      const rj = e.target.closest("[data-pms-reject]");
+      if (rj) { pmsRejectDialog(rj.getAttribute("data-pms-reject")); return; }
+      const sp = e.target.closest("[data-pms-sendpay]");
+      if (sp) { pmsSendPaymentDialog(sp.getAttribute("data-pms-sendpay")); return; }
+      const af = e.target.closest("[data-pms-askfix]");
+      if (af) { pmsRepairDialog(af.getAttribute("data-pms-askfix")); return; }
       const prp = e.target.closest("[data-pms-printrep]");
       if (prp) { const parts = prp.getAttribute("data-pms-printrep").split(":"); if (parts[0] === "property") pmsPrintPropertyReport(parts[1]); return; }
       const prn = e.target.closest("[data-pms-doprint]");

@@ -113,4 +113,26 @@ eq("blank due day means the 10th", L.dueDay({}), 10);
 // today in Manila, as a calendar date
 eq("today is a local calendar date", L.today(new Date(2026, 9, 17, 23, 30)), "2026-10-17");
 
+// B14: "late" is worked out from the dates, never typed in
+eq("due date of a month uses the lease's due day", L.dueDateFor(lease({ due_day: "5" }), "2026-10"), "2026-10-05");
+eq("a lease total is due on the start date", L.dueDateFor(lease({ rent_type: "lease", start: "2026-06-01" }), "2026-06"), "2026-06-01");
+eq("a payment 12 days after the due date is 12 days late", L.daysLate(lease({ due_day: "5" }), { status: "paid", month: "2026-10", date: "2026-10-17" }), 12);
+eq("a payment on the due date is on time", L.daysLate(lease({ due_day: "5" }), { status: "paid", month: "October 2026", date: "2026-10-05" }), 0);
+eq("an advance payment is on time", L.daysLate(lease({ due_day: "5" }), { status: "paid", month: "2026-11", date: "2026-10-17" }), 0);
+eq("money not yet cleared is never 'late'", L.daysLate(lease({ due_day: "5" }), { status: "pending", month: "2026-10", date: "2026-10-17" }), 0);
+eq("days between two dates", L.daysBetween("2026-09-30", "2026-10-17"), 17);
+
+// acknowledgement receipt numbers
+eq("receipt numbers have four digits", L.receiptNo(2026, 7), "AR-2026-0007");
+eq("the next number follows the highest one that year", L.nextReceiptNo([{ receipt_no: "AR-2026-0009" }, { receipt_no: "AR-2026-0002" }, { receipt_no: "AR-2025-0040" }, {}], 2026), "AR-2026-0010");
+eq("a new year starts at 0001", L.nextReceiptNo([{ receipt_no: "AR-2025-0040" }], 2026), "AR-2026-0001");
+eq("numbers past 9999 keep counting", L.receiptNo(2026, 12345), "AR-2026-12345");
+
+// amounts in words, as written on a receipt
+eq("whole pesos", L.amountInWords(15500), "Fifteen Thousand Five Hundred Pesos Only");
+eq("with centavos", L.amountInWords("10,000.50"), "Ten Thousand Pesos and 50/100");
+eq("hyphenated tens", L.amountInWords(1234567.05), "One Million Two Hundred Thirty-Four Thousand Five Hundred Sixty-Seven Pesos and 05/100");
+eq("one peso", L.amountInWords(1), "One Peso Only");
+eq("teens and hundreds", L.amountInWords(813), "Eight Hundred Thirteen Pesos Only");
+
 console.log("\npms_ledger_node: " + passed + " checks passed");

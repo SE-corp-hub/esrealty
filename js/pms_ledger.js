@@ -159,6 +159,57 @@
     return (!start || start <= date) && (!end || date <= end);
   }
 
+  // When rent for a month was due: the lease start for a one-off lease total,
+  // otherwise the due day of that month.
+  function dueDateFor(lease, key) {
+    if (!lease) return "";
+    if (lease.rent_type === "lease") return dateOnly(lease.start);
+    var k = monthKey(key);
+    return k ? k + "-" + pad(dueDay(lease)) : "";
+  }
+  // How many days after its due date a payment came in (0 when on time).
+  function daysLate(lease, payment) {
+    if (!payment || payment.status !== "paid") return 0;
+    var due = dueDateFor(lease, payment.month), paid = dateOnly(payment.date);
+    return due && paid && paid > due ? daysBetween(due, paid) : 0;
+  }
+
+  /* Acknowledgement receipt numbers: AR-<year>-<0001>, one series per book and
+   * year. In the cloud the database hands them out (supabase/migrations/0001);
+   * this is for the demo and the old single-record store. */
+  function receiptNo(year, n) { return "AR-" + year + "-" + (n < 1000 ? ("000" + n).slice(-4) : String(n)); }
+  function nextReceiptNo(payments, year) {
+    var top = 0, re = new RegExp("^AR-" + year + "-(\\d+)$");
+    (payments || []).forEach(function (p) {
+      var m = p && re.exec(String(p.receipt_no || ""));
+      if (m && +m[1] > top) top = +m[1];
+    });
+    return receiptNo(year, top + 1);
+  }
+
+  // "Fifteen Thousand Five Hundred Pesos and 50/100", as written on receipts.
+  var ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  var TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  function under1000(n) {
+    var out = [];
+    if (n >= 100) { out.push(ONES[Math.floor(n / 100)] + " Hundred"); n %= 100; }
+    if (n >= 20) { out.push(TENS[Math.floor(n / 10)] + (n % 10 ? "-" + ONES[n % 10] : "")); }
+    else if (n > 0) out.push(ONES[n]);
+    return out.join(" ");
+  }
+  function amountInWords(v) {
+    var cents = Math.round(num(v) * 100);
+    if (cents < 0) cents = 0;
+    var whole = Math.floor(cents / 100), c = cents % 100;
+    var scales = [[1e9, "Billion"], [1e6, "Million"], [1e3, "Thousand"]], parts = [];
+    scales.forEach(function (s) {
+      if (whole >= s[0]) { parts.push(under1000(Math.floor(whole / s[0])) + " " + s[1]); whole %= s[0]; }
+    });
+    if (whole > 0) parts.push(under1000(whole));
+    var words = parts.length ? parts.join(" ") : "Zero";
+    return words + (Math.floor(cents / 100) === 1 ? " Peso" : " Pesos") + (c ? " and " + (c < 10 ? "0" : "") + c + "/100" : " Only");
+  }
+
   function leaseMonthKeys(lease) {
     return leaseMonths(lease, today()).map(function (m) { return m.key; });
   }
@@ -166,6 +217,7 @@
   return {
     MONTHS: MONTHS, today: today, monthKey: monthKey, monthLabel: monthLabel, dueDay: dueDay,
     ledger: ledger, leaseStatus: leaseStatus, coversDate: coversDate, leaseMonthKeys: leaseMonthKeys,
-    endLimit: endLimit
+    endLimit: endLimit, daysBetween: daysBetween, dueDateFor: dueDateFor, daysLate: daysLate,
+    receiptNo: receiptNo, nextReceiptNo: nextReceiptNo, amountInWords: amountInWords
   };
 });

@@ -7,7 +7,7 @@
    - B25: a unit or lease whose lease has ended can be archived;
    - B26: the owner portal's net matches the reports tab;
    - P8 / B28: the tenant portal says what is owed in words, from the ledger;
-   - S6: a receipt stored as a private file opens from a "Receipt" button;
+   - S6: a receipt photo stored as a private file opens from a "Photo" button;
    - S8: drop-down values are escaped. */
 window.__msChecks = [];
 window.__msDone = false;
@@ -38,7 +38,7 @@ const setRole = async role => { const rs = q("#user-role-select"); if (rs) { rs.
 
     // P1: the header
     check("four summary figures", qa(".pms-kpis .kpi").length === 4, qa(".pms-kpis .kpi").length);
-    const owe = q('[data-pms-goto="payments:due"]');
+    const owe = q('[data-pms-goto="payments:owed"]');
     check("needs-attention shows who owes rent", !!owe && /lease owes rent|leases owe rent/.test(owe.textContent), owe ? owe.textContent : "none");
     if (phone) {
       check("phone: section list instead of ten tabs", visible(q("#pms-section")) && !visible(q(".pms-tabs")));
@@ -49,15 +49,15 @@ const setRole = async role => { const rs = q("#user-role-select"); if (rs) { rs.
     const sel = q("#pms-section");
     sel.value = "tenants"; sel.dispatchEvent(new Event("change", { bubbles: true })); await wait(450);
     check("choosing a section opens it", S.pmsTab === "tenants" && !!q('.pms-tabs .tab.active[data-pmtab="tenants"]'));
-    q('[data-pms-goto="payments:due"]').click(); await wait(500);
-    check("the attention chip opens the rent that is due", S.pmsTab === "payments" && S.pmsStatusFilter === "due" && qa("[data-pms-markpaid]").length > 0 && qa("#pms-list [data-pms-edit]").length === 0);
+    q('[data-pms-goto="payments:owed"]').click(); await wait(500);
+    check("the attention chip opens the rent that is owed", S.pmsTab === "payments" && S.pmsStatusFilter === "owed" && qa("[data-pms-markpaid]").length > 0 && qa("#pms-list [data-pms-edit]").length === 0);
 
     // P1: filters fold on a phone, with chips for what is active
     const statusSel = q("#pms-filter-status");
     if (phone) {
       check("phone: filters folded until asked", !visible(statusSel) && visible(q("[data-pms-filters]")));
       const chip = q('[data-pms-unfilter="status"]');
-      check("phone: the active filter shows as a chip", !!chip && /Payment Due/.test(chip.textContent), chip ? chip.textContent : "none");
+      check("phone: the active filter shows as a chip", !!chip && /Owed/.test(chip.textContent), chip ? chip.textContent : "none");
       q("[data-pms-filters]").click(); await wait(150);
       check("phone: Filters opens the drop-downs", visible(q("#pms-filter-status")));
       if (chip) { q('[data-pms-unfilter="status"]').click(); await wait(400); }
@@ -120,8 +120,8 @@ const setRole = async role => { const rs = q("#user-role-select"); if (rs) { rs.
     S.pms.payments[0].proofPath = "payments/" + S.pms.payments[0].id + "/x.jpg";
     delete S.pms.payments[0].proof;
     await tab("leases"); await tab("payments");
-    const rb = qa("[data-pms-proof]").find(b => /Receipt/.test(b.textContent));
-    check("stored receipt shows a Receipt button", !!rb);
+    const rb = qa("[data-pms-proof]").find(b => /Photo/.test(b.textContent));
+    check("stored receipt photo shows a Photo button", !!rb);
     if (rb) { rb.click(); await wait(300); check("stored receipt opens a viewer", !!q("#pms-proof-view")); const c = q("[data-proof-close]"); if (c) c.click(); await wait(150); }
 
     // B25: ended leases don't block archiving
