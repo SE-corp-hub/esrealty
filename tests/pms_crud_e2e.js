@@ -9,7 +9,7 @@
     var b=Array.from(m.querySelectorAll("button")).find(function(x){return /Save/i.test(x.textContent);});
     if(b){b.click(); return true;} return false; }
   async function gotoTab(name){
-    var t=document.querySelector('[data-pms-tab="'+name+'"]');
+    var t=document.querySelector('[data-pmtab="'+name+'"]');
     if(!t){ document.querySelectorAll("#content button").forEach(function(b){ if(b.textContent.trim().toLowerCase()===name && !t) t=b; }); }
     if(t){ t.click(); await wait(500); }
   }
@@ -61,22 +61,28 @@
     checks.push({name:"tenant created", ok:/Juan Dela Cruz/.test(html), detail:""});
 
     // LEASE
+    var leasesBefore=window.__ESREALTY_TEST_HELPERS.getState().pms.leases.length;
     await gotoTab("leases");
     log.push("lease btn="+(!!document.querySelector('[data-pms-new="lease"]')));
     if(openNew("lease")){ await wait(350);
       log.push("lease ids: "+Array.from(document.querySelectorAll("#pms-modal input, #pms-modal select")).map(function(e){return e.id;}).filter(Boolean).join(","));
-      var lu=document.getElementById("pms-lease-unit");
-      if(lu && lu.options.length>0){ lu.selectedIndex=Math.min(1,lu.options.length-1); lu.dispatchEvent(new Event("change",{bubbles:true})); }
-      var tn=document.getElementById("pms-lease-tenant");
-      if(tn && tn.options.length>0){ tn.selectedIndex=Math.min(1,tn.options.length-1); tn.dispatchEvent(new Event("change",{bubbles:true})); }
+      // Pick the unit and tenant made above by name (newest records are listed first).
+      function pick(sel, re){ var e=document.getElementById(sel); if(!e) return; var i=Array.from(e.options).findIndex(function(o){return re.test(o.textContent);}); if(i>=0){ e.selectedIndex=i; e.dispatchEvent(new Event("change",{bubbles:true})); } }
+      pick("pms-lease-unit", /Unit 101/); pick("pms-lease-tenant", /Juan Dela Cruz/);
       setAny(["pms-lease-rent","pms-lease-rentamt"],"18000");
+      // Start and end dates are required; a one-year lease from the 1st of this month.
+      var d0=new Date(), y=d0.getFullYear(), m=("0"+(d0.getMonth()+1)).slice(-2);
+      setv("#pms-lease-start", y+"-"+m+"-01"); setv("#pms-lease-end", (y+1)+"-"+m+"-01");
       saveModal(); await wait(500); }
-    html=document.querySelector("#content").innerHTML;
-    checks.push({name:"lease created", ok:/Active|Lease/i.test(html), detail:"soft"});
+    var leasesNow=window.__ESREALTY_TEST_HELPERS.getState().pms.leases;
+    var listHtml=(document.querySelector("#pms-list")||{}).innerHTML||"";
+    // Checked against the saved records and the leases list, not page text that is always there.
+    checks.push({name:"lease created", ok:leasesNow.length===leasesBefore+1 && leasesNow.some(function(l){return Number(l.rent)===18000;}) && /Juan Dela Cruz|Unit 101/.test(listHtml), detail:leasesBefore+"->"+leasesNow.length});
     // PAYMENT tab renders
     await gotoTab("payments");
-    html=document.querySelector("#content").innerHTML;
-    checks.push({name:"payments tab renders", ok:/Payment/i.test(html), detail:html.length+"c"});
+    var activeTab=document.querySelector('.pms-tabs .tab.active');
+    var payList=document.querySelector("#pms-list");
+    checks.push({name:"payments tab renders", ok:!!activeTab && activeTab.getAttribute("data-pmtab")==="payments" && !!payList && !!payList.querySelector("table, .empty"), detail:(activeTab?activeTab.getAttribute("data-pmtab"):"none")});
     // back to super-admin later; buyer portal
     var rs=document.querySelector("#user-role-select");
     if(rs){ rs.value="buyer"; rs.dispatchEvent(new Event("change",{bubbles:true})); await wait(600); }

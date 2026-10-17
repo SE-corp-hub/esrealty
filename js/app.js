@@ -266,6 +266,7 @@
   let remoteProfiles = [];
   let remoteProfilesLoaded = false;
   let remoteProfilesLoading = false;
+  let remoteProfilesAt = 0; // when the user list last arrived; screens reuse it for a minute (B36)
   let remoteProfilesError = "";
   let remoteProfilesFailed = false;
   let cloudAccountSaving = false;
@@ -529,6 +530,8 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
       if (!r.error && Array.isArray(r.data)) r.data.forEach(x => { if (!next[extra[0]].some(y => y.id === x.id)) next[extra[0]].push(x); });
     }
     state.pms = next;
+    // Receipt photos still stored inside payment records move to private storage.
+    if (currentUser.role === "super-admin") setTimeout(() => { pmsMoveReceiptsToStorage(); }, 3000);
     return true;
   }
   function scheduleLegacyPmsSave() {
@@ -8914,6 +8917,14 @@ premise: "Fee Simple / As Improved",
   function pmsStatusBadge(cfg, label) {
     return '<span class="badge ' + (cfg ? cfg.color : "green") + '">' + esc(label) + '</span>';
   }
+  // Row buttons say what they do; Archive sits apart from Edit (PMS analysis P4).
+  function pmsRowActions(kind, id, extra, bare) {
+    const k = esc(kind + ":" + id);
+    const btns = (extra || "") +
+      '<button class="btn btn-ghost btn-sm" data-pms-edit="' + k + '">' + icon("edit", 13) + ' Edit</button>' +
+      '<button class="btn btn-danger btn-sm pms-archive-btn" data-pms-archive="' + k + '">' + icon("archive", 13) + (kind === "owner" ? " Delete" : " Archive") + '</button>';
+    return bare ? btns : '<div class="row pms-row-actions' + (extra ? " wide" : "") + '" style="gap:6px">' + btns + '</div>';
+  }
   function pmsActiveOwners() { return pms().owners.filter(o => !o.archived); }
   function pmsActiveProperties() { return pms().properties.filter(p => !p.archived); }
   function pmsActiveUnits() { return pms().units.filter(u => !u.archived); }
@@ -8935,6 +8946,25 @@ premise: "Fee Simple / As Improved",
    * date, money received pays the month it names and then the oldest unpaid
    * month, and dates are calendar dates so the time zone cannot shift them. */
   const PL = () => window.ESPMSLEDGER;
+  // Money for a set of properties, worked out one way for the reports, the CSV,
+  // the property report and the owner portal (B26). Rent counts through the
+  // payment's lease, so moving a lease moves its payments too (B27). Spending
+  // is expenses plus finished work orders; open work orders are estimates.
+  function pmsMoneyFor(propIds) {
+    const ids = new Set(propIds || []);
+    const leaseProp = {};
+    pms().leases.forEach(l => { leaseProp[l.id] = l.property_id; });
+    const propOf = p => leaseProp[p.lease_id] || p.property_id;
+    const collected = pmsActivePayments().filter(p => p.status === "paid" && ids.has(propOf(p))).reduce((s, p) => s + C.num(p.amount, 0), 0);
+    const expenses = pmsActiveExpenses().filter(e => ids.has(e.property_id)).reduce((s, e) => s + C.num(e.amount, 0), 0);
+    const work = pmsActiveMaintenance().filter(m => ids.has(m.property_id));
+    const repairs = work.filter(m => m.status === "completed").reduce((s, m) => s + C.num(m.cost, 0), 0);
+    const estimates = work.filter(m => m.status === "open" || m.status === "in progress").reduce((s, m) => s + C.num(m.cost, 0), 0);
+    return { collected: collected, expenses: expenses, repairs: repairs, estimates: estimates, spent: expenses + repairs, net: collected - expenses - repairs };
+  }
+  function pmsPaymentsOfProperty(propId) {
+    return pmsActivePayments().filter(p => { const l = pms().leases.find(x => x.id === p.lease_id); return (l ? l.property_id : p.property_id) === propId; });
+  }
   function pmsToday() { return PL().today(); }
   function pmsDateObj(iso) { return iso ? new Date(iso + "T00:00:00") : null; }
   function pmsLeaseLedger(l) { return PL().ledger(l, pmsActivePayments(), pmsToday()); }
@@ -9008,27 +9038,6 @@ premise: "Fee Simple / As Improved",
       }
     });
   }
-  async function pmsSyncStatuses(btn) {
-    if (!pmsCan("manage") && userRole() !== "super-admin") { toast("You don't have permission to sync statuses", "err"); return; }
-    const unitWant = u => pmsUnitTenants(u.id).length ? "occupied" : (u.status === "maintenance" ? "maintenance" : "vacant");
-    const changed = pmsActiveLeases().filter(l => pmsAutoStatus(l) !== l.status).length + pmsActiveUnits().filter(u => unitWant(u) !== u.status).length;
-    const confirmed = await confirmModal({
-      title: "Sync lease / unit statuses?",
-      message: "Re-marks lease statuses (active / expiring / expired) and unit occupancy based on today's date, then saves. Changed records: " + changed + ".",
-      confirmLabel: "Sync statuses",
-      danger: false
-    });
-    if (!confirmed) return;
-    let count = 0;
-    pmsActiveLeases().forEach(l => { const s = pmsAutoStatus(l); if (s !== l.status) { l.status = s; count++; } });
-    pmsActiveUnits().forEach(u => {
-      const names = pmsUnitTenants(u.id);
-      // A unit under maintenance stays so until someone moves in.
-      const want = unitWant(u);
-      if (u.status !== want) { u.status = want; u.tenant_name = names.join(", "); count++; }
-    });
-    save(); render(); toast("Synced " + count + " status change(s)", "ok");
-  }
   function pmsVisibleProperties() {
     const list = pmsActiveProperties();
     if (userRole() === "owner") {
@@ -9053,22 +9062,34 @@ premise: "Fee Simple / As Improved",
       tenants = pmsActiveTenants(), leases = pmsActiveLeases(), payments = pmsActivePayments();
     const activeLeases = leases.filter(l => pmsLeaseLive(l));
     const collected = pmsPaySum(payments, ["paid"]);
-    const arrears = pmsArrearsFor(activeLeases);
+    const thisMonth = pmsToday().slice(0, 7);
+    const collectedMonth = pmsPaySum(payments.filter(p => String(p.date || "").slice(0, 7) === thisMonth), ["paid"]);
+    const owing = leases.filter(l => pmsLeaseArrears(l) > 0);
+    const arrears = pmsArrearsFor(leases);
+    const ending = leases.filter(l => pmsAutoStatus(l) === "expiring");
+    const openWork = pmsActiveMaintenance().filter(m => m.status === "open" || m.status === "in progress");
+    const occupied = units.filter(u => pmsUnitTenantCount(u.id) > 0).length;
     const nb = PMS_NEW[tab];
-    let html = '<div class="hero"><div><h1>Property Management</h1><p>Manage properties, units, owners, tenants, leases, and finances.</p></div>' +
+    // Phones see four figures, what needs doing, then the records (PMS analysis P1).
+    let html = '<div class="hero"><div><h1>Property Management</h1><p class="pms-hero-sub">Manage properties, units, owners, tenants, leases, and finances.</p></div>' +
       (canManage && nb ? '<div class="actions"><button class="btn btn-primary" data-pms-new="' + nb[0] + '">' + icon("plus", 15) + " New " + nb[1] + "</button></div>" : "") + '</div>';
-    html += '<div class="grid grid-4 mb-24">' +
-      kpi("Properties", props.length, "active in the portfolio", "green", "briefcase") +
-      kpi("Units", units.length, "across all properties", "blue", "layers") +
-      kpi("Occupied Units", units.filter(u => pmsUnitTenantCount(u.id) > 0).length, "of " + units.length + " units", "cyan", "check") +
-      kpi("Owners", owners.length, "registered contacts", "purple", "star") + '</div>';
-    html += '<div class="grid grid-4 mb-24">' +
-      kpi("Tenants", tenants.length, "on file", "blue", "star") +
+    html += '<div class="grid grid-4 mb-16 pms-kpis">' +
+      kpi("Occupied", occupied + " / " + units.length, units.length === 1 ? "unit with a tenant today" : "units with a tenant today", "cyan", "check") +
       kpi("Active Leases", activeLeases.length, "of " + leases.length + " leases", "green", "doc") +
-      kpi("Collected", C.money(collected), "all-time paid", "green", "dollar") +
-      kpi("Arrears", C.money(arrears), "overdue rent", arrears > 0 ? "red" : "green", "trending") + '</div>';
-    html += '<div class="tabs">' + PMS_TABS.map(t => '<button class="tab' + (state.pmsTab === t[0] ? " active" : "") + '" data-pmtab="' + t[0] + '">' + t[1] + '</button>').join("") + '</div>';
-    html += (canManage ? '<div class="row mt-8" style="gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-pms-sync-status title="Re-mark active/expiring/expired based on today\'s date and unit occupancy">' + icon("refresh", 13) + " Sync lease / unit statuses</button></div>" : "");
+      kpi("Collected", C.money(collectedMonth), "this month · " + C.money(collected) + " all time", "green", "dollar") +
+      kpi("Overdue", C.money(arrears), owing.length ? owing.length + (owing.length === 1 ? " lease owes rent" : " leases owe rent") : "nobody is behind", arrears > 0 ? "red" : "green", "trending") + '</div>';
+    const attention = [
+      owing.length ? '<button type="button" class="pms-att red" data-pms-goto="payments:due">' + icon("alert", 14) + " " + owing.length + (owing.length === 1 ? " lease owes rent" : " leases owe rent") + "</button>" : "",
+      ending.length ? '<button type="button" class="pms-att gold" data-pms-goto="leases:expiring">' + icon("calendar", 14) + " " + ending.length + (ending.length === 1 ? " lease ends" : " leases end") + " within 30 days</button>" : "",
+      openWork.length ? '<button type="button" class="pms-att blue" data-pms-goto="maintenance:">' + icon("settings", 14) + " " + openWork.length + (openWork.length === 1 ? " repair open" : " repairs open") + "</button>" : ""
+    ].join("");
+    if (attention) html += '<div class="pms-attention mb-16" aria-label="Needs attention">' + attention + '</div>';
+    const counts = { properties: props.length, units: units.length, owners: owners.length, tenants: tenants.length, leases: leases.length, payments: owing.length, maintenance: openWork.length, expenses: pmsActiveExpenses().length, documents: pmsActiveDocuments().length };
+    const tabText = t => t[1] + (counts[t[0]] ? " (" + counts[t[0]] + (t[0] === "payments" ? " due" : t[0] === "maintenance" ? " open" : "") + ")" : "");
+    html += '<label class="pms-section-pick"><span>Section</span><select class="input" id="pms-section">' +
+      PMS_TABS.map(t => '<option value="' + t[0] + '"' + (tab === t[0] ? " selected" : "") + '>' + esc(tabText(t)) + '</option>').join("") + '</select></label>';
+    html += '<div class="tabs pms-tabs">' + PMS_TABS.map(t => '<button class="tab' + (tab === t[0] ? " active" : "") + '" data-pmtab="' + t[0] + '">' + t[1] +
+      (counts[t[0]] ? ' <span class="pms-tab-n' + ((t[0] === "payments" || t[0] === "maintenance") ? " hot" : "") + '">' + counts[t[0]] + "</span>" : "") + '</button>').join("") + '</div>';
     html += renderPMSList();
     return html;
   }
@@ -9076,29 +9097,40 @@ premise: "Fee Simple / As Improved",
   function renderPMSList() {
     const tab = state.pmsTab || "properties";
     if (tab === "reports") return '<div id="pms-list">' + pmsReports() + '</div>';
-    let bar = '<div class="pms-bar">' +
-      '<input class="input" id="pms-search" type="text" placeholder="Search ' + tab + '\u2026" value="' + esc(state.pmsQuery || "") + '">';
+    // On a phone the drop-downs fold behind "Filters"; active ones show as chips.
+    const active = [["property", state.pmsPropertyFilter, "pms-filter-property"], ["status", state.pmsStatusFilter, "pms-filter-status"], ["extra", state.pmsExtraFilter, "pms-filter-extra"]].filter(f => f[1]);
+    let bar = '<div class="pms-bar' + (filtersOpen.pms ? " filters-open" : "") + '">' +
+      '<input class="input" id="pms-search" type="search" aria-label="Search ' + tab + '" placeholder="Search ' + tab + '\u2026" value="' + esc(state.pmsQuery || "") + '">' +
+      (tab !== "owners" && tab !== "tenants"
+        ? '<button type="button" class="btn btn-ghost pms-filters-btn" data-pms-filters aria-expanded="' + !!filtersOpen.pms + '">' + icon("filter", 15) + ' Filters' + (active.length ? ' <span class="badge gold">' + active.length + '</span>' : "") + '</button>' : "");
     if (tab === "units" || tab === "leases" || tab === "payments" || tab === "maintenance" || tab === "expenses" || tab === "documents") {
-      bar += '<select class="input" id="pms-filter-property">' + '<option value="">All properties</option>' +
-        pmsActiveProperties().map(p => '<option value="' + p.id + '"' + (state.pmsPropertyFilter === p.id ? " selected" : "") + '>' + esc(p.title) + '</option>').join("") + '</select>';
+      bar += '<select class="input" id="pms-filter-property" aria-label="Property">' + '<option value="">All properties</option>' +
+        pmsActiveProperties().map(p => '<option value="' + esc(p.id) + '"' + (state.pmsPropertyFilter === p.id ? " selected" : "") + '>' + esc(p.title) + '</option>').join("") + '</select>';
     }
     const so = pmsFilterStatusOpts(tab);
     if (so) {
-      bar += '<select class="input" id="pms-filter-status">' + '<option value="">All statuses</option>' +
-        so.map(s => '<option value="' + s.value + '"' + (state.pmsStatusFilter === s.value ? " selected" : "") + '>' + s.label + '</option>').join("") + '</select>';
+      bar += '<select class="input" id="pms-filter-status" aria-label="Status">' + '<option value="">All statuses</option>' +
+        so.map(s => '<option value="' + esc(s.value) + '"' + (state.pmsStatusFilter === s.value ? " selected" : "") + '>' + esc(s.label) + '</option>').join("") + '</select>';
     }
     if (tab === "maintenance") {
-      bar += '<select class="input" id="pms-filter-extra">' + '<option value="">All priorities</option>' +
-        MAINT_PRIORITIES.map(s => '<option value="' + s[0] + '"' + (state.pmsExtraFilter === s[0] ? " selected" : "") + '>' + s[1] + '</option>').join("") + '</select>';
+      bar += '<select class="input" id="pms-filter-extra" aria-label="Priority">' + '<option value="">All priorities</option>' +
+        MAINT_PRIORITIES.map(s => '<option value="' + esc(s[0]) + '"' + (state.pmsExtraFilter === s[0] ? " selected" : "") + '>' + esc(s[1]) + '</option>').join("") + '</select>';
     } else if (tab === "expenses") {
-      bar += '<select class="input" id="pms-filter-extra">' + '<option value="">All categories</option>' +
-        EXPENSE_CATEGORIES.map(c => '<option value="' + c + '"' + (state.pmsExtraFilter === c ? " selected" : "") + '>' + c + '</option>').join("") + '</select>';
+      bar += '<select class="input" id="pms-filter-extra" aria-label="Category">' + '<option value="">All categories</option>' +
+        EXPENSE_CATEGORIES.map(c => '<option value="' + esc(c) + '"' + (state.pmsExtraFilter === c ? " selected" : "") + '>' + esc(c) + '</option>').join("") + '</select>';
     } else if (tab === "documents") {
-      bar += '<select class="input" id="pms-filter-extra">' + '<option value="">All categories</option>' +
-        DOC_CATEGORIES.map(c => '<option value="' + c + '"' + (state.pmsExtraFilter === c ? " selected" : "") + '>' + c + '</option>').join("") + '</select>';
+      bar += '<select class="input" id="pms-filter-extra" aria-label="Category">' + '<option value="">All categories</option>' +
+        DOC_CATEGORIES.map(c => '<option value="' + esc(c) + '"' + (state.pmsExtraFilter === c ? " selected" : "") + '>' + esc(c) + '</option>').join("") + '</select>';
     }
     bar += '</div>';
-    return bar + '<div id="pms-list">' + renderPMSListInner() + '</div>';
+    const chipText = f => {
+      if (f[0] === "property") return pmsPropertyTitle(f[1]);
+      if (f[0] === "status") { const o = (so || []).find(x => x.value === f[1]); return o ? o.label : f[1]; }
+      const pr = MAINT_PRIORITIES.find(x => x[0] === f[1]);
+      return pr ? pr[1] + " priority" : f[1];
+    };
+    const chips = active.length ? '<div class="filter-chips pms-chips" aria-label="Active filters">' + active.map(f => '<button type="button" class="filter-chip" data-pms-unfilter="' + f[0] + '" aria-label="Remove filter ' + esc(chipText(f)) + '">' + esc(chipText(f)) + ' <span aria-hidden="true">×</span></button>').join("") + '</div>' : "";
+    return bar + chips + '<div id="pms-list">' + renderPMSListInner() + '</div>';
   }
 
   function renderPMSListInner() {
@@ -9135,7 +9167,7 @@ premise: "Fee Simple / As Improved",
         '<td>' + esc(pmsOwnerName(p.owner_id)) + '</td>' +
         '<td class="num">' + (C.num(p.price, 0) > 0 ? C.money(p.price) : "—") + (C.num(p.rent, 0) > 0 ? '<div class="dim tiny">' + C.money(p.rent) + '/mo</div>' : "") + '</td>' +
         '<td class="num">' + units.length + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-edit="property:' + p.id + '">' + icon("edit", 13) + '</button><button class="btn btn-danger btn-sm" data-pms-archive="property:' + p.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
+        (canManage ? '<td>' + pmsRowActions("property", p.id) + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9167,7 +9199,7 @@ premise: "Fee Simple / As Improved",
         '<td class="num">' + (C.num(u.size, 0) > 0 ? C.numFmt(u.size) + " sqm" : "—") + '</td>' +
         '<td class="num">' + (C.num(u.rent_amount, 0) > 0 ? C.money(u.rent_amount) + "/mo" : "—") + '</td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (u.status || "—")) + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-edit="unit:' + u.id + '">' + icon("edit", 13) + ' Edit</button><button class="btn btn-danger btn-sm" data-pms-archive="unit:' + u.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
+        (canManage ? '<td>' + pmsRowActions("unit", u.id) + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9188,7 +9220,7 @@ premise: "Fee Simple / As Improved",
         '<td>' + (o.email ? '<div>' + esc(o.email) + '</div>' : "") + (o.phone ? '<div class="dim tiny">' + esc(o.phone) + '</div>' : "") + '</td>' +
         '<td class="num">' + count + '</td>' +
         '<td>' + (o.bank && o.account_number ? '<div class="tiny">' + esc(o.bank) + '</div><div class="dim tiny">' + esc(o.account_number) + '</div>' : '<span class="dim">—</span>') + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-edit="owner:' + o.id + '">' + icon("edit", 13) + '</button><button class="btn btn-danger btn-sm" data-pms-archive="owner:' + o.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
+        (canManage ? '<td>' + pmsRowActions("owner", o.id) + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9212,7 +9244,7 @@ premise: "Fee Simple / As Improved",
         '<td>' + esc(t.employment || "—") + '</td>' +
         '<td class="num">' + active.length + '</td>' +
         '<td class="num">' + (out > 0 ? '<span class="badge red">' + C.money(out) + '</span>' : "—") + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-edit="tenant:' + t.id + '">' + icon("edit", 13) + '</button><button class="btn btn-danger btn-sm" data-pms-archive="tenant:' + t.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
+        (canManage ? '<td>' + pmsRowActions("tenant", t.id) + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9245,9 +9277,9 @@ premise: "Fee Simple / As Improved",
         '<td class="num">' + (C.num(l.rent, 0) > 0 ? C.money(l.rent) : "—") + (l.rent_type === "lease" ? '<div class="dim tiny">lease \u00B7 total</div>' : '<div class="dim tiny">per month</div>') + '</td>' +
         '<td class="num">' + (C.num(l.deposit, 0) > 0 ? C.money(l.deposit) : "—") + '</td>' +
         '<td class="num">' + (due && due.nextDue ? '<b>' + esc(pmsDispDate(due.nextDue)) + '</b>' + (dueNote ? '<div class="dim tiny">' + esc(dueNote) + '</div>' : "") : "—") + '</td>' +
-        '<td>' + (l.start ? esc(String(l.start).slice(0, 10)) : "—") + ' \u2192 ' + (l.end ? esc(String(l.end).slice(0, 10)) : "—") + '</td>' +
+        '<td><span style="white-space:nowrap">' + (l.start ? esc(String(l.start).slice(0, 10)) : "—") + '</span><div class="dim tiny" style="white-space:nowrap">to ' + (l.end ? esc(String(l.end).slice(0, 10)) : "—") + '</div></td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (l.status || "—")) + dueBadge + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-paylink="' + l.id + '" title="View payments">' + icon("dollar", 13) + '</button><button class="btn btn-ghost btn-sm" data-pms-print="lease:' + l.id + '" title="Printable payable list">' + icon("print", 13) + '</button><button class="btn btn-ghost btn-sm" data-pms-edit="lease:' + l.id + '">' + icon("edit", 13) + '</button><button class="btn btn-danger btn-sm" data-pms-archive="lease:' + l.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
+        (canManage ? '<td>' + pmsRowActions("lease", l.id, '<button class="btn btn-ghost btn-sm" data-pms-paylink="' + esc(l.id) + '">' + icon("dollar", 13) + ' Payments</button><button class="btn btn-ghost btn-sm" data-pms-print="lease:' + esc(l.id) + '">' + icon("print", 13) + ' Statement</button>') + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9297,20 +9329,17 @@ premise: "Fee Simple / As Improved",
     let h = banner + '<div class="table-wrap"><table class="data"><tr><th>Date</th><th>Tenant / Lease</th><th>Period</th><th class="num">Amount</th><th>Method</th><th>Status</th><th>Proof</th>' + (canManage ? "<th>Actions</th>" : "") + '</tr>';
     list.forEach(p => {
       const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
-      const proof = safePaymentProofUrl(p.proof);
       h += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td>' +
         '<td>' + esc(pmsLeaseLabel(pms().leases.find(l => l.id === p.lease_id))) + '</td>' +
         '<td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td>' +
         '<td class="num">' + C.money(p.amount) + (p.synthetic ? '<div class="dim tiny">still owed</div>' : "") + '</td>' +
         '<td>' + esc(p.method || "—") + '</td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td>' +
-        '<td>' + (proof
-          ? '<button type="button" class="pms-proof-btn" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View proof") + '"><img src="' + esc(proof) + '" alt="Proof of payment" style="width:56px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--stroke)"></button>'
-          : '<span class="dim">—</span>') + '</td>' +
+        '<td>' + pmsProofCell(p) + '</td>' +
         (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-email-payment="' + esc(p.id) + '" data-lease-id="' + esc(p.lease_id || "") + '" data-payment-amount="' + esc(String(p.amount || 0)) + '" data-payment-date="' + esc(p.date || "") + '" data-payment-month="' + esc(p.month || "") + '" data-payment-status="' + esc(p.status || "") + '" data-payment-method="' + esc(p.method || "") + '" title="Send payment details to tenant">' + icon("mail", 13) + ' Email</button>' +
           (p.synthetic
             ? '<button class="btn btn-primary btn-sm" data-pms-markpaid="' + esc(p.lease_id) + '|' + esc(p.month) + '|' + esc(String(p.amount || 0)) + '">' + icon("check", 13) + ' Mark paid</button>' + pmsReminderLink(p)
-            : '<button class="btn btn-ghost btn-sm" data-pms-edit="payment:' + p.id + '">' + icon("edit", 13) + ' Edit</button><button class="btn btn-danger btn-sm" data-pms-archive="payment:' + p.id + '" aria-label="Archive payment">' + icon("archive", 13) + ' Archive</button>') + '</div></td>' : "") +
+            : pmsRowActions("payment", p.id, "", true)) + '</div></td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9344,7 +9373,7 @@ premise: "Fee Simple / As Improved",
         '<td>' + pmsStatusBadge(pc ? { color: m.priority === "high" ? "red" : m.priority === "medium" ? "gold" : "blue" } : null, pc ? pc[1] : (m.priority || "—")) + '</td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (m.status || "—")) + '</td>' +
         '<td class="num">' + (C.num(m.cost, 0) > 0 ? C.money(m.cost) : "—") + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-edit="maintenance:' + m.id + '">' + icon("edit", 13) + '</button><button class="btn btn-danger btn-sm" data-pms-archive="maintenance:' + m.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
+        (canManage ? '<td>' + pmsRowActions("maintenance", m.id) + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9369,7 +9398,7 @@ premise: "Fee Simple / As Improved",
         '<td>' + esc(e.category || "—") + '</td>' +
         '<td class="num">' + C.money(e.amount) + '</td>' +
         '<td>' + esc(e.description || "") + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-edit="expense:' + e.id + '">' + icon("edit", 13) + '</button><button class="btn btn-danger btn-sm" data-pms-archive="expense:' + e.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
+        (canManage ? '<td>' + pmsRowActions("expense", e.id) + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9395,7 +9424,7 @@ premise: "Fee Simple / As Improved",
         '<td>' + esc(pmsPropertyTitle(d.property_id)) + (d.unit_id ? '<div class="dim tiny">' + esc(pmsUnitName(d.unit_id)) + '</div>' : "") + '</td>' +
         '<td class="num">' + esc(String(d.date || "").slice(0, 10)) + '</td>' +
         '<td>' + esc(d.notes || "") + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-edit="document:' + d.id + '">' + icon("edit", 13) + '</button><button class="btn btn-danger btn-sm" data-pms-archive="document:' + d.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
+        (canManage ? '<td>' + pmsRowActions("document", d.id) + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9408,13 +9437,14 @@ premise: "Fee Simple / As Improved",
     const occupied = units.filter(u => pmsUnitTenantCount(u.id) > 0).length;
     const paid = pmsPaySum(payments, ["paid"]);
     const arrears = pmsArrearsFor(leases);
-    const totalExp = expenses.reduce((s, e) => s + C.num(e.amount, 0), 0);
+    const money = pmsMoneyFor(props.map(p => p.id));
+    const totalExp = money.spent;
     const occPct = units.length ? Math.round(occupied / units.length * 100) : 0;
     let html = '<div class="grid grid-4 mb-24">' +
       kpi("Occupancy", occPct + "%", occupied + " of " + units.length + " units", occPct >= 80 ? "green" : occPct >= 50 ? "gold" : "red", "check") +
       kpi("Collected", C.money(paid), "all-time rent paid", "green", "dollar") +
       kpi("Arrears", C.money(arrears), "overdue rent", arrears > 0 ? "red" : "green", "trending") +
-      kpi("Expenses", C.money(totalExp), "all-time operating", "gold", "briefcase") + '</div>';
+      kpi("Spending", C.money(totalExp), "expenses + finished repairs", "gold", "briefcase") + '</div>';
     if (!props.length) {
       html += '<div class="card card-pad empty">' + icon("chart", 46) + "<h3>No data to report yet</h3><p>Add properties, leases, and payments to see occupancy and income reports.</p></div>";
       return html;
@@ -9427,23 +9457,22 @@ premise: "Fee Simple / As Improved",
       html += '<tr><td>' + esc(p.title) + '</td><td class="num">' + u.length + '</td><td class="num">' + oc + '</td><td class="num">' + (u.length - oc) + '</td><td class="num">' + pct + '%</td></tr>';
     });
     html += '</table></div></div>';
-    html += '<div class="card card-pad mb-24"><h3 class="mb-16">Income Summary by Property</h3><div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">Monthly Rent</th><th class="num">Collected</th><th class="num">Arrears</th><th class="num">Expenses</th><th class="num">Net</th></tr>';
+    html += '<div class="card card-pad mb-24"><h3 class="mb-16">Income Summary by Property</h3><div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">Monthly Rent</th><th class="num">Collected</th><th class="num">Arrears</th><th class="num">Spending</th><th class="num">Net</th></tr>';
     props.forEach(p => {
       const monthly = leases.filter(l => l.property_id === p.id && pmsLeaseLive(l) && l.rent_type !== "lease").reduce((s, l) => s + C.num(l.rent, 0), 0);
-      const coll = pmsPaySum(payments.filter(x => x.property_id === p.id), ["paid"]);
+      const m = pmsMoneyFor([p.id]);
       const arr = pmsArrearsFor(leases.filter(x => x.property_id === p.id));
-      const ex = expenses.filter(x => x.property_id === p.id).reduce((s, e) => s + C.num(e.amount, 0), 0);
-      html += '<tr><td>' + esc(p.title) + '</td><td class="num">' + C.money(monthly) + '</td><td class="num">' + C.money(coll) + '</td><td class="num">' + C.money(arr) + '</td><td class="num">' + C.money(ex) + '</td><td class="num"><b>' + C.money(coll - ex) + '</b></td></tr>';
+      html += '<tr><td>' + esc(p.title) + '</td><td class="num">' + C.money(monthly) + '</td><td class="num">' + C.money(m.collected) + '</td><td class="num">' + C.money(arr) + '</td><td class="num">' + C.money(m.spent) + '</td><td class="num"><b>' + C.money(m.net) + '</b></td></tr>';
     });
     html += '</table></div></div>';
     html += '<div class="card card-pad mb-24"><h3 class="mb-16">Property Reports</h3><div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">Units</th><th class="num">Active Leases</th><th class="num">Collected</th><th class="num">Arrears</th><th>Actions</th></tr>';
     props.forEach(p => {
       const u = pmsActiveUnits().filter(x => x.property_id === p.id);
       const lc = pmsActiveLeases().filter(x => x.property_id === p.id && pmsLeaseLive(x));
-      const pc = pmsPaySum(pmsActivePayments().filter(x => x.property_id === p.id), ["paid"]);
+      const pc = pmsMoneyFor([p.id]).collected;
       const ac = pmsArrearsFor(pmsActiveLeases().filter(x => x.property_id === p.id));
       html += '<tr><td>' + esc(p.title) + '</td><td class="num">' + u.length + '</td><td class="num">' + lc.length + '</td><td class="num">' + C.money(pc) + '</td><td class="num">' + C.money(ac) + '</td>' +
-        '<td><button class="btn btn-ghost btn-sm" data-pms-printrep="property:' + p.id + '">' + icon("print", 13) + " Print Report</button></td></tr>";
+        '<td><button class="btn btn-ghost btn-sm" data-pms-printrep="property:' + esc(p.id) + '">' + icon("print", 13) + " Print Report</button></td></tr>";
     });
     html += '</table></div></div>';
     html += '<div class="row" style="gap:10px">' +
@@ -9493,13 +9522,12 @@ premise: "Fee Simple / As Improved",
         rows.push([String(p.date || "").slice(0, 10), pmsMonthText(p.month), pmsPropertyTitle(p.property_id), pmsUnitName(p.unit_id), pmsTenantName(p.tenant_id), C.num(p.amount, 0), p.method || "", p.status || "", p.notes || ""]);
       });
     } else {
-      rows = [["Property", "Monthly Rent", "Collected", "Arrears", "Expenses", "Net"]];
+      rows = [["Property", "Monthly Rent", "Collected", "Arrears", "Expenses", "Finished repairs", "Net"]];
       pmsActiveProperties().forEach(p => {
         const monthly = pmsActiveLeases().filter(l => l.property_id === p.id && pmsLeaseLive(l) && l.rent_type !== "lease").reduce((s, l) => s + C.num(l.rent, 0), 0);
-        const coll = pmsPaySum(pmsActivePayments().filter(x => x.property_id === p.id), ["paid"]);
+        const m = pmsMoneyFor([p.id]);
         const arr = pmsArrearsFor(pmsActiveLeases().filter(x => x.property_id === p.id));
-        const ex = pmsActiveExpenses().filter(x => x.property_id === p.id).reduce((s, e) => s + C.num(e.amount, 0), 0);
-        rows.push([p.title, monthly, coll, arr, ex, coll - ex]);
+        rows.push([p.title, monthly, m.collected, arr, m.expenses, m.repairs, m.net]);
       });
     }
     // The byte-order mark makes Excel read "Las Piñas" and "₱" correctly.
@@ -9514,191 +9542,141 @@ premise: "Fee Simple / As Improved",
     } catch (e) { toast("Export unavailable in this browser", "err"); }
   }
 
+  /* Owner and tenant portals (PMS analysis P8): what is owed and when, in
+   * words, then the history. Statuses come from the dates and the rent ledger,
+   * so an ended lease never shows as overdue (B28). */
+  function pmsRentLine(l) {
+    const r = pmsLeaseLedger(l), c = r.current, st = pmsAutoStatus(l);
+    const day = v => v ? pmsDispDate(pmsDateObj(String(v).slice(0, 10))) : "";
+    if (r.overdue > 0) return { cls: "red", text: C.money(r.overdue) + " overdue", sub: c.nextDue ? "since " + day(c.nextDue) : "" };
+    if (st === "terminated" || st === "expired") return { cls: "dim", text: r.dueToDate > 0 ? C.money(r.dueToDate) + " still owed" : "Lease ended", sub: r.dueToDate > 0 ? "" : "nothing owed" };
+    if (c.state === "due") {
+      const m = r.months.find(x => x.key === c.month);
+      return { cls: "gold", text: C.money(m ? m.balance : r.dueToDate) + " due", sub: "on " + day(c.nextDue) };
+    }
+    if (c.state === "upcoming") return { cls: "blue", text: "Starts " + day(l.start), sub: "first rent due " + day(c.nextDue) };
+    return { cls: "green", text: "Paid up", sub: c.nextDue ? "next rent due " + day(c.nextDue) : "" };
+  }
+  function pmsPortalHelp(kind) {
+    const sc = siteContactData();
+    const tel = String(sc.phone || "").replace(/[^0-9+]/g, "");
+    return '<p class="dim pms-portal-help">' + (kind === "owner" ? "Questions about your properties or a payout? " : "Questions about your rent or the property? ") +
+      (tel ? 'Call SEA ESTATES at <a href="tel:' + esc(tel) + '">' + esc(sc.phone) + "</a>" : "Contact SEA ESTATES") +
+      (sc.email ? ' or email <a href="mailto:' + esc(sc.email) + '">' + esc(sc.email) + "</a>" : "") + ".</p>";
+  }
+  function pmsPortalUnlinked(kind) {
+    const who = esc(currentUser ? currentUser.email : "your email");
+    const body = currentUser && currentUser.demo
+      ? "This demo account isn't linked to " + (kind === "tenant" ? "a tenant" : "an owner") + " yet. Log in as Admin and create " + (kind === "tenant" ? "a tenant" : "an owner") + " whose email matches <b>" + who + "</b>, then switch back here."
+      : "Your login (<b>" + who + "</b>) isn't linked to " + (kind === "tenant" ? "a rental" : "a property") + " yet. Ask SEA ESTATES to link it, then sign in again.";
+    return '<div class="card card-pad empty">' + icon(kind === "tenant" ? "home" : "star", 46) + "<h3>No " + kind + " record for your account</h3><p>" + body + "</p></div>" + pmsPortalHelp(kind);
+  }
+  function pmsPortalPayments(payments, emptyText) {
+    if (!payments.length) return '<p class="dim">' + emptyText + "</p>";
+    const rows = payments.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    return '<div class="table-wrap"><table class="data"><tr><th>Date</th><th>Period</th><th class="num">Amount</th><th>Method</th><th>Status</th><th>Receipt</th></tr>' +
+      rows.map(p => {
+        const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
+        return '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td><td>' + pmsProofCell(p) + '</td></tr>';
+      }).join("") + "</table></div>";
+  }
+  function pmsSection(title, count, inner, open, extra) {
+    return '<details class="card card-pad mb-16 pms-sec"' + (open ? " open" : "") + '><summary><span class="pms-sec-title">' + esc(title) + '</span>' +
+      (count !== null && count !== undefined ? ' <span class="badge blue">' + count + "</span>" : "") + (extra ? ' <span class="dim pms-sec-extra">' + extra + "</span>" : "") + "</summary>" +
+      '<div class="pms-sec-body">' + inner + "</div></details>";
+  }
+
   function pmsTenantPortal() {
     const em = currentUser ? String(currentUser.email || "").toLowerCase() : "";
     // Linked by login id; email only for records made before logins were stored.
     const tenant = pmsActiveTenants().find(t => currentUser && t.authUserId === currentUser.id) || pmsActiveTenants().find(t => String(t.email || "").toLowerCase() === em);
-    let html = '<div class="hero"><div><h1>Tenant Portal</h1><p>Your lease, rent, and payment history.</p></div></div>';
-    if (!tenant) {
-      html += '<div class="card card-pad empty">' + icon("home", 46) + "<h3>No tenant record for your account</h3><p>This demo account isn't linked to a tenant yet. Log in as Admin and create a tenant whose email matches <b>" + esc(currentUser ? currentUser.email : "your email") + '</b>, then switch back here.</p></div>';
-      return html;
-    }
+    let html = '<div class="hero"><div><h1>Tenant Portal</h1><p>Your rent, your lease and your payments.</p></div></div>';
+    if (!tenant) return html + pmsPortalUnlinked("tenant");
     const leases = pmsActiveLeases().filter(l => l.tenant_id === tenant.id);
     const payIds = leases.map(l => l.id);
     const payments = pmsActivePayments().filter(p => payIds.indexOf(p.lease_id) !== -1);
-    const active = leases.filter(l => pmsLeaseLive(l));
-    const due = pmsArrearsFor(leases);
-    const paid = pmsPaySum(payments, ["paid"]);
-    html += '<div class="grid grid-4 mb-24">' +
-      kpi("Active Leases", active.length, "of " + leases.length + " leases", "green", "doc") +
-      kpi("Rent Due", C.money(due), "overdue rent", due > 0 ? "red" : "green", "dollar") +
-      kpi("Paid", C.money(paid), "all-time", "green", "check") +
-      kpi("Tenant", esc(tenant.name || "—").slice(0, 18), esc(tenant.phone || ""), "blue", "star") + '</div>';
-    html += '<div class="card card-pad mb-24"><h3 class="mb-16">Your Leases</h3>';
-    if (!leases.length) {
-      html += '<p class="dim">No leases on file for your account.</p>';
-    } else {
-      leases.forEach(l => {
-        const sc = LEASE_STATUSES.find(x => x.value === l.status);
-        const ow = pms().owners.find(o => o.id === (tenant.owner_id || pms().properties.find(p => p.id === l.property_id)?.owner_id));
-        const dinfo = pmsLeaseDueInfo(l);
-        const dueColor = dinfo.state === "paid" ? "#34C77B" : (dinfo.state === "overdue" ? "#E5484D" : "#E9A23B");
-        const dueTxt = dinfo.state === "paid" ? "Paid for " + dinfo.label : (dinfo.state === "overdue" ? "Due " + pmsDispDate(dinfo.nextDue) + " \u00B7 overdue" : "Due " + pmsDispDate(dinfo.nextDue));
-        html += '<div class="appr-list-row" style="margin-bottom:10px"><div class="row spread" style="flex-wrap:wrap;gap:8px"><div><b>' + esc(pmsPropertyTitle(l.property_id)) + '</b><div class="dim tiny">' + esc(pmsUnitName(l.unit_id)) + (ow ? ' \u00B7 Landlord: <b>' + esc(ow.name) + '</b>' : "") + '</div></div>' +
-          '<div style="text-align:right"><div class="k-value" style="font-size:16px">' + C.money(l.rent) + (l.rent_type === "lease" ? "" : "/mo") + '</div><div class="dim tiny">' + esc(String(l.start || "").slice(0, 10)) + ' \u2192 ' + esc(String(l.end || "").slice(0, 10)) + '</div>' +
-          '<div class="mt-4" style="color:' + dueColor + ';font-size:18px;font-weight:700">' + dueTxt + '</div></div></div>' +
-          '<div class="mt-8">' + pmsStatusBadge(sc, sc ? sc.label : (l.status || "—")) + '</div></div>';
-      });
-    }
-    html += '</div>';
-    html += '<div class="card card-pad"><h3 class="mb-16">Payment History</h3>';
-    if (!payments.length) {
-      html += '<p class="dim">No payments recorded for your account.</p>';
-    } else {
-      html += '<div class="table-wrap"><table class="data"><tr><th>Date</th><th>Period</th><th class="num">Amount</th><th>Method</th><th>Status</th><th>Proof</th></tr>';
-      payments.forEach(p => {
-        const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
-        const proof = safePaymentProofUrl(p.proof);
-        html += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td>' +
-          '<td>' + (proof
-            ? '<button type="button" class="pms-proof-btn" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View proof") + '"><img src="' + esc(proof) + '" alt="Proof of payment" style="width:56px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--stroke)"></button>'
-            : '<span class="dim">—</span>') + '</td></tr>';
-      });
-      html += '</table></div>';
-    }
-    html += '</div>';
-    return html;
+    const current = leases.filter(l => { const s = pmsAutoStatus(l); return (s !== "expired" && s !== "terminated") || pmsLeaseArrears(l) > 0; });
+    const past = leases.filter(l => current.indexOf(l) === -1);
+    if (!leases.length) html += '<div class="card card-pad mb-16"><p class="dim">No leases on file for your account yet.</p></div>';
+    current.forEach(l => {
+      const st = pmsAutoStatus(l), sc = LEASE_STATUSES.find(x => x.value === st);
+      const ow = pms().owners.find(o => o.id === (pms().properties.find(p => p.id === l.property_id) || {}).owner_id) || pms().owners.find(o => o.id === tenant.owner_id);
+      const line = pmsRentLine(l);
+      const owed = pmsUnpaidMonths(l);
+      html += '<section class="card card-pad mb-16 pms-rent-card">' +
+        '<div class="row spread" style="flex-wrap:wrap;gap:8px;align-items:flex-start"><div><h2 class="pms-rent-place">' + esc(pmsPropertyTitle(l.property_id)) + '</h2><div class="dim">' + esc(pmsUnitName(l.unit_id)) + (ow ? " · Landlord: " + esc(ow.name) : "") + '</div></div>' + pmsStatusBadge(sc, sc ? sc.label : st) + '</div>' +
+        '<div class="pms-rent-status ' + line.cls + '"><b>' + esc(line.text) + '</b>' + (line.sub ? '<span>' + esc(line.sub) + '</span>' : "") + '</div>' +
+        (owed.length ? '<div class="pms-owed"><div class="pms-owed-head">What you owe</div>' + owed.map(m => '<div class="pms-owed-row"><span>' + esc(l.rent_type === "lease" ? "Lease total" : m.label) + '<small class="dim"> · due ' + esc(pmsDispDate(m.date)) + '</small></span><b>' + C.money(m.balance) + '</b></div>').join("") + '</div>' : "") +
+        '<div class="pms-rent-meta dim">' + C.money(l.rent) + (l.rent_type === "lease" ? " for the whole lease" : " a month, due on day " + PL().dueDay(l)) + ' · ' + esc(String(l.start || "—").slice(0, 10)) + ' → ' + esc(String(l.end || "—").slice(0, 10)) + '</div>' +
+        '<div class="row mt-8" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn btn-ghost btn-sm" data-pms-print="lease:' + esc(l.id) + '">' + icon("print", 13) + ' Statement</button></div>' +
+        '</section>';
+    });
+    html += pmsSection("Payment history", payments.length, pmsPortalPayments(payments, "No payments recorded for your account yet."), true);
+    if (past.length) html += pmsSection("Past leases", past.length, past.map(l => '<div class="pms-past-row"><b>' + esc(pmsPropertyTitle(l.property_id)) + '</b> ' + esc(pmsUnitName(l.unit_id)) + '<div class="dim tiny">' + esc(String(l.start || "").slice(0, 10)) + ' → ' + esc(String(l.end || "").slice(0, 10)) + ' · ' + esc((LEASE_STATUSES.find(x => x.value === pmsAutoStatus(l)) || {}).label || "") + '</div></div>').join(""), false);
+    return html + pmsPortalHelp("tenant");
   }
 
   function pmsOwnerPortal() {
     const em = currentUser ? String(currentUser.email || "").toLowerCase() : "";
     const owner = pmsActiveOwners().find(o => currentUser && o.authUserId === currentUser.id) || pmsActiveOwners().find(o => String(o.email || "").toLowerCase() === em);
-    let html = '<div class="hero"><div><h1>Owner Portal</h1><p>Your properties, tenants, leases, and finances at a glance.</p></div></div>';
-    if (!owner) {
-      html += '<div class="card card-pad empty">' + icon("star", 46) + "<h3>No owner record for your account</h3><p>This demo account isn't linked to an owner yet. Log in as Admin and create an owner whose email matches <b>" + esc(currentUser ? currentUser.email : "your email") + '</b>, then switch back here.</p></div>';
-      return html;
-    }
+    let html = '<div class="hero"><div><h1>Owner Portal</h1><p>Your properties, tenants, rent and spending.</p></div></div>';
+    if (!owner) return html + pmsPortalUnlinked("owner");
     const myProps = pmsActiveProperties().filter(p => p.owner_id === owner.id);
     const propIds = myProps.map(p => p.id);
     const units = pmsActiveUnits().filter(u => propIds.indexOf(u.property_id) !== -1);
     const leases = pmsActiveLeases().filter(l => propIds.indexOf(l.property_id) !== -1);
-    const tenIds = leases.map(l => l.tenant_id);
-    const tenants = pmsActiveTenants().filter(t => tenIds.indexOf(t.id) !== -1 || t.owner_id === owner.id);
-    const payIds = leases.map(l => l.id);
-    const payments = pmsActivePayments().filter(p => payIds.indexOf(p.lease_id) !== -1);
+    const payments = pmsActivePayments().filter(p => { const l = pms().leases.find(x => x.id === p.lease_id); return propIds.indexOf(l ? l.property_id : p.property_id) !== -1; });
     const active = leases.filter(l => pmsLeaseLive(l));
     const myExpenses = pmsActiveExpenses().filter(e => propIds.indexOf(e.property_id) !== -1);
     const myMaint = pmsActiveMaintenance().filter(m => propIds.indexOf(m.property_id) !== -1);
-    const openMaint = myMaint.filter(m => m.status !== "completed");
-    const openMaintCost = openMaint.reduce((s, m) => s + C.num(m.cost, 0), 0);
-    const maintCost = myMaint.reduce((s, m) => s + C.num(m.cost, 0), 0);
-    const expenseSum = myExpenses.reduce((s, e) => s + C.num(e.amount, 0), 0);
-    const totalExpenses = expenseSum + maintCost;
     const myDocs = pmsActiveDocuments().filter(d => propIds.indexOf(d.property_id) !== -1);
+    const money = pmsMoneyFor(propIds);
     const due = pmsArrearsFor(leases);
-    const paid = pmsPaySum(payments, ["paid"]);
-    html += '<div class="grid grid-4 mb-24">' +
-      kpi("Properties", myProps.length, "owned by you", "green", "briefcase") +
-      kpi("Units", units.length, "across your properties", "blue", "layers") +
-      kpi("Tenants", tenants.length, "linked to your leases", "blue", "star") +
-      kpi("Active Leases", active.length, "of " + leases.length + " leases", "green", "doc") + '</div>';
-    html += '<div class="grid grid-4 mb-24">' +
-      kpi("Collected", C.money(paid), "all-time paid", "green", "dollar") +
-      kpi("Arrears", C.money(due), "overdue rent", due > 0 ? "red" : "green", "trending") +
-      kpi("Owner", esc(owner.name || "—").slice(0, 18), esc(owner.email || ""), "purple", "star") +
-      kpi("Bank", esc(owner.bank || "—"), esc(owner.account_number || ""), "gold", "credit-card") + '</div>';
-    const netPosition = paid - totalExpenses;
-    html += '<div class="grid grid-4 mb-24">' +
-      kpi("Total Expenses", C.money(totalExpenses), "operating + maintenance", totalExpenses > 0 ? "red" : "green", "dollar") +
-      kpi("Open Work Orders", openMaint.length, openMaintCost > 0 ? C.money(openMaintCost) + " est. cost" : "none in progress", openMaint.length ? "gold" : "green", "layers") +
-      kpi("Documents", myDocs.length, myDocs.length === 1 ? "document on file" : "documents on file", "blue", "doc") +
-      kpi("Net Position", C.money(netPosition), "collected minus expenses", netPosition >= 0 ? "green" : "red", "trending") + '</div>';
-    html += '<div class="card card-pad mb-24"><h3 class="mb-16">Your Properties</h3>';
-    if (!myProps.length) {
-      html += '<p class="dim">No properties on file for your account.</p>';
-    } else {
-      html += '<div class="table-wrap"><table class="data"><tr><th>Property</th><th>Location</th><th>Type</th><th>Status</th><th class="num">Rent</th><th class="num">Units</th></tr>';
-      myProps.forEach(p => {
-        const sc = PROPERTY_STATUSES.find(x => x.value === p.status);
-        const ucount = pmsActiveUnits().filter(u => u.property_id === p.id).length;
-        html += '<tr><td><b>' + esc(p.title || "Untitled") + '</b></td>' +
-          '<td>' + esc([p.barangay, p.city, p.province].filter(Boolean).join(", ") || p.address || "—") + '</td>' +
-          '<td>' + esc(p.type || "—") + '</td>' +
-          '<td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td>' +
-          '<td class="num">' + (C.num(p.rent, 0) > 0 ? C.money(p.rent) + '/mo' : "—") + '</td>' +
-          '<td class="num">' + ucount + '</td></tr>';
-      });
-      html += '</table></div>';
-    }
-    html += '</div>';
-    html += '<div class="card card-pad mb-24"><h3 class="mb-16">Your Leases</h3>';
-    if (!leases.length) {
-      html += '<p class="dim">No leases on your properties yet.</p>';
-    } else {
-      leases.forEach(l => {
-        const sc = LEASE_STATUSES.find(x => x.value === l.status);
-        html += '<div class="appr-list-row" style="margin-bottom:10px"><div class="row spread" style="flex-wrap:wrap;gap:8px"><div><b>' + esc(pmsPropertyTitle(l.property_id)) + '</b><div class="dim tiny">' + esc(pmsUnitName(l.unit_id)) + ' \u00B7 ' + esc(pmsTenantName(l.tenant_id)) + '</div></div>' +
-          '<div style="text-align:right"><div class="k-value" style="font-size:16px">' + C.money(l.rent) + (l.rent_type === "lease" ? "" : "/mo") + '</div><div class="dim tiny">' + esc(String(l.start || "").slice(0, 10)) + ' \u2192 ' + esc(String(l.end || "").slice(0, 10)) + '</div></div></div>' +
-          '<div class="mt-8">' + pmsStatusBadge(sc, sc ? sc.label : (l.status || "—")) + '</div></div>';
-      });
-    }
-    html += '</div>';
-    html += '<div class="card card-pad"><h3 class="mb-16">Payment History</h3>';
-    if (!payments.length) {
-      html += '<p class="dim">No payments recorded for your properties.</p>';
-    } else {
-      html += '<div class="table-wrap"><table class="data"><tr><th>Date</th><th>Period</th><th class="num">Amount</th><th>Method</th><th>Status</th><th>Proof</th></tr>';
-      payments.forEach(p => {
-        const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
-        const proof = safePaymentProofUrl(p.proof);
-        html += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td>' +
-          '<td>' + (proof
-            ? '<button type="button" class="pms-proof-btn" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View proof") + '"><img src="' + esc(proof) + '" alt="Proof of payment" style="width:56px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--stroke)"></button>'
-            : '<span class="dim">—</span>') + '</td></tr>';
-      });
-      html += '</table></div>';
-    }
-    html += '</div>';
-    const myExpensesSorted = myExpenses.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-    html += '<div class="card card-pad mb-24"><h3 class="mb-16">Expense History</h3>';
-    if (!myExpenses.length) {
-      html += '<p class="dim">No expenses recorded for your properties.</p>';
-    } else {
-      html += '<div class="table-wrap"><table class="data"><tr><th>Date</th><th>Property</th><th>Category</th><th>Description</th><th class="num">Amount</th></tr>';
-      myExpensesSorted.forEach(e => {
-        html += '<tr><td>' + esc(String(e.date || "").slice(0, 10)) + '</td><td>' + esc(pmsPropertyTitle(e.property_id)) + '</td><td>' + esc(e.category || "-") + '</td><td>' + esc(e.description || "-") + '</td><td class="num">' + C.money(C.num(e.amount, 0)) + '</td></tr>';
-      });
-      html += '<tr><td colspan="4"><b>Total operating expenses</b></td><td class="num"><b>' + C.money(expenseSum) + "</b></td></tr>";
-      html += '</table></div>';
-    }
-    html += '</div>';
-    const myMaintSorted = myMaint.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-    html += '<div class="card card-pad mb-24"><h3 class="mb-16">Maintenance</h3>';
-    if (!myMaint.length) {
-      html += '<p class="dim">No work orders on your properties yet.</p>';
-    } else {
-      html += '<div class="table-wrap"><table class="data"><tr><th>Date</th><th>Work Order</th><th>Property / Unit</th><th>Status</th><th class="num">Cost</th></tr>';
-      myMaintSorted.forEach(m => {
+    const owing = leases.filter(l => pmsLeaseArrears(l) > 0);
+    const thisMonth = pmsToday().slice(0, 7);
+    const monthPaid = pmsPaySum(payments.filter(p => String(p.date || "").slice(0, 7) === thisMonth), ["paid"]);
+    const occupied = units.filter(u => pmsUnitTenantCount(u.id) > 0).length;
+    html += '<div class="grid grid-4 mb-16 pms-kpis">' +
+      kpi("Occupied", occupied + " / " + units.length, units.length === 1 ? "unit with a tenant" : "units with a tenant", "cyan", "check") +
+      kpi("Collected", C.money(monthPaid), "this month · " + C.money(money.collected) + " all time", "green", "dollar") +
+      kpi("Overdue", C.money(due), owing.length ? owing.length + (owing.length === 1 ? " lease behind" : " leases behind") : "nobody is behind", due > 0 ? "red" : "green", "trending") +
+      kpi("Net", C.money(money.net), "after " + C.money(money.spent) + " spending", money.net >= 0 ? "green" : "red", "chart") + '</div>';
+    const acct = String(owner.account_number || "");
+    html += '<p class="dim pms-owner-line">' + esc(owner.name || "") + (owner.bank ? ' · Payouts to ' + esc(owner.bank) + (acct ? " •••• " + esc(acct.slice(-4)) : "") : "") + '</p>';
+
+    const leaseRows = leases.length ? leases.slice().sort((a, b) => pmsLeaseArrears(b) - pmsLeaseArrears(a)).map(l => {
+      const st = pmsAutoStatus(l), sc = LEASE_STATUSES.find(x => x.value === st), line = pmsRentLine(l);
+      return '<div class="pms-lease-row"><div class="row spread" style="flex-wrap:wrap;gap:8px"><div><b>' + esc(pmsTenantName(l.tenant_id)) + '</b><div class="dim tiny">' + esc(pmsPropertyTitle(l.property_id)) + ' · ' + esc(pmsUnitName(l.unit_id)) + '</div></div>' +
+        '<div style="text-align:right"><div class="pms-rent-status ' + line.cls + ' compact"><b>' + esc(line.text) + '</b>' + (line.sub ? '<span>' + esc(line.sub) + '</span>' : "") + '</div></div></div>' +
+        '<div class="row mt-8" style="gap:8px;flex-wrap:wrap;align-items:center">' + pmsStatusBadge(sc, sc ? sc.label : st) + '<span class="dim tiny">' + C.money(l.rent) + (l.rent_type === "lease" ? " lease total" : "/mo") + ' · ' + esc(String(l.start || "").slice(0, 10)) + ' → ' + esc(String(l.end || "").slice(0, 10)) + '</span></div></div>';
+    }).join("") : '<p class="dim">No leases on your properties yet.</p>';
+    html += pmsSection("Leases and rent", leases.length, leaseRows, true, active.length + " running");
+    html += pmsSection("Payments", payments.length, pmsPortalPayments(payments, "No payments recorded for your properties yet."), true, C.money(money.collected) + " received");
+
+    const propRows = myProps.length ? '<div class="table-wrap"><table class="data"><tr><th>Property</th><th>Location</th><th>Type</th><th class="num">Units</th><th class="num">Occupied</th><th class="num">Net</th></tr>' + myProps.map(p => {
+      const u = units.filter(x => x.property_id === p.id), oc = u.filter(x => pmsUnitTenantCount(x.id) > 0).length;
+      return '<tr><td><b>' + esc(p.title || "Untitled") + '</b></td><td>' + esc([p.barangay, p.city, p.province].filter(Boolean).join(", ") || p.address || "—") + '</td><td>' + esc(p.type || "—") + '</td><td class="num">' + u.length + '</td><td class="num">' + oc + '</td><td class="num">' + C.money(pmsMoneyFor([p.id]).net) + '</td></tr>';
+    }).join("") + '</table></div>' : '<p class="dim">No properties on file for your account.</p>';
+    html += pmsSection("Properties", myProps.length, propRows, false);
+
+    const expRows = myExpenses.length ? '<div class="table-wrap"><table class="data"><tr><th>Date</th><th>Property</th><th>Category</th><th>Description</th><th class="num">Amount</th></tr>' +
+      myExpenses.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map(e => '<tr><td>' + esc(String(e.date || "").slice(0, 10)) + '</td><td>' + esc(pmsPropertyTitle(e.property_id)) + '</td><td>' + esc(e.category || "-") + '</td><td>' + esc(e.description || "-") + '</td><td class="num">' + C.money(C.num(e.amount, 0)) + '</td></tr>').join("") +
+      '<tr><td colspan="4"><b>Total expenses</b></td><td class="num"><b>' + C.money(money.expenses) + "</b></td></tr></table></div>" : '<p class="dim">No expenses recorded for your properties.</p>';
+    html += pmsSection("Expenses", myExpenses.length, expRows, false, C.money(money.expenses));
+
+    const maintRows = myMaint.length ? '<div class="table-wrap"><table class="data"><tr><th>Date</th><th>Work Order</th><th>Property / Unit</th><th>Status</th><th class="num">Cost</th></tr>' +
+      myMaint.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map(m => {
         const sc = MAINT_STATUSES.find(x => x.value === m.status);
-        html += '<tr><td>' + esc(String(m.date || "").slice(0, 10)) + '</td><td><b>' + esc(m.title || "-") + '</b>' + (m.vendor ? '<div class="dim tiny">' + esc(m.vendor) + '</div>' : "") + '</td><td>' + esc(pmsPropertyTitle(m.property_id)) + (m.unit_id ? ' <span class="dim tiny">' + esc(pmsUnitName(m.unit_id)) + '</span>' : "") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (m.status || "-")) + '</td><td class="num">' + (C.num(m.cost, 0) > 0 ? C.money(C.num(m.cost, 0)) : "-") + '</td></tr>';
-      });
-      html += '<tr><td colspan="4"><b>Total maintenance cost</b></td><td class="num"><b>' + C.money(maintCost) + "</b></td></tr>";
-      html += '</table></div>';
-    }
-    html += '</div>';
-    const myDocsSorted = myDocs.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-    html += '<div class="card card-pad"><h3 class="mb-16">Documents</h3>';
-    if (!myDocs.length) {
-      html += '<p class="dim">No documents on file for your properties.</p>';
-    } else {
-      html += '<div class="table-wrap"><table class="data"><tr><th>Name</th><th>Type</th><th>Category</th><th>Property / Unit</th><th class="num">Date</th><th>Notes</th></tr>';
-      myDocsSorted.forEach(d => {
-        html += '<tr><td><b>' + esc(d.name || "-") + '</b></td><td>' + esc(d.type || "-") + '</td><td>' + esc(d.category || "-") + '</td><td>' + esc(pmsPropertyTitle(d.property_id)) + (d.unit_id ? ' <span class="dim tiny">' + esc(pmsUnitName(d.unit_id)) + '</span>' : "") + '</td><td class="num">' + esc(String(d.date || "").slice(0, 10)) + '</td><td>' + esc(d.notes || "") + '</td></tr>';
-      });
-      html += '</table></div>';
-    }
-    html += '</div>';
-    return html;
+        return '<tr><td>' + esc(String(m.date || "").slice(0, 10)) + '</td><td><b>' + esc(m.title || "-") + '</b>' + (m.vendor ? '<div class="dim tiny">' + esc(m.vendor) + '</div>' : "") + '</td><td>' + esc(pmsPropertyTitle(m.property_id)) + (m.unit_id ? ' <span class="dim tiny">' + esc(pmsUnitName(m.unit_id)) + '</span>' : "") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (m.status || "-")) + '</td><td class="num">' + (C.num(m.cost, 0) > 0 ? C.money(C.num(m.cost, 0)) : "-") + '</td></tr>';
+      }).join("") +
+      '<tr><td colspan="4"><b>Finished repairs</b>' + (money.estimates > 0 ? '<div class="dim tiny">Open work orders, estimated: ' + C.money(money.estimates) + '</div>' : "") + '</td><td class="num"><b>' + C.money(money.repairs) + "</b></td></tr></table></div>" : '<p class="dim">No work orders on your properties yet.</p>';
+    const openCount = myMaint.filter(m => m.status === "open" || m.status === "in progress").length;
+    html += pmsSection("Repairs", myMaint.length, maintRows, openCount > 0, openCount ? openCount + " open" : "");
+
+    const docRows = myDocs.length ? '<div class="table-wrap"><table class="data"><tr><th>Name</th><th>Type</th><th>Category</th><th>Property / Unit</th><th class="num">Date</th><th>Notes</th></tr>' +
+      myDocs.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map(d => '<tr><td><b>' + esc(d.name || "-") + '</b></td><td>' + esc(d.type || "-") + '</td><td>' + esc(d.category || "-") + '</td><td>' + esc(pmsPropertyTitle(d.property_id)) + (d.unit_id ? ' <span class="dim tiny">' + esc(pmsUnitName(d.unit_id)) + '</span>' : "") + '</td><td class="num">' + esc(String(d.date || "").slice(0, 10)) + '</td><td>' + esc(d.notes || "") + '</td></tr>').join("") + '</table></div>' : '<p class="dim">No documents on file for your properties.</p>';
+    html += pmsSection("Documents", myDocs.length, docRows, false);
+    return html + pmsPortalHelp("owner");
   }
 
   /* ---- PMS editors & persistence ---- */
@@ -9709,7 +9687,7 @@ premise: "Fee Simple / As Improved",
     return '<input class="input input-num" id="' + id + '" type="text" inputmode="decimal" autocomplete="off" value="' + (C.num(value, 0) > 0 ? C.fmtNum(value) : "") + '" placeholder="0">';
   }
   function pmsSel(id, options, selected) {
-    return '<select class="input" id="' + id + '">' + options.map(o => '<option value="' + o[0] + '"' + (selected === o[0] ? " selected" : "") + '>' + esc(o[1]) + '</option>').join("") + '</select>';
+    return '<select class="input" id="' + id + '">' + options.map(o => '<option value="' + esc(o[0]) + '"' + (selected === o[0] ? " selected" : "") + '>' + esc(o[1]) + '</option>').join("") + '</select>';
   }
   function pmsField(label, inner, hint, full) {
     return '<div class="field' + (full ? " col-full" : "") + '"><label>' + label + '</label>' + inner + (hint ? '<div class="field-hint">' + hint + '</div>' : "") + '</div>';
@@ -9779,31 +9757,31 @@ premise: "Fee Simple / As Improved",
     if (!p) return;
     const units = pmsActiveUnits().filter(u => u.property_id === p.id);
     const leases = pmsActiveLeases().filter(l => l.property_id === p.id);
-    const pays = pmsActivePayments().filter(x => x.property_id === p.id).slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
-    const exps = pmsActiveExpenses().filter(x => x.property_id === p.id);
+    const pays = pmsPaymentsOfProperty(p.id).sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+    const money = pmsMoneyFor([p.id]);
     const owner = pmsActiveOwners().find(o => o.id === p.owner_id);
     const psc = PROPERTY_STATUSES.find(x => x.value === p.status);
     const occ = units.filter(u => pmsUnitTenantCount(u.id) > 0).length;
     const occPct = units.length ? Math.round(occ / units.length * 100) : 0;
     const monthly = leases.filter(l => pmsLeaseLive(l) && l.rent_type !== "lease").reduce((s, l) => s + C.num(l.rent, 0), 0);
-    const paid = pmsPaySum(pays, ["paid"]);
+    const paid = money.collected;
     const arr = pmsArrearsFor(pmsActiveLeases().filter(x => x.property_id === p.id));
-    const totalExp = exps.reduce((s, e) => s + C.num(e.amount, 0), 0);
+    const totalExp = money.spent;
 
     const unitRows = units.map(u => {
-      const usc = UNIT_STATUSES.find(x => x.value === u.status);
+      const usc = UNIT_STATUSES.find(x => x.value === (pmsUnitTenantCount(u.id) > 0 ? "occupied" : u.status === "maintenance" ? "maintenance" : "vacant"));
       const tenants = pmsUnitTenants(u.id).join(", ");
       return '<tr><td>' + esc(pmsUnitName(u.id)) + '</td><td class="num">' + Math.floor(C.num(u.bedrooms, 0)) + '</td><td class="num">' + C.num(u.size, 0) + ' sqm</td><td>' + pmsStatusBadge(usc, usc ? usc.label : (u.status || "—")) + '</td><td>' + esc(tenants || "—") + '</td></tr>';
     }).join("");
 
     const tenantRows = leases.map(l => {
-      const lsc = LEASE_STATUSES.find(x => x.value === l.status);
+      const lsc = LEASE_STATUSES.find(x => x.value === pmsAutoStatus(l));
       return '<tr><td><b>' + esc(pmsTenantName(l.tenant_id)) + '</b></td><td>' + esc(pmsUnitName(l.unit_id)) + '</td><td>' + esc(String(l.start || "—").slice(0, 10)) + ' → ' + esc(String(l.end || "—").slice(0, 10)) + '</td><td class="num">' + (C.num(l.rent, 0) > 0 ? C.money(l.rent) : "—") + (l.rent_type === "lease" ? ' <span class="dim tiny">lease</span>' : "") + '</td><td>' + pmsStatusBadge(lsc, lsc ? lsc.label : (l.status || "—")) + '</td></tr>';
     }).join("");
 
     const payRows = pays.map(pay => {
       const psc2 = PAYMENT_STATUSES.find(x => x.value === pay.status);
-      return '<tr><td class="num">' + esc(String(pay.date || "—").slice(0, 10)) + '</td><td>' + esc(pay.month || "—") + '</td><td>' + esc(pmsTenantName(pay.tenant_id)) + '</td><td class="num">' + C.money(pay.amount) + '</td><td>' + esc(pay.method || "—") + '</td><td>' + pmsStatusBadge(psc2, psc2 ? psc2.label : (pay.status || "—")) + '</td><td>' + esc(pay.notes || "—") + '</td></tr>';
+      return '<tr><td class="num">' + esc(String(pay.date || "—").slice(0, 10)) + '</td><td>' + esc(pay.month ? pmsMonthText(pay.month) : "—") + '</td><td>' + esc(pmsTenantName(pay.tenant_id)) + '</td><td class="num">' + C.money(pay.amount) + '</td><td>' + esc(pay.method || "—") + '</td><td>' + pmsStatusBadge(psc2, psc2 ? psc2.label : (pay.status || "—")) + '</td><td>' + esc(pay.notes || "—") + '</td></tr>';
     }).join("");
 
     const loc = [p.address, p.barangay, p.city, p.province].filter(Boolean).join(", ");
@@ -9817,8 +9795,8 @@ premise: "Fee Simple / As Improved",
       (p.amenities && p.amenities.length ? '<div><b>Amenities:</b> ' + esc(p.amenities.join(", ")) + '</div>' : "") +
       '</div>' +
       '<h3>Overview</h3>' +
-      '<table class="print-sum"><tr><th>Units</th><th>Occupied</th><th>Occupancy</th><th>Monthly Rent</th><th>Collected</th><th>Arrears</th><th>Expenses</th><th>Net</th></tr>' +
-      '<tr><td class="num">' + units.length + '</td><td class="num">' + occ + '</td><td class="num">' + occPct + '%</td><td class="num">' + C.money(monthly) + '</td><td class="num">' + C.money(paid) + '</td><td class="num">' + C.money(arr) + '</td><td class="num">' + C.money(totalExp) + '</td><td class="num"><b>' + C.money(paid - totalExp) + '</b></td></tr></table>' +
+      '<table class="print-sum"><tr><th>Units</th><th>Occupied</th><th>Occupancy</th><th>Monthly Rent</th><th>Collected</th><th>Arrears</th><th>Spending</th><th>Net</th></tr>' +
+      '<tr><td class="num">' + units.length + '</td><td class="num">' + occ + '</td><td class="num">' + occPct + '%</td><td class="num">' + C.money(monthly) + '</td><td class="num">' + C.money(paid) + '</td><td class="num">' + C.money(arr) + '</td><td class="num">' + C.money(totalExp) + '</td><td class="num"><b>' + C.money(money.net) + '</b></td></tr></table>' +
       '<h3>Units</h3>' +
       '<table class="print-sched"><tr><th>Unit</th><th class="num">Beds</th><th class="num">Size</th><th>Status</th><th>Tenants</th></tr>' + (unitRows || '<tr><td colspan="5">No units</td></tr>') + '</table>' +
       '<h3>Tenants</h3>' +
@@ -9927,7 +9905,7 @@ premise: "Fee Simple / As Improved",
       const used = pmsUnitTenantCount(u.id), cap = pmsUnitCapacity(u);
       const full = used >= cap;
       const dis = full && editUnit !== u.id ? " disabled" : "";
-      return '<option value="' + u.id + '"' + (defaultUnit === u.id ? " selected" : "") + dis + '>' + esc(pmsPropertyTitle(u.property_id) + " \u00B7 " + pmsUnitName(u.id) + " (" + used + "/" + cap + (cap === 1 ? " tenant" : " tenants") + ")") + '</option>';
+      return '<option value="' + esc(u.id) + '"' + (defaultUnit === u.id ? " selected" : "") + dis + '>' + esc(pmsPropertyTitle(u.property_id) + " \u00B7 " + pmsUnitName(u.id) + " (" + used + "/" + cap + (cap === 1 ? " tenant" : " tenants") + ")") + '</option>';
     }).join("");
     const unitSel = '<select class="input" id="pms-lease-unit">' + unitOpts + '</select>';
     const selUnit = pms().units.find(x => x.id === defaultUnit);
@@ -9980,8 +9958,9 @@ premise: "Fee Simple / As Improved",
       pmsField("Notes", pmsTxt("pms-pay-notes", d.notes), "", true) +
       '<div class="field col-full"><label>Proof of Payment</label>' +
       '<label class="btn btn-ghost btn-sm" style="margin:0">' + icon("upload", 14) + ' Choose image<input type="file" id="pms-pay-proof" style="display:none" accept="image/*"></label>' +
-      (proof ? '<div class="mt-8"><img src="' + esc(proof) + '" alt="Current proof of payment" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid var(--stroke)"></div>' : "") +
-      '<div class="field-hint">Attach a photo or screenshot of the receipt (GCash, bank transfer, etc.). It is shrunk before saving.</div></div>';
+      (proof ? '<div class="mt-8"><img src="' + esc(proof) + '" alt="Current proof of payment" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid var(--stroke)"></div>'
+        : d.proofPath ? '<div class="mt-8 row" style="gap:8px;align-items:center"><span class="dim">Receipt on file.</span><button type="button" class="btn btn-ghost btn-sm" data-pms-proof="' + esc(d.id) + '">' + icon("camera", 13) + ' View</button></div>' : "") +
+      '<div class="field-hint">Attach a photo or screenshot of the receipt (GCash, bank transfer, etc.). It is shrunk before saving' + (pmsReceiptsCloud() ? " and kept private: only staff, the owner and the tenant can open it" : "") + '. A new photo replaces the old one.</div></div>';
     pmsModal(id ? "Edit Payment" : "New Payment", body, "payment", id);
     // Choosing another lease refreshes its months and suggests what it owes.
     const leaseEl = $("#pms-pay-lease");
@@ -10014,16 +9993,83 @@ premise: "Fee Simple / As Improved",
   // Receipt photos open in the app: Android blocks opening a data URL in a new tab.
   function pmsShowProof(id) {
     const p = pms().payments.find(x => x.id === id);
-    const url = p && safePaymentProofUrl(p.proof);
-    if (!url) return;
+    if (!pmsHasProof(p)) return;
+    const url = p.proofPath ? "" : safePaymentProofUrl(p.proof);
     const ov = document.createElement("div");
     ov.className = "modal-overlay"; ov.id = "pms-proof-view"; ov.style.zIndex = "600";
     ov.setAttribute("role", "dialog"); ov.setAttribute("aria-label", "Proof of payment");
     ov.innerHTML = '<div class="modal-card" style="max-width:640px;width:100%"><div class="modal-head"><h3>Proof of payment</h3><button class="icon-btn" data-proof-close aria-label="Close">&times;</button></div>' +
-      '<div class="modal-body"><img src="' + esc(url) + '" alt="Proof of payment" style="width:100%;height:auto;border-radius:8px"></div></div>';
+      '<div class="modal-body">' + (url
+        ? '<img src="' + esc(url) + '" alt="Proof of payment" style="width:100%;height:auto;border-radius:8px">'
+        : '<p class="dim" data-proof-wait>Opening the receipt…</p>') + '</div></div>';
     const close = () => ov.remove();
     ov.addEventListener("click", e => { if (e.target === ov || e.target.closest("[data-proof-close]")) close(); });
     document.body.appendChild(ov);
+    if (url) return;
+    // Private file: a link that works for five minutes, for people allowed to read this payment.
+    const body = ov.querySelector(".modal-body");
+    const fail = msg => { if (body) body.innerHTML = '<p class="dim">' + esc(msg) + '</p>'; };
+    if (!SB) { fail("The receipt is stored online. Connect to the internet to open it."); return; }
+    SB.storage.from(PMS_RECEIPTS).createSignedUrl(p.proofPath, 300).then(res => {
+      if (res.error || !res.data || !res.data.signedUrl) throw res.error || new Error("No link");
+      const img = new Image();
+      img.alt = "Proof of payment";
+      img.style.cssText = "width:100%;height:auto;border-radius:8px";
+      img.onerror = () => fail("The receipt could not be loaded. Check your connection and try again.");
+      img.src = res.data.signedUrl;
+      if (body) { body.innerHTML = ""; body.appendChild(img); }
+    }).catch(() => fail("The receipt could not be opened. Check your connection and try again."));
+  }
+
+  /* Receipt photos (PMS analysis S6). Once supabase/pms_v2_receipts.sql has
+   * run, each photo is a private file at payments/<payment id>/<file> in the
+   * pms-receipts bucket, and only people who can read the payment can open it.
+   * Until then (and in the offline demo) the photo stays inside the record. */
+  const PMS_RECEIPTS = "pms-receipts";
+  let pmsReceiptsOk = null; // false once the bucket is found missing this session
+  let pmsReceiptsMoving = false;
+  function pmsHasProof(p) { return !!(p && (p.proofPath || safePaymentProofUrl(p.proof))); }
+  function pmsReceiptsCloud() { return pmsStore === "tables" && pmsCloudAccounts() && currentUser.role === "super-admin" && pmsReceiptsOk !== false; }
+  function pmsProofCell(p) {
+    if (!pmsHasProof(p)) return '<span class="dim">—</span>';
+    return '<button type="button" class="btn btn-ghost btn-sm" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View receipt") + '">' + icon("camera", 13) + ' Receipt</button>';
+  }
+  async function pmsUploadReceipt(paymentId, dataUrl) {
+    const blob = dataUrlToBlob(dataUrl);
+    const path = "payments/" + paymentId + "/" + Date.now().toString(36) + ".jpg";
+    const up = await SB.storage.from(PMS_RECEIPTS).upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false });
+    if (up.error) {
+      if (/bucket not found/i.test(String(up.error.message || up.error.error || ""))) pmsReceiptsOk = false;
+      throw up.error;
+    }
+    pmsReceiptsOk = true;
+    return path;
+  }
+  function pmsRemoveReceipt(path) {
+    if (!path || !SB || !pmsCloudAccounts()) return;
+    Promise.resolve(SB.storage.from(PMS_RECEIPTS).remove([path])).catch(() => {});
+  }
+  async function pmsMoveReceiptsToStorage() {
+    if (pmsReceiptsMoving || !pmsReceiptsCloud()) return 0;
+    const todo = pms().payments.filter(p => p && p.id && !p.proofPath && typeof p.proof === "string" && p.proof.indexOf("data:image/") === 0);
+    if (!todo.length) return 0;
+    pmsReceiptsMoving = true;
+    let moved = 0;
+    try {
+      for (const p of todo) {
+        let path;
+        try { path = await pmsUploadReceipt(p.id, p.proof); }
+        catch (e) { if (pmsReceiptsOk === false) break; continue; }
+        // The record may have been replaced while uploading; update whichever copy is current.
+        const cur = pms().payments.find(x => x.id === p.id) || p;
+        cur.proofPath = path;
+        delete cur.proof;
+        cur.updatedAt = Date.now();
+        moved++;
+      }
+    } finally { pmsReceiptsMoving = false; }
+    if (moved) save();
+    return moved;
   }
 
   function openMaintEditor(id) {
@@ -10068,7 +10114,7 @@ premise: "Fee Simple / As Improved",
       pmsField("Property", propSel) +
       pmsField("Unit", pmsSel("pms-doc-unit", [["", "— none —"]].concat(units.map(u => [u.id, pmsPropertyTitle(u.property_id) + " \u00B7 " + pmsUnitName(u.id)])), d.unit_id || "")) +
       pmsField("Date", pmsDate("pms-doc-date", d.date)) +
-      pmsField("Notes", pmsTxt("pms-doc-notes", d.notes, "reference number, folder, etc."), "Demo mode stores registry metadata only (no file bytes).", true);
+      pmsField("Notes", pmsTxt("pms-doc-notes", d.notes, "reference number, folder, etc."), "Keeps the document's details for the register; the file itself is not uploaded here.", true);
     pmsModal(id ? "Edit Document" : "New Document", body, "document", id);
   }
 
@@ -10640,6 +10686,15 @@ premise: "Fee Simple / As Improved",
     }
     const savedLease = id ? store.find(x => x.id === id) : store[0];
     const tenant = pms().tenants.find(x => x.id === tenant_id);
+    // A lease moved to another unit or tenant takes its payments with it (B27).
+    if (id && savedLease) {
+      pms().payments.forEach(p => {
+        if (p.lease_id !== id) return;
+        if (p.property_id === savedLease.property_id && p.unit_id === savedLease.unit_id && p.tenant_id === savedLease.tenant_id) return;
+        p.property_id = savedLease.property_id; p.unit_id = savedLease.unit_id; p.tenant_id = savedLease.tenant_id;
+        p.updatedAt = Date.now();
+      });
+    }
     syncUnitFromLeases();
     save();
     let leaseToast = "Lease saved";
@@ -10729,27 +10784,43 @@ premise: "Fee Simple / As Improved",
       status: $("#pms-pay-status").value,
       notes: $("#pms-pay-notes").value.trim()
     };
-    if (existing.proof) { data.proof = existing.proof; data.proofName = existing.proofName || ""; }
+    if (existing.proofPath) { data.proofPath = existing.proofPath; data.proofName = existing.proofName || ""; }
+    else if (existing.proof) { data.proof = existing.proof; data.proofName = existing.proofName || ""; }
     const fileEl = $("#pms-pay-proof");
     const saveBtn = $('[data-pms-save="payment"]');
     if (saveBtn) { if (saveBtn.disabled) return; saveBtn.disabled = true; }
+    const payId = id || pmsNewId("p");
+    let replacedPath = "";
     const persist = () => {
       const store = pms().payments;
       if (id) {
         const rec = store.find(x => x.id === id);
-        if (rec) { Object.assign(rec, data); rec.updatedAt = Date.now(); }
+        // The receipt is either a private file or a photo in the record, never both.
+        if (rec) { delete rec.proof; delete rec.proofPath; Object.assign(rec, data); rec.updatedAt = Date.now(); }
       } else {
-        store.unshift(Object.assign({ id: pmsNewId("p"), createdAt: Date.now(), archived: false }, data));
+        store.unshift(Object.assign({ id: payId, createdAt: Date.now(), archived: false }, data));
       }
       save(); closePmsModal(); toast("Payment recorded"); render();
+      if (replacedPath) pmsRemoveReceipt(replacedPath);
     };
     if (fileEl && fileEl.files && fileEl.files.length) {
       const f = fileEl.files[0];
       if (!/^image\//.test(f.type)) { if (saveBtn) saveBtn.disabled = false; toast("Proof must be an image (JPEG/PNG)", "err"); return; }
-      pmsReadProof(f, proof => {
+      pmsReadProof(f, async proof => {
         if (proof === null) { if (saveBtn) saveBtn.disabled = false; return; }
-        data.proof = proof;
+        delete data.proof; delete data.proofPath;
         data.proofName = f.name;
+        replacedPath = existing.proofPath || ""; // the new photo replaces the old file
+        if (pmsReceiptsCloud()) {
+          if (saveBtn) saveBtn.innerHTML = icon("upload", 15) + " Uploading…";
+          try {
+            data.proofPath = await pmsUploadReceipt(payId, proof);
+          } catch (e) {
+            data.proof = proof; // kept in the record; it moves to storage on a later sign-in
+          }
+        } else {
+          data.proof = proof;
+        }
         persist();
       });
     } else {
@@ -10837,23 +10908,25 @@ premise: "Fee Simple / As Improved",
     if (!rec) return;
     if (kind === "owner" && !allowPmsOwnerDeletion(rec)) return;
     if (kind === "tenant" && !allowPmsTenantDeletion(rec)) return;
+    // Ended leases are history, not a reason to keep a unit or property on the list (B25).
+    const leaseOpen = l => { const s = pmsAutoStatus(l); return s !== "expired" && s !== "terminated"; };
     if (kind === "property") {
       const units = pmsActiveUnits().filter(x => x.property_id === id).length;
-      const leases = pmsActiveLeases().filter(x => x.property_id === id).length;
-      if (units || leases) { toast("Cannot archive property. Clear " + units + " active unit(s) and " + leases + " lease(s) first.", "err"); return; }
+      const leases = pmsActiveLeases().filter(x => x.property_id === id && leaseOpen(x)).length;
+      if (units || leases) { toast("Cannot archive property yet. Archive its " + units + " unit(s)" + (leases ? " and end its " + leases + " running lease(s)" : "") + " first.", "err"); return; }
     }
     if (kind === "unit") {
-      const leases = pmsActiveLeases().filter(x => x.unit_id === id).length;
-      if (leases) { toast("Cannot archive unit while it has " + leases + " lease(s) on file.", "err"); return; }
+      const leases = pmsActiveLeases().filter(x => x.unit_id === id && leaseOpen(x)).length;
+      if (leases) { toast("Cannot archive this unit while " + leases + " lease(s) are running or about to start. Terminate them first.", "err"); return; }
     }
-    if (kind === "lease") {
-      const payments = pmsActivePayments().filter(x => x.lease_id === id).length;
-      if (payments) { toast("Cannot archive lease while it has " + payments + " payment record(s). Set the lease to Terminated to preserve its history.", "err"); return; }
+    if (kind === "lease" && leaseOpen(rec) && pmsActivePayments().some(x => x.lease_id === id)) {
+      toast("This lease is still running and has payments. Set it to Terminated first; its payments stay on record.", "err"); return;
     }
-    const label = rec.title || rec.name || rec.unit_number || (rec.amount ? C.money(rec.amount) : kind);
+    const label = kind === "lease" ? pmsLeaseLabel(rec) : (rec.title || rec.name || rec.unit_number || (rec.amount ? C.money(rec.amount) : kind));
     const msg = kind === "owner"
       ? 'Delete "' + label + '"? It will be hidden from PMS lists and its account removed from Users & Access.'
-      : 'Archive "' + label + '"? It will be hidden from lists but kept in the records.';
+      : 'Archive "' + label + '"? It will be hidden from lists but kept in the records.' +
+        (kind === "lease" && pmsLeaseArrears(rec) > 0 ? " It still owes " + C.money(pmsLeaseArrears(rec)) + ", which will no longer show as due." : "");
     if (!(await confirmModal({ title: kind === "owner" ? "Delete owner" : "Archive record", message: msg, danger: kind === "owner", confirmLabel: kind === "owner" ? "Delete" : "Archive" }))) return;
     if (kind === "owner" && rec.authUserId) {
       try {
@@ -12361,15 +12434,42 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   }
 
   let pmsHooked = false;
+  function pmsGoTab(tab, status) {
+    state.pmsTab = tab; state.pmsQuery = ""; state.pmsStatusFilter = status || ""; state.pmsPropertyFilter = ""; state.pmsExtraFilter = ""; state.pmsLeaseFilter = "";
+    save(); render();
+  }
   function bindPMS() {
     if (canManageUsers() && ((SB && currentUser && currentUser.id) || (currentUser && currentUser.demo))) loadCloudProfiles();
     if (pmsHooked) return;
     pmsHooked = true;
     document.addEventListener("click", e => {
       const tabBtn = e.target.closest("[data-pmtab]");
-      if (tabBtn) { state.pmsTab = tabBtn.getAttribute("data-pmtab"); state.pmsQuery = ""; state.pmsStatusFilter = ""; state.pmsPropertyFilter = ""; state.pmsExtraFilter = ""; state.pmsLeaseFilter = ""; save(); render(); return; }
-      const syncSt = e.target.closest("[data-pms-sync-status]");
-      if (syncSt) { pmsSyncStatuses(syncSt); return; }
+      if (tabBtn) { pmsGoTab(tabBtn.getAttribute("data-pmtab")); return; }
+      const go = e.target.closest("[data-pms-goto]");
+      if (go) {
+        const parts = go.getAttribute("data-pms-goto").split(":");
+        pmsGoTab(parts[0], parts[1] || "");
+        const list = $("#pms-list");
+        if (list && list.scrollIntoView) list.scrollIntoView({ block: "start" });
+        return;
+      }
+      const ftog = e.target.closest("[data-pms-filters]");
+      if (ftog) {
+        filtersOpen.pms = !filtersOpen.pms;
+        const bar = ftog.closest(".pms-bar");
+        if (bar) bar.classList.toggle("filters-open", filtersOpen.pms);
+        ftog.setAttribute("aria-expanded", filtersOpen.pms ? "true" : "false");
+        return;
+      }
+      const unf = e.target.closest("[data-pms-unfilter]");
+      if (unf) {
+        const k = unf.getAttribute("data-pms-unfilter");
+        if (k === "property") state.pmsPropertyFilter = "";
+        else if (k === "status") state.pmsStatusFilter = "";
+        else state.pmsExtraFilter = "";
+        render();
+        return;
+      }
       const pl = e.target.closest("[data-pms-paylink]");
       if (pl) { state.pmsTab = "payments"; state.pmsQuery = ""; state.pmsStatusFilter = ""; state.pmsPropertyFilter = ""; state.pmsExtraFilter = ""; state.pmsLeaseFilter = pl.getAttribute("data-pms-paylink"); save(); render(); return; }
       const emailPayment = e.target.closest("[data-pms-email-payment]");
@@ -12408,21 +12508,11 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     });
     document.addEventListener("change", e => {
       const t = e.target;
-      if (t && t.id === "pms-filter-status") {
-        state.pmsStatusFilter = t.value;
-        const box = $("#pms-list");
-        if (box) box.innerHTML = renderPMSListInner();
-      }
-      if (t && t.id === "pms-filter-property") {
-        state.pmsPropertyFilter = t.value;
-        const box = $("#pms-list");
-        if (box) box.innerHTML = renderPMSListInner();
-      }
-      if (t && t.id === "pms-filter-extra") {
-        state.pmsExtraFilter = t.value;
-        const box = $("#pms-list");
-        if (box) box.innerHTML = renderPMSListInner();
-      }
+      if (t && t.id === "pms-section") { pmsGoTab(t.value); return; }
+      // A filter change redraws the screen so the Filters count and chips match.
+      if (t && t.id === "pms-filter-status") { state.pmsStatusFilter = t.value; render(); }
+      if (t && t.id === "pms-filter-property") { state.pmsPropertyFilter = t.value; render(); }
+      if (t && t.id === "pms-filter-extra") { state.pmsExtraFilter = t.value; render(); }
     });
   }
 
@@ -16408,6 +16498,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     if (!currentUser || !canManageUsers() || remoteProfilesLoading) return;
     if (!currentUser.demo && !(SB && currentUser.id)) return;
     if (remoteProfilesFailed && !forceRetry) return;
+    // Every screen redraw used to fetch the whole user list again and redraw twice.
+    if (!forceRetry && remoteProfilesLoaded && Date.now() - remoteProfilesAt < 60000) return;
     remoteProfilesLoading = true;
     remoteProfilesError = "";
     try {
@@ -16428,6 +16520,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       return;
     }
     remoteProfilesLoaded = true;
+    remoteProfilesAt = Date.now();
     (pms().owners || []).forEach(owner => {
       if (!owner.authUserId || owner.archived === true) return;
       const profile = remoteProfiles.find(p => String(p.id) === String(owner.authUserId));
