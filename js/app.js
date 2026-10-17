@@ -8996,7 +8996,8 @@ premise: "Fee Simple / As Improved",
   const PAYMENT_FORM_STATUSES = ["paid", "pending"];
   // Filter choices on the Payments list; "owed" is every unpaid month, due or overdue.
   const PAYMENT_FILTERS = [{ value: "owed", label: "Owed (due or overdue)" }].concat(PAYMENT_STATUSES.filter(s => s.value !== "late"));
-  const PAYMENT_METHODS = ["Cash", "Bank Transfer", "GCash", "Maya", "Check"];
+  // "From deposit": part of the security deposit used for unpaid rent at move-out.
+  const PAYMENT_METHODS = ["Cash", "Bank Transfer", "GCash", "Maya", "Check", "From deposit"];
   const MAINT_PRIORITIES = [["high", "High"], ["medium", "Medium"], ["low", "Low"]];
   const MAINT_CATEGORIES = ["Plumbing", "Electrical", "HVAC", "Structural", "Pest Control", "General Repair", "Other"];
   const MAINT_STATUSES = [
@@ -9368,7 +9369,7 @@ premise: "Fee Simple / As Improved",
         '<td>' + (o.email ? '<div>' + esc(o.email) + '</div>' : "") + (o.phone ? '<div class="dim tiny">' + esc(o.phone) + '</div>' : "") + '</td>' +
         '<td class="num">' + count + '</td>' +
         '<td>' + (o.bank && o.account_number ? '<div class="tiny">' + esc(o.bank) + '</div><div class="dim tiny">' + esc(o.account_number) + '</div>' : '<span class="dim">—</span>') + '</td>' +
-        (canManage ? '<td>' + pmsRowActions("owner", o.id) + '</td>' : "") +
+        (canManage ? '<td>' + pmsRowActions("owner", o.id, '<button class="btn btn-ghost btn-sm" data-pms-ownerstmt="' + esc(o.id) + '">' + icon("print", 13) + ' Statement</button>') + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9425,7 +9426,7 @@ premise: "Fee Simple / As Improved",
       h += '<tr><td><b>' + esc(pmsPropertyTitle(l.property_id)) + '</b><div class="dim tiny">' + esc(pmsUnitName(l.unit_id)) + '</div></td>' +
         '<td>' + esc(pmsTenantName(l.tenant_id)) + '</td>' +
         '<td class="num">' + (C.num(l.rent, 0) > 0 ? C.money(l.rent) : "—") + (l.rent_type === "lease" ? '<div class="dim tiny">lease \u00B7 total</div>' : '<div class="dim tiny">per month</div>') + '</td>' +
-        '<td class="num">' + (C.num(l.deposit, 0) > 0 ? C.money(l.deposit) : "—") + '</td>' +
+        '<td class="num">' + (C.num(l.deposit, 0) > 0 ? C.money(l.deposit) + '<div class="dim tiny">' + esc(pmsDepositState(l)) + '</div>' : "—") + '</td>' +
         '<td class="num">' + (due && due.nextDue ? '<b>' + esc(pmsDispDate(due.nextDue)) + '</b>' + (dueNote ? '<div class="dim tiny">' + esc(dueNote) + '</div>' : "") : "—") + '</td>' +
         '<td><span style="white-space:nowrap">' + (l.start ? esc(String(l.start).slice(0, 10)) : "—") + '</span><div class="dim tiny" style="white-space:nowrap">to ' + (l.end ? esc(String(l.end).slice(0, 10)) : "—") + '</div></td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (l.status || "—")) + dueBadge + '</td>' +
@@ -9964,6 +9965,12 @@ premise: "Fee Simple / As Improved",
     return html + pmsPortalHelp("tenant");
   }
 
+  function pmsMyOwnerIds() {
+    const em = currentUser ? String(currentUser.email || "").toLowerCase() : "";
+    let mine = pmsActiveOwners().filter(o => currentUser && o.authUserId === currentUser.id);
+    if (!mine.length) mine = pmsActiveOwners().filter(o => String(o.email || "").toLowerCase() === em).slice(0, 1);
+    return mine.map(o => o.id);
+  }
   function pmsOwnerPortal() {
     const em = currentUser ? String(currentUser.email || "").toLowerCase() : "";
     // One login can own properties in several books: use every owner record linked to it.
@@ -9995,7 +10002,8 @@ premise: "Fee Simple / As Improved",
       kpi("Net", C.money(money.net), "after " + C.money(money.spent) + " spending", money.net >= 0 ? "green" : "red", "chart") + '</div>';
     const banked = mine.find(o => o.bank) || owner;
     const acct = String(banked.account_number || "");
-    html += '<p class="dim pms-owner-line">' + esc(owner.name || "") + (banked.bank ? ' · Payouts to ' + esc(banked.bank) + (acct ? " •••• " + esc(acct.slice(-4)) : "") : "") + '</p>';
+    html += '<div class="row pms-owner-line" style="gap:10px;flex-wrap:wrap;align-items:center"><p class="dim" style="margin:0">' + esc(owner.name || "") + (banked.bank ? ' · Payouts to ' + esc(banked.bank) + (acct ? " •••• " + esc(acct.slice(-4)) : "") : "") + '</p>' +
+      '<button type="button" class="btn btn-ghost btn-sm" data-pms-ownerstmt="mine">' + icon("print", 13) + ' Monthly statement</button></div>';
 
     const leaseRows = leases.length ? leases.slice().sort((a, b) => pmsLeaseArrears(b) - pmsLeaseArrears(a)).map(l => {
       const st = pmsAutoStatus(l), sc = LEASE_STATUSES.find(x => x.value === st), line = pmsRentLine(l);
@@ -10105,6 +10113,50 @@ premise: "Fee Simple / As Improved",
     pmsPrintModal("Tenant Payable — " + pmsTenantName(l.tenant_id), body);
   }
 
+  function pmsDepositState(l) {
+    if (l.deposit_settled_on) {
+      return "settled " + String(l.deposit_settled_on).slice(0, 10) + ": " + C.money(C.num(l.deposit_refund, 0)) + " returned" + (C.num(l.deposit_kept, 0) > 0 ? ", " + C.money(C.num(l.deposit_kept, 0)) + " kept" : "");
+    }
+    return PL().depositHeld(l, pmsToday()) > 0 ? "held" : (String(l.start || "") > pmsToday() ? "to collect" : "held");
+  }
+  /* Owner statement for one month: per property, rent received, spending, net,
+   * rent still unpaid and deposits held at month end, then the details. For
+   * staff (Owners > Statement) and in the owner portal. */
+  function pmsStatementMonths() {
+    const out = [], t = pmsToday();
+    let y = +t.slice(0, 4), m = +t.slice(5, 7);
+    for (let i = 0; i < 12; i++) { const k = y + "-" + (m < 10 ? "0" : "") + m; out.push([k, PL().monthLabel(k)]); m--; if (m < 1) { m = 12; y--; } }
+    return out;
+  }
+  function pmsOwnerStatement(ownerIds, key) {
+    ownerIds = (ownerIds || []).filter(Boolean);
+    const owners = pms().owners.filter(o => ownerIds.indexOf(o.id) !== -1);
+    if (!owners.length) return;
+    const months = pmsStatementMonths();
+    key = key || months[0][0];
+    const props = pmsActiveProperties().filter(p => ownerIds.indexOf(p.owner_id) !== -1);
+    const st = PL().monthStatement({ leases: pms().leases, payments: pms().payments, expenses: pms().expenses, maintenance: pms().maintenance }, props.map(p => p.id), key);
+    const money = v => C.money(v);
+    const rows = st.rows.map(r => '<tr><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td class="num">' + money(r.collected) + '</td><td class="num">' + money(r.expenses + r.repairs) + '</td><td class="num"><b>' + money(r.net) + '</b></td><td class="num">' + money(r.unpaid) + '</td><td class="num">' + money(r.deposits) + '</td></tr>').join("");
+    const pays = [], spend = [];
+    st.rows.forEach(r => {
+      r.payments.forEach(p => pays.push('<tr><td class="num">' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td>' + esc(pmsTenantName(p.tenant_id)) + '</td><td>' + esc(p.month ? pmsMonthText(p.month) : "\u2014") + '</td><td class="num">' + money(C.num(p.amount, 0)) + '</td><td>' + esc(p.receipt_no || "") + '</td></tr>'));
+      r.spending.forEach(x => spend.push('<tr><td class="num">' + esc(x.date) + '</td><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td>' + esc(x.what) + '</td><td>' + esc(x.note) + '</td><td class="num">' + money(x.amount) + '</td></tr>'));
+    });
+    const body = '<div class="pms-st-pick no-print"><label for="pms-st-month">Month</label><select class="input" id="pms-st-month">' + months.map(o => '<option value="' + o[0] + '"' + (o[0] === st.month ? " selected" : "") + '>' + esc(o[1]) + '</option>').join("") + '</select></div>' +
+      '<div class="print-root pms-st" id="pms-print-root">' +
+      '<div class="print-brand"><h1>Owner Statement</h1><div class="dim tiny">' + esc(st.label) + '</div></div>' +
+      '<div class="print-meta"><div><b>Owner:</b> ' + esc(owners.map(o => o.name).join(", ")) + '</div><div><b>Period:</b> ' + esc(st.label) + ' (to ' + esc(pmsDispDate(pmsDateObj(st.end))) + ')</div></div>' +
+      '<table class="print-sched"><tr><th>Property</th><th class="num">Rent received</th><th class="num">Expenses &amp; repairs</th><th class="num">Net</th><th class="num">Unpaid at month end</th><th class="num">Deposits held</th></tr>' + rows +
+      '<tr><td><b>Total</b></td><td class="num"><b>' + money(st.total.collected) + '</b></td><td class="num"><b>' + money(st.total.expenses + st.total.repairs) + '</b></td><td class="num"><b>' + money(st.total.net) + '</b></td><td class="num"><b>' + money(st.total.unpaid) + '</b></td><td class="num"><b>' + money(st.total.deposits) + '</b></td></tr></table>' +
+      '<h3>Rent received</h3>' + (pays.length ? '<table class="print-pays"><tr><th>Date</th><th>Property</th><th>Tenant</th><th>For</th><th class="num">Amount</th><th>Receipt</th></tr>' + pays.join("") + '</table>' : '<p class="dim">No rent received this month.</p>') +
+      '<h3>Expenses and finished repairs</h3>' + (spend.length ? '<table class="print-pays"><tr><th>Date</th><th>Property</th><th>Type</th><th>Details</th><th class="num">Amount</th></tr>' + spend.join("") + '</table>' : '<p class="dim">None this month.</p>') +
+      '<div class="print-foot"><span>Net is rent received minus expenses and repairs finished in the month. Deposits are held for the tenants and are not income. Prepared by SEA ESTATES \u00B7 Property Management System</span></div>' +
+      '</div>';
+    pmsPrintModal("Owner Statement \u2014 " + owners[0].name, body);
+    const sel = $("#pms-st-month");
+    if (sel) sel.addEventListener("change", () => pmsOwnerStatement(ownerIds, sel.value));
+  }
   // Acknowledgement receipt for one paid payment (not a BIR official receipt).
   function pmsPrintReceipt(id) {
     const p = pms().payments.find(x => x.id === id);
@@ -10313,7 +10365,13 @@ premise: "Fee Simple / As Improved",
       pmsField("Rent Due (day of month)", pmsNum("pms-lease-due", pmsDueDay(d)), "Deadline each month for the rent payment (1\u201328).") +
       '<div class="field col-full" id="pms-lease-rent-wrap"' + (rt === "lease" ? ' style="display:none"' : "") + '><label>Monthly Rent (\u20B1)</label>' + pmsNum("pms-lease-rent", defaultRent) + '<div class="field-hint">Collected every month.</div></div>' +
       '<div class="field col-full" id="pms-lease-total-wrap"' + (rt === "lease" ? "" : ' style="display:none"') + '><label>Lease Amount / Total (\u20B1)</label>' + pmsNum("pms-lease-total", rt === "lease" ? d.rent : 0) + '<div class="field-hint">Total payable over the lease term.</div></div>' +
-      pmsField("Security Deposit (\u20B1)", pmsNum("pms-lease-dep", d.deposit)) +
+      pmsField("Security Deposit (\u20B1)", pmsNum("pms-lease-dep", d.deposit), "For covered residential units the Rent Control Act (RA 9653) allows at most two months' deposit and one month's advance.") +
+      (id && C.num(d.deposit, 0) > 0 ? '<details class="col-full pms-dep-settle"' + (d.deposit_settled_on ? " open" : "") + '><summary>Deposit at move-out</summary><div class="pms-dep-grid">' +
+        pmsField("Settled on", pmsDate("pms-lease-depdate", d.deposit_settled_on || "")) +
+        pmsField("Returned to tenant (\u20B1)", pmsNum("pms-lease-depback", d.deposit_refund)) +
+        pmsField("Kept (\u20B1)", pmsNum("pms-lease-depkept", d.deposit_kept), "Unpaid rent or damage. To count it against unpaid rent, record a payment with the method From deposit.") +
+        pmsField("Note", pmsTxt("pms-lease-depnote", d.deposit_note || "", "e.g. broken window, last month's rent"), "", true) +
+        '</div></details>' : "") +
       // Active / expiring / expired follow the dates; only termination is chosen.
       pmsField("Status", pmsSel("pms-lease-status", [["active", "Running (follows the dates)"], ["terminated", "Terminated early"]], d.status === "terminated" ? "terminated" : "active")) +
       '<div class="field" id="pms-lease-term-wrap"' + (d.status === "terminated" ? "" : ' style="display:none"') + '><label for="pms-lease-termdate">Termination date</label>' + pmsDate("pms-lease-termdate", d.terminated_on || pmsToday()) + '<div class="field-hint">Rent stops after this date.</div></div>' +
@@ -11140,6 +11198,17 @@ premise: "Fee Simple / As Improved",
       terminated_on: terminatedOn,
       notes: $("#pms-lease-notes").value.trim()
     };
+    // Deposit settled at move-out (only shown when editing a lease with a deposit).
+    if ($("#pms-lease-depdate")) {
+      const back = C.num($("#pms-lease-depback").value, 0), kept = C.num($("#pms-lease-depkept").value, 0);
+      if (back + kept > data.deposit + 0.005) { toast("Returned plus kept can't be more than the deposit (" + C.money(data.deposit) + ")", "err"); return; }
+      data.deposit_settled_on = $("#pms-lease-depdate").value || "";
+      data.deposit_refund = back;
+      data.deposit_kept = kept;
+      data.deposit_note = $("#pms-lease-depnote").value.trim();
+      if (data.deposit_settled_on && back + kept < data.deposit - 0.005) { toast("Returned plus kept should add up to the deposit (" + C.money(data.deposit) + ")", "err"); return; }
+    }
+    const depNote = PL().depositNote(data);
     const store = pms().leases;
     if (id) {
       const rec = store.find(x => x.id === id);
@@ -11198,7 +11267,7 @@ premise: "Fee Simple / As Improved",
       }
     }
     closePmsModal(); render();
-    toast(leaseToast, leaseToastErr ? "err" : "");
+    toast(leaseToast + (depNote && !leaseToastErr ? ". " + depNote : ""), leaseToastErr ? "err" : "");
   }
 
   function pmsReadProof(file, cb) {
@@ -12971,6 +13040,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (ed) { const parts = ed.getAttribute("data-pms-edit").split(":"); openPmsEditor(parts[0], parts[1]); return; }
       const ppr = e.target.closest("[data-pms-print]");
       if (ppr) { const parts = ppr.getAttribute("data-pms-print").split(":"); if (parts[0] === "lease") pmsPrintPayable(parts[1]); else if (parts[0] === "receipt") pmsPrintReceipt(parts[1]); return; }
+      const os = e.target.closest("[data-pms-ownerstmt]");
+      if (os) { pmsOwnerStatement(os.getAttribute("data-pms-ownerstmt") === "mine" ? pmsMyOwnerIds() : [os.getAttribute("data-pms-ownerstmt")]); return; }
       const cf = e.target.closest("[data-pms-confirm]");
       if (cf) { pmsConfirmId = cf.getAttribute("data-pms-confirm"); openPmsEditor("payment", pmsConfirmId); return; }
       const rj = e.target.closest("[data-pms-reject]");

@@ -210,6 +210,71 @@
     return words + (Math.floor(cents / 100) === 1 ? " Peso" : " Pesos") + (c ? " and " + (c < 10 ? "0" : "") + c + "/100" : " Only");
   }
 
+  /* Security deposits. A lease records the deposit taken; when the tenant
+   * moves out it is settled: part returned, part kept (unpaid rent, damage).
+   * Until then it is money held for the tenant. */
+  function depositHeld(lease, asOf) {
+    if (!lease || lease.archived) return 0;
+    asOf = asOf || today();
+    var dep = num(lease.deposit), start = dateOnly(lease.start), settled = dateOnly(lease.deposit_settled_on);
+    if (dep <= 0 || (start && start > asOf) || (settled && settled <= asOf)) return 0;
+    return dep;
+  }
+  // RA 9653 (Rent Control Act), section 7: for covered residential units the
+  // lessor may ask at most one month's advance rent and two months' deposit.
+  // A gentle note only; whether a unit is covered depends on its rent.
+  function depositNote(lease) {
+    var rent = num(lease && lease.rent), dep = num(lease && lease.deposit);
+    if (!lease || lease.rent_type === "lease" || rent <= 0 || dep <= 2 * rent) return "";
+    return "The deposit is more than two months' rent. Under the Rent Control Act (RA 9653) a covered residential unit may ask for at most two months' deposit and one month's advance.";
+  }
+
+  /* Owner statement for one calendar month, on money actually received and
+   * spent in that month: rent marked paid (by payment date), expenses dated in
+   * the month, repairs finished in the month; plus rent still unpaid and
+   * deposits held at month end. data: {leases, payments, expenses, maintenance}. */
+  function lastDayOf(key) {
+    var y = +key.slice(0, 4), m = +key.slice(5, 7);
+    return ymd(y, m, new Date(Date.UTC(y, m, 0)).getUTCDate());
+  }
+  function monthStatement(data, propIds, key) {
+    key = monthKey(key);
+    var end = lastDayOf(key), ids = {};
+    (propIds || []).forEach(function (id) { ids[id] = true; });
+    var leases = (data.leases || []).filter(function (l) { return l && !l.archived && ids[l.property_id]; });
+    var leaseProp = {};
+    (data.leases || []).forEach(function (l) { if (l) leaseProp[l.id] = l.property_id; });
+    var propOf = function (p) { return leaseProp[p.lease_id] || p.property_id; };
+    var inMonth = function (d) { return dateOnly(d).slice(0, 7) === key; };
+    var rows = {};
+    var row = function (id) { return rows[id] || (rows[id] = { property_id: id, collected: 0, expenses: 0, repairs: 0, unpaid: 0, deposits: 0, payments: [], spending: [] }); };
+    (propIds || []).forEach(row);
+    (data.payments || []).forEach(function (p) {
+      if (!p || p.archived || p.status !== "paid" || !ids[propOf(p)] || !inMonth(p.date)) return;
+      var r = row(propOf(p)); r.collected += num(p.amount); r.payments.push(p);
+    });
+    (data.expenses || []).forEach(function (e) {
+      if (!e || e.archived || !ids[e.property_id] || !inMonth(e.date)) return;
+      var r = row(e.property_id); r.expenses += num(e.amount); r.spending.push({ date: dateOnly(e.date), what: e.category || "Expense", note: e.description || "", amount: num(e.amount) });
+    });
+    (data.maintenance || []).forEach(function (m) {
+      if (!m || m.archived || m.status !== "completed" || !ids[m.property_id] || !inMonth(m.date)) return;
+      var r = row(m.property_id); r.repairs += num(m.cost); r.spending.push({ date: dateOnly(m.date), what: "Repair", note: m.title || "", amount: num(m.cost) });
+    });
+    var paidBy = (data.payments || []).filter(function (p) { return p && dateOnly(p.date) && dateOnly(p.date) <= end; });
+    leases.forEach(function (l) {
+      var r = row(l.property_id);
+      r.unpaid += ledger(l, paidBy, end).dueToDate;
+      r.deposits += depositHeld(l, end);
+    });
+    var list = Object.keys(rows).map(function (id) { var r = rows[id]; r.net = r.collected - r.expenses - r.repairs; return r; });
+    var total = list.reduce(function (t, r) {
+      ["collected", "expenses", "repairs", "net", "unpaid", "deposits"].forEach(function (k) { t[k] += r[k]; });
+      return t;
+    }, { collected: 0, expenses: 0, repairs: 0, net: 0, unpaid: 0, deposits: 0 });
+    return { month: key, label: monthLabel(key), end: end, rows: list, total: total };
+  }
+
   function leaseMonthKeys(lease) {
     return leaseMonths(lease, today()).map(function (m) { return m.key; });
   }
@@ -218,6 +283,7 @@
     MONTHS: MONTHS, today: today, monthKey: monthKey, monthLabel: monthLabel, dueDay: dueDay,
     ledger: ledger, leaseStatus: leaseStatus, coversDate: coversDate, leaseMonthKeys: leaseMonthKeys,
     endLimit: endLimit, daysBetween: daysBetween, dueDateFor: dueDateFor, daysLate: daysLate,
-    receiptNo: receiptNo, nextReceiptNo: nextReceiptNo, amountInWords: amountInWords
+    receiptNo: receiptNo, nextReceiptNo: nextReceiptNo, amountInWords: amountInWords,
+    depositHeld: depositHeld, depositNote: depositNote, monthStatement: monthStatement, lastDayOf: lastDayOf
   };
 });

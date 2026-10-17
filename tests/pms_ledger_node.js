@@ -135,4 +135,35 @@ eq("hyphenated tens", L.amountInWords(1234567.05), "One Million Two Hundred Thir
 eq("one peso", L.amountInWords(1), "One Peso Only");
 eq("teens and hundreds", L.amountInWords(813), "Eight Hundred Thirteen Pesos Only");
 
+// security deposits
+eq("a deposit is held while the lease runs", L.depositHeld(lease({ deposit: 20000 }), TODAY), 20000);
+eq("not before the lease starts", L.depositHeld(lease({ deposit: 20000, start: "2026-11-01" }), TODAY), 0);
+eq("not after it is settled at move-out", L.depositHeld(lease({ deposit: 20000, deposit_settled_on: "2026-10-01" }), TODAY), 0);
+eq("still held on a date before the settlement", L.depositHeld(lease({ deposit: 20000, deposit_settled_on: "2026-10-01" }), "2026-09-30"), 20000);
+ok("RA 9653 note when the deposit is over two months' rent", /RA 9653/.test(L.depositNote(lease({ deposit: 30000 }))));
+eq("no note at two months or less", L.depositNote(lease({ deposit: 20000 })), "");
+eq("no note for a lease paid as one total", L.depositNote(lease({ deposit: 90000, rent_type: "lease" })), "");
+
+// owner statement for one month
+const D = {
+  leases: [lease({ id: "l1", property_id: "p1", deposit: 20000 }), lease({ id: "l2", property_id: "p2", rent: 5000, start: "2026-09-01" }), lease({ id: "l3", property_id: "p1", archived: true })],
+  payments: [
+    pay({ lease_id: "l1", month: "2026-09", date: "2026-09-04" }), pay({ lease_id: "l1", month: "2026-10", date: "2026-10-04" }),
+    pay({ lease_id: "l1", month: "2026-08", date: "2026-11-02" }), pay({ lease_id: "l1", status: "submitted", date: "2026-10-09", amount: 999 }),
+    pay({ lease_id: "l2", month: "2026-10", date: "2026-10-06", amount: 5000 })
+  ],
+  expenses: [{ property_id: "p1", amount: 1200, date: "2026-10-10", category: "Utilities" }, { property_id: "p1", amount: 500, date: "2026-09-10" }, { property_id: "p9", amount: 7, date: "2026-10-01" }],
+  maintenance: [{ property_id: "p1", status: "completed", cost: 800, date: "2026-10-12", title: "Faucet" }, { property_id: "p1", status: "open", cost: 3000, date: "2026-10-12" }]
+};
+const st = L.monthStatement(D, ["p1"], "2026-10");
+const p1 = st.rows.find(x => x.property_id === "p1");
+eq("statement: rent received in the month, by payment date", p1.collected, 10000);
+eq("statement: expenses and finished repairs of the month only", [p1.expenses, p1.repairs], [1200, 800]);
+eq("statement: net = received - expenses - repairs", p1.net, 8000);
+eq("statement: rent unpaid at month end ignores later payments", p1.unpaid, 30000);
+eq("statement: deposit held at month end", p1.deposits, 20000);
+eq("statement: another owner's property stays out", st.rows.length, 1);
+eq("statement: label and last day", [st.label, st.end], ["October 2026", "2026-10-31"]);
+eq("last day of February", L.lastDayOf("2028-02"), "2028-02-29");
+
 console.log("\npms_ledger_node: " + passed + " checks passed");

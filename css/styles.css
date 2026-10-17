@@ -2343,7 +2343,10 @@ html.modal-open, html.modal-open body { overflow: hidden; }
   .table-wrap table.tbl-stack tr > td:not([data-label]), .table-wrap table.tbl-stack tr > td[colspan], .table-wrap table.tbl-stack tr > td.tbl-full { padding-left: 0; text-align: left; }
 
   /* forms open as full-height sheets: header and buttons stay in reach */
-  body .modal-overlay:has(.modal-card :is(input, select, textarea)) { padding: 0 !important; align-items: stretch; }
+  /* flex-start + min-height: a long form grows past the screen and the sheet's
+     background grows with it (stretch fixed the card at one screen high, so
+     the rest of a long form showed over the dimmed page). */
+  body .modal-overlay:has(.modal-card :is(input, select, textarea)) { padding: 0 !important; align-items: flex-start; }
   body .modal-overlay .modal-card:has(:is(input, select, textarea)) { width: 100% !important; max-width: none !important; min-height: 100%; max-height: none !important; margin: 0 !important; border: 0; border-radius: 0; display: flex; flex-direction: column; }
   body .modal-overlay .modal-card:has(:is(input, select, textarea)) .modal-head { position: sticky; top: 0; z-index: 3; background: var(--surface); }
   body .modal-overlay .modal-card:has(:is(input, select, textarea)) .modal-body { flex: 1 1 auto; max-height: none !important; overflow: visible !important; }
@@ -2361,10 +2364,12 @@ html.modal-open, html.modal-open body { overflow: hidden; }
 /* PMS print preview: the statement is visible in its dialog on screen too
    (it used to show only when printing). */
 @media screen {
-  .modal-body > .print-root { display: block !important; color: var(--text); }
+  .modal-body > .print-root { display: block !important; color: var(--text); width: 100%; min-width: 0; }
   .modal-body > .print-root table { border-collapse: collapse; width: 100%; margin: 6px 0 14px; font-size: 13px; }
   .modal-body > .print-root th, .modal-body > .print-root td { border: 1px solid var(--stroke, #d6dde6); padding: 6px 8px; text-align: left; }
-  .modal-body > .print-root .print-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 4px 16px; margin: 8px 0 14px; font-size: 14px; }
+  .modal-body > .print-root .print-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 4px 16px; margin: 8px 0 14px; font-size: 14px; }
+  /* Wide statement tables scroll sideways inside the dialog on a phone. */
+  .modal-body > .print-root.pms-st table { display: block; overflow-x: auto; max-width: 100%; }
   .modal-body > .print-root .print-brand h1 { font-size: 20px; margin: 0; }
   .modal-body > .print-root .print-foot { margin-top: 16px; font-size: 12px; color: var(--text-dim); }
 }
@@ -2476,3 +2481,13 @@ a.btn, a.btn:hover { text-decoration: none; }
   .print-root.pms-ar { max-width: 640px; margin: 0 auto !important; }
   .print-root.pms-ar .pms-ar-amount { border-color: #111; }
 }
+/* PMS: owner statement month picker, deposit settlement (2026-10-18) */
+.pms-st-pick { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.pms-st-pick label { font-weight: 600; }
+.pms-st-pick .input { width: auto; min-width: 180px; }
+.pms-dep-settle { border: 1px solid var(--stroke, #e3e9f1); border-radius: 10px; padding: 8px 12px; }
+.pms-dep-settle summary { cursor: pointer; font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+.pms-dep-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+.pms-dep-grid > .field { width: calc(50% - 6px); }
+.pms-dep-grid > .field.col-full { width: 100%; }
+@media (max-width: 640px) { .pms-dep-grid > .field { width: 100%; } }
