@@ -14122,11 +14122,70 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   async function bumpSharedListingStat(id, key) {
     return;
   }
+  /* Shared leads and deals are saved only on top of the version this phone last
+   * saw (updated_at, kept by the database: supabase/migrations/0002). If someone
+   * changed the record in between, the two copies are merged: this phone's
+   * fields win, and nobody's notes, activity or documents are lost. */
+  const cloudSeen = { crm_leads: {}, broker_transactions: {} };
+  function rememberSeen(table, rows) {
+    const seen = cloudSeen[table];
+    (rows || []).forEach(r => { const id = r.id || (r.payload && r.payload.id); if (id && r.updated_at) seen[id] = r.updated_at; });
+  }
+  function mergeList(theirs, mine, keyOf) {
+    const out = (mine || []).slice(), have = new Set(out.map(keyOf));
+    (theirs || []).forEach(x => { const k = keyOf(x); if (!have.has(k)) { have.add(k); out.push(x); } });
+    return out;
+  }
+  function mergeLeadPayload(theirs, mine) {
+    const actKey = a => String((a && (a.date || a.ts)) || "") + "|" + String((a && a.text) || "");
+    const merged = Object.assign({}, theirs || {}, mine || {});
+    merged.activity = mergeList(theirs && theirs.activity, mine && mine.activity, actKey)
+      .sort((a, b) => String(a.date || a.ts || "").localeCompare(String(b.date || b.ts || "")));
+    return merged;
+  }
+  function mergeTransactionPayload(theirs, mine) {
+    const merged = Object.assign({}, theirs || {}, mine || {});
+    merged.documents = mergeList(theirs && theirs.documents, mine && mine.documents, d => String((d && d.id) || JSON.stringify(d)));
+    if ((theirs && theirs.activity) || (mine && mine.activity)) merged.activity = mergeLeadPayload({ activity: theirs && theirs.activity }, { activity: mine && mine.activity }).activity;
+    return merged;
+  }
+  async function guardedSave(table, row, merge) {
+    const seen = cloudSeen[table];
+    const known = seen[row.id];
+    if (known) {
+      const r = await SB.from(table).update(row).eq("id", row.id).eq("updated_at", known).select("updated_at");
+      if (r.error) return { error: r.error };
+      if (r.data && r.data.length) { seen[row.id] = r.data[0].updated_at; return { ok: true }; }
+      // Not the version this phone saw: someone else saved in between.
+      const cur = await SB.from(table).select("payload,updated_at").eq("id", row.id).maybeSingle();
+      if (cur.error) return { error: cur.error };
+      if (cur.data) {
+        const payload = merge(cur.data.payload || {}, row.payload || {});
+        const r2 = await SB.from(table).update(Object.assign({}, row, { payload: payload })).eq("id", row.id).eq("updated_at", cur.data.updated_at).select("updated_at");
+        if (r2.error) return { error: r2.error };
+        if (r2.data && r2.data.length) { seen[row.id] = r2.data[0].updated_at; return { ok: true, merged: payload }; }
+        return { error: { message: "It was changed again on another device just now. Please try once more." } };
+      }
+    }
+    const r = await SB.from(table).upsert(row, { onConflict: "id" }).select("updated_at");
+    if (r.error) return { error: r.error };
+    if (r.data && r.data[0]) seen[row.id] = r.data[0].updated_at;
+    return { ok: true };
+  }
+  // After a merge, the copy on screen picks up the other device's notes and documents.
+  function applyMerged(list, id, merged, keys) {
+    const rec = (list || []).find(x => x && x.id === id);
+    if (!rec || !merged) return;
+    keys.forEach(k => { if (merged[k] !== undefined) rec[k] = merged[k]; });
+    save();
+    if (state.view === "leads" || state.view === "transactions") render({ keepScroll: true });
+    toast("Someone else also changed this on another device. Both sets of notes were kept.");
+  }
   let cloudLeadsReady = null;
   async function loadCloudLeads() {
     if (!SB || !currentUser || !currentUser.id) return;
     try {
-      const { data, error } = await SB.from("crm_leads").select("payload,assigned_to_id,created_by").order("updated_at", { ascending: false });
+      const { data, error } = await SB.from("crm_leads").select("id,payload,assigned_to_id,created_by,updated_at").order("updated_at", { ascending: false });
       if (error) {
         if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.crm_leads"/i)) {
           cloudLeadsReady = "missing";
@@ -14136,6 +14195,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         return;
       }
       cloudLeadsReady = "ok";
+      rememberSeen("crm_leads", data);
       const legacy = Array.isArray(state.leads) ? state.leads : [];
       const cloud = Array.isArray(data) ? data.map(r => Object.assign({}, r.payload, {
         assignedToId: r.assigned_to_id || (r.payload && r.payload.assignedToId) || "",
@@ -14183,7 +14243,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         created_by: rec.createdBy || currentUser.id,
         updated_at: rec.updatedAt || new Date().toISOString()
       };
-      const { error } = await SB.from("crm_leads").upsert(row, { onConflict: "id" });
+      const res = await guardedSave("crm_leads", row, mergeLeadPayload);
+      const error = res.error;
+      if (res.merged) applyMerged(state.leads, rec.id, res.merged, ["activity"]);
       if (error) {
         if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.crm_leads"/i)) {
           toast("Leads sync needs the crm_leads table — run supabase/crm_leads.sql in the SQL Editor.", "err");
@@ -14258,13 +14320,14 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   async function loadCloudTransactions() {
     if (!SB || !currentUser || !currentUser.id) return;
     try {
-      const { data, error } = await SB.from("broker_transactions").select("payload,broker_id,created_by").order("updated_at", { ascending: false });
+      const { data, error } = await SB.from("broker_transactions").select("id,payload,broker_id,created_by,updated_at").order("updated_at", { ascending: false });
       if (error) {
         if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.broker_transactions"/i)) cloudTransactionsReady = "missing";
         else throw error;
         return;
       }
       cloudTransactionsReady = "ok";
+      rememberSeen("broker_transactions", data);
       state.transactions = Array.isArray(data) ? data.map(r => Object.assign({}, r.payload, {
         brokerId: r.broker_id || (r.payload && r.payload.brokerId) || "",
         createdBy: r.created_by || (r.payload && r.payload.createdBy) || ""
@@ -14281,7 +14344,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (!rec.brokerId) rec.brokerId = currentUser.id;
       const docs = vaultDocs("tx", rec.id);
       if (docs.length) rec.documents = docs;
-      const { error } = await SB.from("broker_transactions").upsert({
+      const res = await guardedSave("broker_transactions", {
         id: rec.id,
         ref: rec.ref || "",
         title: rec.title || "",
@@ -14289,7 +14352,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         broker_id: rec.brokerId,
         created_by: rec.createdBy,
         updated_at: rec.updatedAt || new Date().toISOString()
-      }, { onConflict: "id" });
+      }, mergeTransactionPayload);
+      const error = res.error;
+      if (res.merged) applyMerged(state.transactions, rec.id, res.merged, ["documents", "activity"]);
       if (error) {
         if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.broker_transactions"/i)) toast("Transaction sharing needs the broker_transactions table — run supabase/broker_transactions.sql in the SQL Editor.", "err");
         else toast("Could not sync transaction: " + esc(friendlyErr(error.message)), "err");
@@ -19097,7 +19162,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       }
       return false;
     },
-    getState: function() { return state; }
+    getState: function() { return state; },
+    persistTransaction: function(id) { return persistTransactionToCloud((state.transactions || []).find(t => t.id === id)); }
   };
 
   /* ================= BOOT ================= */
