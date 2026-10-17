@@ -759,6 +759,9 @@
       maxResults: "20",
       live: "true"
     });
+    /* The result screen waits on this, so the wait stays short (7.5 s). A
+       slow first scan still finishes on the server and is cached for the
+       next visitor. */
     var request = fetch(base + "/api/market-scan?" + query.toString(), { credentials: "omit" })
       .then(function (r) { if (!r.ok) throw new Error("Evidence source unavailable"); return r.json(); })
       .then(function (result) {
@@ -767,7 +770,7 @@
         }) : [];
         rows.retrievalStatus = { source: "External asking search", status: rows.length ? "returned" : "no-records" }; return rows;
       }).catch(function () { var rows = []; rows.retrievalStatus = { source: "External asking search", status: "unavailable" }; return rows; });
-    var timeout = new Promise(function (resolve) { setTimeout(function () { var rows = []; rows.retrievalStatus = { source: "External asking search", status: "timeout" }; resolve(rows); }, 12000); });
+    var timeout = new Promise(function (resolve) { setTimeout(function () { var rows = []; rows.retrievalStatus = { source: "External asking search", status: "timeout" }; resolve(rows); }, 7500); });
     return Promise.race([request, timeout]);
   }
 
