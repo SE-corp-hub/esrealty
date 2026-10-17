@@ -366,6 +366,8 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     const ownerId = currentUser.id;
     const payload = stripHeavyBlobs(state);
     delete payload.salesPlaybooks;
+    // Leads live in crm_leads only; the blob keeps them just when that table is unavailable.
+    if (cloudLeadsReady === "ok") delete payload.leads;
     clearTimeout(remoteSaveTimer);
     remoteSaveTimer = setTimeout(async () => {
       if (!currentUser || currentUser.id !== ownerId) return;
@@ -13418,13 +13420,39 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         return;
       }
       cloudLeadsReady = "ok";
-      state.leads = Array.isArray(data) ? data.map(r => Object.assign({}, r.payload, {
+      const legacy = Array.isArray(state.leads) ? state.leads : [];
+      const cloud = Array.isArray(data) ? data.map(r => Object.assign({}, r.payload, {
         assignedToId: r.assigned_to_id || (r.payload && r.payload.assignedToId) || "",
         createdBy: r.created_by || (r.payload && r.payload.createdBy) || ""
       })) : [];
+      state.leads = cloud.concat(await moveStrandedLeads(legacy, cloud));
     } catch (e) {
       cloudLeadsReady = "error";
     }
+  }
+  /* crm_leads is the only lead store. Leads used to be saved twice, in
+   * crm_leads and in the per-user app_state blob, and a lead whose cloud save
+   * failed (or that predates crm_leads) lived only in the blob. Once per user,
+   * copy the user's own such leads into crm_leads; after that the blob no
+   * longer carries leads at all (see save()). Demo seed leads are never copied. */
+  async function moveStrandedLeads(legacy, cloud) {
+    if (state.leadsMovedToCloud || !legacy.length) { state.leadsMovedToCloud = state.leadsMovedToCloud || new Date().toISOString(); return []; }
+    const have = new Set(cloud.map(l => l.id));
+    const mine = legacy.filter(l => l && l.id && !have.has(l.id) && !/^lead-seed-/.test(l.id) && (!l.createdBy || l.createdBy === currentUser.id));
+    const moved = [];
+    for (const rec of mine) {
+      const { error } = await SB.from("crm_leads").upsert({
+        id: rec.id, ref: rec.ref || "", name: rec.name || "",
+        assigned_to: (rec.assignedTo || "").trim(), assigned_to_id: rec.assignedToId || null,
+        payload: Object.assign({}, rec, { createdBy: currentUser.id }), created_by: currentUser.id,
+        updated_at: rec.updatedAt || new Date().toISOString()
+      }, { onConflict: "id" });
+      if (!error) moved.push(Object.assign({}, rec, { createdBy: currentUser.id }));
+    }
+    // Only finish the one-time move when nothing failed, so a bad connection retries next sign-in.
+    if (moved.length === mine.length) state.leadsMovedToCloud = new Date().toISOString();
+    if (moved.length) toast("Moved " + moved.length + " lead" + (moved.length === 1 ? "" : "s") + " to the cloud");
+    return moved;
   }
   async function persistLeadToCloud(rec) {
     if (!SB || !currentUser || !currentUser.id) return;
@@ -14808,7 +14836,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (state.leadDetail) agentFetchCloudSteps(state.leadDetail);
   }
   function ensureLeads() {
-    if (!state.leads || !state.leads.length) state.leads = seedLeads();
+    // Demo leads are for local/demo use only, never a signed-in account's CRM.
+    if (cloudLeadsReady === "ok") { if (!state.leads) state.leads = []; }
+    else if (!state.leads || !state.leads.length) state.leads = seedLeads();
     if (!state.leadFilters) state.leadFilters = {};
   }
   function seedLeads() {
