@@ -1,3 +1,5 @@
+-- 2026-10-17: personal and sample email addresses replaced with example.com placeholders.
+-- This is a one-off script that has already been applied; put the real address back only if you re-run it.
 -- Run this ENTIRE file once in Supabase SQL Editor.
 -- Repairs an account created by the old Super Admin flow, which inserted into
 -- auth.users but omitted the auth.identities email-provider row.
@@ -10,10 +12,10 @@ begin
   select id, lower(email)
   into v_user_id, v_email
   from auth.users
-  where lower(email) = lower('sample1.1@gmail.com');
+  where lower(email) = lower('sample-account-1@example.com');
 
   if v_user_id is null then
-    raise exception 'Account sample1.1@gmail.com does not exist in auth.users';
+    raise exception 'Account sample-account-1@example.com does not exist in auth.users';
   end if;
 
   if not exists (
@@ -99,4 +101,4 @@ select
   p.registration_status
 from auth.users u
 left join public.profiles p on p.id = u.id
-where lower(u.email) = lower('sample1.1@gmail.com');
+where lower(u.email) = lower('sample-account-1@example.com');

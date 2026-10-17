@@ -253,9 +253,10 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const pepper = Deno.env.get("INQUIRY_RATE_LIMIT_SALT") || serviceRoleKey.slice(-32);
 
+  // Its own allowance, separate from the listing inquiry and contact forms.
   const forwarded = req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") ||
     (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
-  const keyHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pepper + ":" + forwarded + ":public")).then((b) => {
+  const keyHash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pepper + ":location-report:" + forwarded)).then((b) => {
     return Array.from(new Uint8Array(b)).map((x) => x.toString(16).padStart(2, "0")).join("");
   });
   const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", {

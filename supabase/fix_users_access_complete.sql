@@ -1,3 +1,5 @@
+-- 2026-10-17: personal and sample email addresses replaced with example.com placeholders.
+-- This is a one-off script that has already been applied; put the real address back only if you re-run it.
 -- Run this entire file in Supabase SQL Editor.
 -- Repairs profiles, promotes the configured Super Admin, and fixes Users & Access.
 
@@ -25,7 +27,7 @@ update public.profiles
 set role = 'super-admin', registration_status = 'approved'
 where id = (
   select id from auth.users
-  where lower(email) = lower('ilagansamuel@gmail.com')
+  where lower(email) = lower('admin-email@example.com')
 );
 
 -- Allow the profile editor to save these columns for the user's OWN row.
@@ -38,7 +40,7 @@ update public.profiles
 set role = 'buyer', registration_status = 'pending'
 where id = (
   select id from auth.users
-  where lower(email) = lower('sample1@gmail.com')
+  where lower(email) = lower('sample-account@example.com')
 );
 
 -- pgcrypto provides crypt()/gen_salt() for password hashing.
@@ -201,12 +203,12 @@ commit;
 
 -- ===== DIAGNOSTICS (read these results before closing the editor) =====
 
--- 1) Does sample1@gmail.com exist AT ALL? (0 rows = never registered in this project.)
+-- 1) Does sample-account@example.com exist AT ALL? (0 rows = never registered in this project.)
 select u.email, p.full_name, p.role, p.registration_status,
        coalesce(u.raw_user_meta_data ->> 'requested_role', '') as requested_role
 from auth.users u
 left join public.profiles p on p.id = u.id
-where lower(u.email) = lower('sample1@gmail.com');
+where lower(u.email) = lower('sample-account@example.com');
 
 -- 2) The full pending queue the app should show.
 select u.email, p.full_name, p.registration_status,

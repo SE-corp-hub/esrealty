@@ -21,6 +21,19 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Same-length comparison that doesn't stop at the first different character.
+function sameSecret(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+async function sha256(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 function emailHtml(title: string, bodyText: string) {
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return [
@@ -50,6 +63,7 @@ Deno.serve(async (req) => {
     // Verify the caller's JWT against GoTrue using the always-injected service key,
     // so this works regardless of legacy/new anon-key injection.
     let email = "";
+    let userId = "";
     let vfail = "";
     try {
       const base = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
@@ -59,6 +73,7 @@ Deno.serve(async (req) => {
       if (gotrue.ok) {
         const ud = await gotrue.json();
         email = String(ud?.email ?? "");
+        userId = String(ud?.id ?? "");
         if (!email) vfail = "GoTrue 200 but no email field";
       } else {
         const t = await gotrue.text();
@@ -75,6 +90,20 @@ Deno.serve(async (req) => {
       if (String(body.to).toLowerCase() !== String(email).toLowerCase()) {
         return json({ ok: false, error: "Self-send only: you may only email your own address" }, 403);
       }
+      // Only approved accounts, and at most 20 emails an hour each.
+      const svc = createClient(Deno.env.get("SUPABASE_URL") ?? "", SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+      const me = await svc.from("profiles").select("registration_status").eq("id", userId).maybeSingle();
+      if (me.error || me.data?.registration_status !== "approved") {
+        return json({ ok: false, error: "Your account must be approved first" }, 403);
+      }
+      const salt = Deno.env.get("INQUIRY_RATE_LIMIT_SALT") || SERVICE_KEY.slice(-32);
+      const { data: allowed, error: limitError } = await svc.rpc("consume_listing_inquiry_rate_limit", {
+        p_request_key_hash: await sha256(salt + ":notify-self:" + userId),
+        p_limit: 20,
+        p_window_seconds: 3600,
+      });
+      if (limitError) return json({ ok: false, error: "Could not check the sending limit" }, 500);
+      if (!allowed) return json({ ok: false, error: "Too many emails. Please try again later" }, 429);
       try {
         const r = await fetch("https://api.resend.com/emails", {
           method: "POST",
@@ -90,8 +119,8 @@ Deno.serve(async (req) => {
   }
 
   // Auth: shared dispatch secret OR the service-role key.
-  const okSecret = !!DISPATCH_SECRET && secretHeader === DISPATCH_SECRET;
-  const okService = !!SERVICE_KEY && authHeader === "Bearer " + SERVICE_KEY;
+  const okSecret = !!DISPATCH_SECRET && sameSecret(secretHeader, DISPATCH_SECRET);
+  const okService = !!SERVICE_KEY && sameSecret(authHeader, "Bearer " + SERVICE_KEY);
   if (!okSecret && !okService) return json({ ok: false, error: "Unauthorized" }, 401);
 
   if (!RESEND_API_KEY && !SEMAPHORE_API_KEY) {

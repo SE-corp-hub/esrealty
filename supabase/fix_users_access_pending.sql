@@ -1,3 +1,5 @@
+-- 2026-10-17: personal and sample email addresses replaced with example.com placeholders.
+-- This is a one-off script that has already been applied; put the real address back only if you re-run it.
 -- Run this whole file in Supabase SQL Editor.
 -- Fixes Users & Access pending registrations and is safe to run repeatedly.
 
@@ -64,7 +66,7 @@ select
   coalesce(u.raw_user_meta_data ->> 'requested_role', '') as requested_role
 from auth.users u
 left join public.profiles p on p.id = u.id
-where lower(u.email) = lower('sample1@gmail.com');
+where lower(u.email) = lower('sample-account@example.com');
 
 -- Verify all pending accounts directly.
 select

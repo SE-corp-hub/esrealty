@@ -1,3 +1,5 @@
+-- 2026-10-17: personal and sample email addresses replaced with example.com placeholders.
+-- This is a one-off script that has already been applied; put the real address back only if you re-run it.
 -- Remove test/sample data created by the AI during automated verification.
 -- User-generated data (real accounts, listings, leads, inquiries) is retained.
 --
@@ -20,7 +22,7 @@
 -- Emails of the AI-created test accounts:
 --   esrealty.sa.tester, esrealty.lsfix.tester, esrealty.e2e.buyer,
 --   esrealty.upload.tester, esrealty.cleanup.tester, car.tester,
---   lone.agent, real.broker, newagent.admin, broker.noprc, sample2.1@gmail.com
+--   lone.agent, real.broker, newagent.admin, broker.noprc, sample-account-2@example.com
 
 -- ============================ PREVIEW ============================
 
@@ -42,7 +44,7 @@ where email in (
   'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
   'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
   'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
 )
    or full_name ilike '%check%' or full_name ilike '%tester%';
 
@@ -54,7 +56,7 @@ where email in (
   'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
   'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
   'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
 )
    or full_name ilike '%check%' or full_name ilike '%tester%';
 
@@ -66,7 +68,7 @@ where u.email in (
   'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
   'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
   'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
 );
 
 -- Test/sample listings (sample/test titles, developers, or test owners).
@@ -87,7 +89,7 @@ where id like 'lst-seed-%'
        'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
        'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
        'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-       'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+       'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
      )
    );
 
@@ -101,7 +103,7 @@ where broker_id in (
     'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
     'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
     'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
   )
 )
    or created_by in (
@@ -111,7 +113,7 @@ where broker_id in (
     'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
     'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
     'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
   )
 );
 
@@ -137,7 +139,7 @@ where email in (
   'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
   'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
   'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
 )
    or full_name ilike '%check%' or full_name ilike '%tester%';
 
@@ -149,7 +151,7 @@ where email in (
   'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
   'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
   'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
 )
    or full_name ilike '%check%' or full_name ilike '%tester%';
 
@@ -172,7 +174,7 @@ where id like 'lst-seed-%'
        'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
        'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
        'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-       'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+       'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
      )
    );
 
@@ -223,7 +225,7 @@ where broker_id in (
     'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
     'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
     'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
   )
 )
    or created_by in (
@@ -233,7 +235,7 @@ where broker_id in (
     'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
     'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
     'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
   )
 );
 
@@ -247,7 +249,7 @@ where broker in (
     'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
     'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
     'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
   )
 );
 
@@ -260,7 +262,7 @@ where email in (
   'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
   'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
   'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
 );
 
 commit;
@@ -287,7 +289,7 @@ where email in (
   'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
   'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
   'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+  'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
 );
 
 select count(*) as remaining_test_listings
@@ -308,7 +310,7 @@ where broker_id in (
     'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
     'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
     'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
   )
 )
    or created_by in (
@@ -318,7 +320,7 @@ where broker_id in (
     'esrealty.e2e.buyer@esrealty.ph', 'esrealty.upload.tester@esrealty.ph',
     'esrealty.cleanup.tester@esrealty.ph', 'car.tester@esrealty.ph',
     'lone.agent@esrealty.ph', 'real.broker@esrealty.ph',
-    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample2.1@gmail.com'
+    'newagent.admin@esrealty.ph', 'broker.noprc@esrealty.ph', 'sample-account-2@example.com'
   )
 );
 

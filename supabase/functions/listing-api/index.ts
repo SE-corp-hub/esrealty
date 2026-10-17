@@ -342,7 +342,7 @@ const listListings = async (url: URL, admin: SupabaseClient) => {
   return json({ data: data || [], page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) });
 };
 
-const getListing = async (id: string, admin: SupabaseClient) => {
+const getListing = async (req: Request, id: string, admin: SupabaseClient, pepper: string) => {
   const { data, error } = await admin
     .from("public_listing_catalog")
     .select(PUBLIC_LISTING_COLUMNS)
@@ -350,8 +350,18 @@ const getListing = async (id: string, admin: SupabaseClient) => {
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new HttpError(404, "Listing not found");
-  const { error: viewError } = await admin.rpc("increment_public_listing_view", { p_listing_id: id });
-  if (viewError) console.error(viewError);
+  // One view per visitor per listing per day: the limiter remembers who already counted.
+  const viewKey = await sha256(`${pepper}:view:${id}:${callerAddress(req)}`);
+  const { data: firstToday, error: seenError } = await admin.rpc("consume_listing_inquiry_rate_limit", {
+    p_request_key_hash: viewKey,
+    p_limit: 1,
+    p_window_seconds: 86400,
+  });
+  if (seenError) console.error(seenError);
+  if (firstToday) {
+    const { error: viewError } = await admin.rpc("increment_public_listing_view", { p_listing_id: id });
+    if (viewError) console.error(viewError);
+  }
   return json({ data });
 };
 
@@ -522,6 +532,12 @@ const sha256 = async (value: string) => {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 };
 
+// The caller's address as Cloudflare / Supabase report it (for rate limits only).
+const callerAddress = (req: Request) => req.headers.get("cf-connecting-ip")
+  || req.headers.get("x-real-ip")
+  || (req.headers.get("x-forwarded-for") || "").split(",")[0].trim()
+  || "unknown";
+
 const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pepper: string) => {
   const body = await parseBody(req);
   const fullName = stringValue(body.full_name, 160, "full_name", true);
@@ -541,11 +557,8 @@ const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pe
   if (!listing) throw new HttpError(404, "Listing not found");
 
   const optionalUser = await authenticate(req, admin, false);
-  const forwarded = req.headers.get("cf-connecting-ip")
-    || req.headers.get("x-real-ip")
-    || (req.headers.get("x-forwarded-for") || "").split(",")[0].trim()
-    || "unknown";
-  const keyHash = await sha256(`${pepper}:${forwarded}:${optionalUser?.id || "public"}`);
+  // Each form has its own allowance, so a contact form doesn't use up listing inquiries.
+  const keyHash = await sha256(`${pepper}:inquiry:${callerAddress(req)}:${optionalUser?.id || "public"}`);
   const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", {
     p_request_key_hash: keyHash,
     p_limit: 5,
@@ -639,11 +652,7 @@ const submitContact = async (req: Request, admin: SupabaseClient, pepper: string
   const interest = isProjectBt ? stringValue(body.interest, 200, "interest") : "";
 
   const optionalUser = await authenticate(req, admin, false);
-  const forwarded = req.headers.get("cf-connecting-ip")
-    || req.headers.get("x-real-ip")
-    || (req.headers.get("x-forwarded-for") || "").split(",")[0].trim()
-    || "unknown";
-  const keyHash = await sha256(`${pepper}:${forwarded}:${optionalUser?.id || "public"}`);
+  const keyHash = await sha256(`${pepper}:contact:${inquiryType}:${callerAddress(req)}:${optionalUser?.id || "public"}`);
   const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", {
     p_request_key_hash: keyHash,
     p_limit: 10,
@@ -756,7 +765,7 @@ Deno.serve(async (req) => {
       return await createListing(req, admin);
     }
     if (parts.length === 2 && parts[0] === "listings" && req.method === "GET") {
-      return await getListing(parts[1], admin);
+      return await getListing(req, parts[1], admin, pepper);
     }
     if (parts.length === 2 && parts[0] === "listings" && req.method === "PUT") {
       return await updateListing(req, parts[1], admin);

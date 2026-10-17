@@ -8,17 +8,26 @@
 
 const AGENT_EDGE_URL = process.env.AGENT_EDGE_URL || "";
 const AGENT_EDGE_TOKEN = process.env.AGENT_EDGE_TOKEN || "";
+// Vercel sends "Authorization: Bearer <CRON_SECRET>" on cron calls when the
+// CRON_SECRET environment variable is set. With it set, nobody else can start
+// a dispatch run from the open internet.
+const CRON_SECRET = process.env.CRON_SECRET || "";
+
+function sameSecret(a, b) {
+  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
+  return diff === 0;
+}
 
 module.exports = async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") {
-    res.status(204).end();
-    return;
-  }
+  // Called by the Vercel scheduler only, never from a browser: no CORS headers.
   if (req.method !== "GET" && req.method !== "POST") {
     res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+  if (CRON_SECRET && !sameSecret(req.headers.authorization || "", "Bearer " + CRON_SECRET)) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
     return;
   }
   if (!AGENT_EDGE_URL || !AGENT_EDGE_TOKEN) {
@@ -41,3 +50,4 @@ module.exports = async function handler(req, res) {
     res.status(502).json({ ok: false, error: String((e && e.message) || e) });
   }
 };
+module.exports.sameSecret = sameSecret;

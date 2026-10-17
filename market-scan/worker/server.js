@@ -413,8 +413,10 @@ const server = http.createServer((req, res) => {
   send(res, 404, { ok: false, error: "Not found: " + url.pathname });
 });
 
-server.listen(PORT, () => {
-  console.log("Market Scan worker listening on http://localhost:" + PORT);
+// Local tool: listen on this computer only unless HOST says otherwise.
+const HOST = process.env.HOST || "127.0.0.1";
+server.listen(PORT, HOST, () => {
+  console.log("Market Scan worker listening on http://" + (HOST === "127.0.0.1" ? "localhost" : HOST) + ":" + PORT);
   console.log("  /api/ping");
   console.log("  /api/market-scan?city=&type=&mode=&maxResults=&live=");
   console.log("  /api/market-scan/bench");

@@ -10,6 +10,16 @@ const VERIFY_TOKEN = Deno.env.get("META_VERIFY_TOKEN") ?? "";
 const PAGE_TOKEN = Deno.env.get("META_PAGE_TOKEN") ?? "";
 const APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
 const DEFAULT_ASSIGN_EMAIL = Deno.env.get("FB_LEADS_DEFAULT_BROKER_EMAIL") ?? "";
+// v19.0 expired on 21 May 2026; v25.0 is supported until July 2028.
+const GRAPH_VERSION = (Deno.env.get("META_GRAPH_VERSION") ?? "v25.0").replace(/[^v0-9.]/g, "") || "v25.0";
+
+// Same-length comparison that doesn't stop at the first different character.
+function sameSecret(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -30,7 +40,7 @@ async function verifySignature(raw: string, signature: string): Promise<boolean>
   );
   const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw));
   const hex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
-  return hex === signature.slice(7);
+  return sameSecret(hex, signature.slice(7));
 }
 
 function pick(fields: Array<{ name: string; values: string[] }>, keys: string[]): string {
@@ -51,7 +61,7 @@ Deno.serve(async (req) => {
     const mode = url.searchParams.get("hub.mode");
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
-    if (mode === "subscribe" && token && token === VERIFY_TOKEN) {
+    if (mode === "subscribe" && token && VERIFY_TOKEN && sameSecret(token, VERIFY_TOKEN)) {
       return new Response(challenge ?? "", { status: 200 });
     }
     return json({ ok: false, error: "Verification failed" }, 403);
@@ -107,15 +117,24 @@ Deno.serve(async (req) => {
         .select("id").eq("id", "fb-" + leadgenId).maybeSingle();
       if (existing.data) { results.push({ leadgen_id: leadgenId, action: "duplicate" }); continue; }
 
-      // fetch full field data from Graph API
+      // Fetch the lead's answers. The token goes in a header, not the URL, so it
+      // never lands in request logs.
       let fields: Array<{ name: string; values: string[] }> = [];
-      try {
-        const gr = await fetch(
-          `https://graph.facebook.com/v19.0/${leadgenId}?access_token=${encodeURIComponent(PAGE_TOKEN)}`
-        );
-        const gj = await gr.json();
-        fields = gj.field_data ?? [];
-      } catch { /* fall through with empty fields */ }
+      let fetchProblem = "";
+      if (!PAGE_TOKEN) fetchProblem = "META_PAGE_TOKEN is not set";
+      else {
+        try {
+          const gr = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(leadgenId)}`, {
+            headers: { Authorization: "Bearer " + PAGE_TOKEN },
+          });
+          const gj = await gr.json().catch(() => ({}));
+          if (!gr.ok) fetchProblem = "Graph API " + gr.status + (gj?.error?.message ? ": " + String(gj.error.message).slice(0, 160) : "");
+          else fields = Array.isArray(gj.field_data) ? gj.field_data : [];
+        } catch (e) {
+          fetchProblem = "Graph API unreachable: " + String(e).slice(0, 120);
+        }
+      }
+      if (fetchProblem) console.error("fb-leads", leadgenId, fetchProblem);
 
       const name = pick(fields, ["full_name", "name"]) || "Facebook Lead";
       const email = pick(fields, ["email"]);
@@ -134,20 +153,29 @@ Deno.serve(async (req) => {
           form_id: String(v.form_id || ""),
           page_id: String(v.page_id || ""),
           created_time: v.created_time || "",
-          notes: "Auto-imported from Facebook Lead Ads.",
+          // Still saved when the answers couldn't be fetched, so the team can look the lead up in Meta.
+          notes: fetchProblem
+            ? "Auto-imported from Facebook Lead Ads, but the answers couldn't be fetched (" + fetchProblem + "). Open the lead in Meta Business Suite, lead id " + leadgenId + "."
+            : "Auto-imported from Facebook Lead Ads.",
         },
         created_by: assigneeId,
       });
 
-      results.push({ leadgen_id: leadgenId, action: insert.error ? "error:" + insert.error.message : "created" });
+      if (insert.error) {
+        console.error("fb-leads insert", leadgenId, insert.error.message);
+        results.push({ leadgen_id: leadgenId, action: "error:" + insert.error.message });
+        continue; // no "new lead" notice for a lead that wasn't saved
+      }
+      results.push({ leadgen_id: leadgenId, action: fetchProblem ? "created-without-answers" : "created" });
 
-      await supabase.rpc("notify_user", {
+      const note = await supabase.rpc("notify_user", {
         target_user: assigneeId,
         n_type: "lead",
         n_title: "New Facebook lead: " + name,
         n_body: [email, phone].filter(Boolean).join(" · ") || "Open CRM to view details.",
         n_link: "leads",
       });
+      if (note.error) console.error("fb-leads notify", leadgenId, note.error.message);
     }
   }
 

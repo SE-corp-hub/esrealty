@@ -1,3 +1,11 @@
+-- SUPERSEDED (2026-10-17). Accounts are made by the admin-create-account edge
+-- function. This old version let any signed-in user call the function directly,
+-- so running it again would re-open that. The block below stops the script.
+-- phase1_security_rest.sql removes everyone's right to call the old function.
+do $$ begin
+  raise exception 'admin_create_account.sql is superseded: accounts are made by the admin-create-account edge function. Nothing was changed.';
+end $$;
+
 -- Adds/re-enables ONLY the admin_create_account function used by Users & Access > Add Account.
 -- Run this in the Supabase SQL Editor (Dashboard > SQL Editor > New query), then press Run.
 -- Afterwards click "Add Account" again in the app.

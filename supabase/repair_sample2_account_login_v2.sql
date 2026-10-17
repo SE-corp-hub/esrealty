@@ -1,11 +1,13 @@
--- Strong repair for sample2.1@gmail.com when Supabase Auth returns
+-- 2026-10-17: personal and sample email addresses replaced with example.com placeholders.
+-- This is a one-off script that has already been applied; put the real address back only if you re-run it.
+-- Strong repair for sample-account-2@example.com when Supabase Auth returns
 -- "Database error querying schema" during password sign-in.
 -- Run this ENTIRE file once in the Supabase SQL Editor.
 
 do $$
 declare
   v_user_id uuid;
-  v_email text := 'sample2.1@gmail.com';
+  v_email text := 'sample-account-2@example.com';
   v_temp_password text := translate(encode(extensions.gen_random_bytes(18), 'base64'), '/+', 'XY');
 begin
   select id into v_user_id
@@ -123,4 +125,4 @@ select
   p.registration_status
 from auth.users u
 left join public.profiles p on p.id = u.id
-where lower(u.email) = 'sample2.1@gmail.com';
+where lower(u.email) = 'sample-account-2@example.com';

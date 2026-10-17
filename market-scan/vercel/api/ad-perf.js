@@ -9,6 +9,28 @@
 
 const AD_PERF_SOURCE_URL = process.env.AD_PERF_SOURCE_URL || "";
 const AD_PERF_SOURCE_TOKEN = process.env.AD_PERF_SOURCE_TOKEN || "";
+// Only approved back-office staff may read ad performance. The browser sends its
+// SEA ESTATES sign-in token; it is checked with Supabase on every call.
+const SUPABASE_URL = (process.env.SUPABASE_URL || "https://mrngaqtbaseewzcsogqi.supabase.co").replace(/\/$/, "");
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "sb_publishable_OtrE6VXTJb4OrSCe6Z-f6g_qAcKyOvk";
+const STAFF_ROLES = ["super-admin", "broker", "agent"];
+
+// Returns the caller's role if they are approved staff, otherwise "".
+async function staffRole(authorization, fetchImpl) {
+  const token = String(authorization || "").replace(/^Bearer\s+/i, "");
+  if (!token || token.split(".").length !== 3) return "";
+  const doFetch = fetchImpl || fetch;
+  const userRes = await doFetch(SUPABASE_URL + "/auth/v1/user", { headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + token } });
+  if (!userRes.ok) return "";
+  const user = await userRes.json().catch(() => null);
+  if (!user || !user.id) return "";
+  // Row rules let each user read only their own profile.
+  const profRes = await doFetch(SUPABASE_URL + "/rest/v1/profiles?select=role,registration_status&id=eq." + encodeURIComponent(user.id), { headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + token } });
+  if (!profRes.ok) return "";
+  const rows = await profRes.json().catch(() => []);
+  const me = Array.isArray(rows) ? rows[0] : null;
+  return me && me.registration_status === "approved" && STAFF_ROLES.indexOf(me.role) >= 0 ? me.role : "";
+}
 
 function normNum(v) {
   const n = Number(v);
@@ -35,13 +57,19 @@ function normalize(data) {
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") {
     res.status(204).end();
     return;
   }
   if (req.method !== "GET" && req.method !== "POST") {
     res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
+  let role = "";
+  try { role = await staffRole(req.headers.authorization); } catch (e) { role = ""; }
+  if (!role) {
+    res.status(401).json({ ok: false, error: "Sign in with an approved staff account" });
     return;
   }
   if (!AD_PERF_SOURCE_URL) {
@@ -61,3 +89,4 @@ module.exports = async function handler(req, res) {
 };
 
 module.exports.normalize = normalize;
+module.exports.staffRole = staffRole;

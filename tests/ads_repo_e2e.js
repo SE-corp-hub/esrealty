@@ -106,7 +106,7 @@
       leadNew.click(); await wait(600);
       checks.push({ name: "lead editor opens", ok: has("#ld-modal") && has("#ld-name"), detail: "editor" });
       document.querySelector("#ld-name").value = "Duplicate Prospect";
-      document.querySelector("#ld-email").value = "maria.santos@gmail.com";
+      document.querySelector("#ld-email").value = "maria.santos@example.com";
       document.querySelector("[data-lead-save]").click(); await wait(900);
       var afterDup = stored();
       var dupCount = (afterDup.leads || []).length;
