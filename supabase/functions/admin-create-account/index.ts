@@ -64,7 +64,9 @@ Deno.serve(async (req) => {
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: fullName, requested_role: role },
+    // The temporary password must be changed at first sign-in (the app sends the
+    // user to Settings until they do).
+    user_metadata: { full_name: fullName, requested_role: role, must_change_password: true },
   });
   if (createError || !created.user) return json({ error: createError?.message || "Could not create account" }, 400);
 

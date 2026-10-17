@@ -368,6 +368,9 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     delete payload.salesPlaybooks;
     // Leads live in crm_leads only; the blob keeps them just when that table is unavailable.
     if (cloudLeadsReady === "ok") delete payload.leads;
+    // The PMS lives in its own tables. Owners and tenants never keep a copy;
+    // staff keep one only while the old single-record store is still in use.
+    if (pmsStore === "tables" || currentUser.role !== "super-admin") { delete payload.pms; delete payload.pmsInsights; delete payload.pmsInsightsLoaded; }
     clearTimeout(remoteSaveTimer);
     remoteSaveTimer = setTimeout(async () => {
       if (!currentUser || currentUser.id !== ownerId) return;
@@ -420,7 +423,115 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     const pool = state.usersTab === "all" ? remoteProfiles : remoteProfiles.filter(u => u.registration_status === state.usersTab);
     return pool.filter(u => (!q || [u.full_name, u.email, u.agency].join(" ").toLowerCase().indexOf(q) >= 0) && (!role || u.role === role)).length;
   }
+  /* ---- Property Management cloud store ----
+   * "tables": one table per record type (supabase/pms_v2_tables.sql). Each save
+   * sends only the records that changed, one at a time, and names the version
+   * it replaces, so a stale phone cannot overwrite newer data. Owners and
+   * tenants read only their own rows (row rules on the server).
+   * "legacy": the old single JSON record (pms_workspaces), used until that SQL
+   * has been run. */
+  let pmsStore = null;
+  const pmsSynced = {};
+  let pmsQueue = Promise.resolve();
+  const PMS_KIND_LABEL = { owners: "owner", tenants: "tenant", properties: "property", units: "unit", leases: "lease", payments: "payment", maintenance: "work order", expenses: "expense", documents: "document" };
+  async function detectPmsStore() {
+    // The old copy tables have no "archived" column, so this only succeeds on v2.
+    const r = await SB.from("pms_properties").select("id,archived").limit(1);
+    if (!r.error) return "tables";
+    if (/does not exist|schema cache|PGRST20|could not find|column/i.test(String(r.error.message || r.error.code || ""))) return "legacy";
+    throw r.error;
+  }
   function schedulePmsCloudSave() {
+    if (!SB || !currentUser || !currentUser.id || currentUser.role !== "super-admin") return;
+    if (pmsStore === "legacy") return scheduleLegacyPmsSave();
+    if (pmsStore !== "tables") return;
+    clearTimeout(pmsSaveTimer);
+    pmsSaveTimer = setTimeout(pmsFlush, 550);
+  }
+  function pmsFlush() {
+    clearTimeout(pmsSaveTimer);
+    pmsSaveTimer = null;
+    if (pmsStore !== "tables" || !SB || !currentUser || currentUser.role !== "super-admin" || !window.ESPMSCLOUD) return pmsQueue;
+    const PC = window.ESPMSCLOUD, P = pms();
+    PC.ORDER.forEach(kind => {
+      const synced = pmsSynced[kind] || (pmsSynced[kind] = {});
+      PC.changed(P[kind], synced).forEach(rec => {
+        const snapshot = JSON.parse(JSON.stringify(rec));
+        const fp = PC.fingerprint(rec);
+        // Marked now so the next save does not queue it twice; a failed write clears it.
+        synced[rec.id] = Object.assign({}, synced[rec.id], { fp: fp });
+        pmsQueue = pmsQueue.then(() => pmsWriteRecord(kind, snapshot, fp)).catch(() => {});
+      });
+    });
+    return pmsQueue;
+  }
+  async function pmsWriteRecord(kind, rec, fp) {
+    const PC = window.ESPMSCLOUD, table = PC.KINDS[kind].table, synced = pmsSynced[kind];
+    const row = PC.toRow(kind, rec);
+    row.updated_by = currentUser.id;
+    let known = synced[rec.id] && synced[rec.id].v;
+    let res;
+    if (!known) {
+      res = await SB.from(table).insert(row).select("updated_at");
+      // Already there (an earlier save got through but its answer was lost): update it instead.
+      if (res.error && /duplicate|23505/i.test(String(res.error.message || res.error.code || ""))) {
+        const cur = await SB.from(table).select("updated_at").eq("id", row.id).maybeSingle();
+        known = cur.data && cur.data.updated_at;
+        res = null;
+      }
+    }
+    if (!res) {
+      res = await SB.from(table).update(row).eq("id", row.id).eq("updated_at", known).select("updated_at");
+      if (!res.error && (!res.data || !res.data.length)) {
+        // Someone saved this record on another device since it was loaded: keep theirs.
+        const cur = await SB.from(table).select("*").eq("id", row.id).maybeSingle();
+        if (!cur.error && cur.data) {
+          const fresh = PC.fromRow(cur.data);
+          const list = pms()[kind];
+          const i = list.findIndex(x => x.id === fresh.id);
+          if (i >= 0) list[i] = fresh; else list.unshift(fresh);
+          synced[fresh.id] = { fp: PC.fingerprint(fresh), v: cur.data.updated_at };
+          render();
+          toast("This " + (PMS_KIND_LABEL[kind] || "record") + " was changed on another device. The latest version is shown; please redo your change.", "err");
+        }
+        return;
+      }
+    }
+    if (res.error) {
+      if (synced[rec.id]) synced[rec.id].fp = null;
+      toast("Property Management save failed: " + esc(friendlyErr(res.error.message)), "err");
+      return;
+    }
+    synced[rec.id] = { fp: synced[rec.id] && synced[rec.id].fp !== fp && synced[rec.id].fp !== null ? synced[rec.id].fp : fp, v: res.data && res.data[0] ? res.data[0].updated_at : known };
+  }
+  // A phone going to the background or being locked: save now, not in half a second.
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && pmsSaveTimer) pmsFlush(); });
+  async function loadCloudPms() {
+    if (!SB || !currentUser || !currentUser.id) return false;
+    pmsStore = await detectPmsStore();
+    if (pmsStore === "legacy") return loadLegacyPms();
+    const PC = window.ESPMSCLOUD;
+    const results = await Promise.all(PC.ORDER.map(kind => SB.from(PC.KINDS[kind].table).select("*").order("created_at", { ascending: false })));
+    const next = defaultState().pms;
+    PC.ORDER.forEach((kind, i) => {
+      if (results[i].error) throw results[i].error;
+      pmsSynced[kind] = {};
+      next[kind] = (results[i].data || []).map(row => {
+        const rec = PC.fromRow(row);
+        pmsSynced[kind][rec.id] = { fp: PC.fingerprint(rec), v: row.updated_at };
+        return rec;
+      });
+    });
+    // Owners see their tenants' names and contacts; tenants see their landlord. Nothing more.
+    const extra = currentUser.role === "owner" ? ["tenants", "pms_owner_tenants"] : currentUser.role === "tenant" ? ["owners", "pms_tenant_landlords"] : null;
+    if (extra) {
+      const r = await SB.rpc(extra[1]);
+      if (!r.error && Array.isArray(r.data)) r.data.forEach(x => { if (!next[extra[0]].some(y => y.id === x.id)) next[extra[0]].push(x); });
+    }
+    state.pms = next;
+    return true;
+  }
+  function scheduleLegacyPmsSave() {
     if (!SB || !currentUser || !currentUser.id || currentUser.role !== "super-admin") return;
     const ownerId = currentUser.id;
     const payload = stripHeavyBlobs(pms());
@@ -432,7 +543,7 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     }, 550);
   }
 
-  async function loadCloudPms() {
+  async function loadLegacyPms() {
     if (!SB || !currentUser || !currentUser.id) return false;
     let query = SB.from("pms_workspaces").select("owner_id, payload");
     if (currentUser.role === "super-admin") query = query.eq("owner_id", currentUser.id);
@@ -3394,6 +3505,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     });
     $("#btn-signout").addEventListener("click", async () => {
       clearTimeout(remoteSaveTimer);
+      try { await pmsFlush(); } catch (e) {}
       clearTimeout(pmsSaveTimer);
       remoteSaveTimer = null;
       pmsSaveTimer = null;
@@ -9393,34 +9505,7 @@ premise: "Fee Simple / As Improved",
     return h;
   }
 
-  async function loadPmsInsights() {
-    if (state.pmsInsightsLoaded) return;
-    state.pmsInsightsLoaded = true;
-    if (!SB || !currentUser || !currentUser.id || currentUser.demo) { state.pmsInsights = null; return; }
-    try {
-      const r = await SB.rpc("pms_insights");
-      if (r.error) throw r.error;
-      state.pmsInsights = r.data || {};
-      render();
-    } catch (e) { toast("Could not load portfolio insights: " + esc(friendlyErr(e.message)), "err"); }
-  }
-  function pmsInsightsCard() {
-    const d = state.pmsInsights;
-    if (!d || !Object.keys(d).length) return "";
-    const money = k => C.money(Number(d[k] || 0));
-    const num = k => esc(String(d[k] != null ? d[k] : 0));
-    let card = '<div class="card card-pad mb-24"><div class="row spread"><h3>Portfolio Insights</h3>' +
-      '<button class="btn btn-ghost btn-sm" data-pi-refresh>' + icon("back", 13) + " Refresh</button></div>" +
-      '<p class="dim tiny mt-8">Aggregated from normalized cloud tables' + (roleIs("super-admin") ? " across all workspaces." : ".") + "</p>" +
-      '<div class="table-wrap"><table class="data"><tr><th>Properties</th><th>Units (occupied)</th><th>Active Leases</th><th>Collected</th><th>Arrears</th><th>Expenses</th><th>Open Maintenance</th><th>Documents</th></tr>' +
-      "<tr><td>" + num("properties_total") + "</td><td>" + num("units_total") + " (" + num("units_occupied") + ")</td><td>" + num("leases_active") + "</td><td class=\"num\">" + money("collected") + "</td><td class=\"num\">" + money("arrears_pending") + "</td><td class=\"num\">" + money("expenses_total") + "</td><td>" + num("maintenance_open") + "</td><td>" + num("documents_total") + "</td></tr></table></div>";
-    if (d.generated_at) card += '<p class="dim tiny mt-8">Updated ' + esc(String(d.generated_at).slice(0, 19).replace("T", " ")) + " UTC</p>";
-    card += "</div>";
-    return card;
-  }
-
   function pmsReports() {
-    loadPmsInsights();
     const props = pmsActiveProperties(), units = pmsActiveUnits(), leases = pmsActiveLeases(),
       payments = pmsActivePayments(), expenses = pmsActiveExpenses();
     const occupied = units.filter(u => u.status === "occupied").length;
@@ -9435,7 +9520,6 @@ premise: "Fee Simple / As Improved",
       kpi("Expenses", C.money(totalExp), "all-time operating", "gold", "briefcase") + '</div>';
     if (!props.length) {
       html += '<div class="card card-pad empty">' + icon("chart", 46) + "<h3>No data to report yet</h3><p>Add properties, leases, and payments to see occupancy and income reports.</p></div>";
-      html = pmsInsightsCard() + html;
       return html;
     }
     html += '<div class="card card-pad mb-24"><h3 class="mb-16">Occupancy by Property</h3><div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">Units</th><th class="num">Occupied</th><th class="num">Vacant</th><th class="num">Occupancy</th></tr>';
@@ -9505,7 +9589,8 @@ premise: "Fee Simple / As Improved",
 
   function pmsTenantPortal() {
     const em = currentUser ? String(currentUser.email || "").toLowerCase() : "";
-    const tenant = pmsActiveTenants().find(t => String(t.email || "").toLowerCase() === em);
+    // Linked by login id; email only for records made before logins were stored.
+    const tenant = pmsActiveTenants().find(t => currentUser && t.authUserId === currentUser.id) || pmsActiveTenants().find(t => String(t.email || "").toLowerCase() === em);
     let html = '<div class="hero"><div><h1>Tenant Portal</h1><p>Your lease, rent, and payment history.</p></div></div>';
     if (!tenant) {
       html += '<div class="card card-pad empty">' + icon("home", 46) + "<h3>No tenant record for your account</h3><p>This demo account isn't linked to a tenant yet. Log in as Admin and create a tenant whose email matches <b>" + esc(currentUser ? currentUser.email : "your email") + '</b>, then switch back here.</p></div>';
@@ -9560,7 +9645,7 @@ premise: "Fee Simple / As Improved",
 
   function pmsOwnerPortal() {
     const em = currentUser ? String(currentUser.email || "").toLowerCase() : "";
-    const owner = pmsActiveOwners().find(o => String(o.email || "").toLowerCase() === em);
+    const owner = pmsActiveOwners().find(o => currentUser && o.authUserId === currentUser.id) || pmsActiveOwners().find(o => String(o.email || "").toLowerCase() === em);
     let html = '<div class="hero"><div><h1>Owner Portal</h1><p>Your properties, tenants, leases, and finances at a glance.</p></div></div>';
     if (!owner) {
       html += '<div class="card card-pad empty">' + icon("star", 46) + "<h3>No owner record for your account</h3><p>This demo account isn't linked to an owner yet. Log in as Admin and create an owner whose email matches <b>" + esc(currentUser ? currentUser.email : "your email") + '</b>, then switch back here.</p></div>';
@@ -9868,7 +9953,7 @@ premise: "Fee Simple / As Improved",
   function openOwnerEditor(id) {
     const d = id ? pms().owners.find(x => x.id === id) || {} : {};
     let body = pmsField("Name *", pmsTxt("pms-own-name", d.name, "Full name"), "", true) +
-      pmsField("Email *", pmsTxt("pms-own-email", d.email, "you@email.com", "email"), d.authUserId ? "This email is linked to the owner's Users account and cannot be changed here." : "Creates a pending Users account with a one-time temporary password.") +
+      pmsField("Email", pmsTxt("pms-own-email", d.email, "you@email.com", "email"), d.authUserId ? "This email is linked to the owner's Users account and cannot be changed here." : "Optional. With an email, the owner gets a portal login (pending your approval) and a one-time temporary password.") +
       pmsField("Phone", pmsTxt("pms-own-phone", d.phone, "+63 9xx xxx xxxx", "tel")) +
       pmsField("Company", pmsTxt("pms-own-company", d.company)) +
       pmsField("Bank", pmsTxt("pms-own-bank", d.bank)) +
@@ -9887,7 +9972,8 @@ premise: "Fee Simple / As Improved",
   function openTenantEditor(id) {
     const d = id ? pms().tenants.find(x => x.id === id) || {} : {};
     const ownerOpts = pmsActiveOwners().map(o => [o.id, o.name + (o.company ? " — " + o.company : "")]);
-    if (!ownerOpts.length) ownerOpts.push(["", "— No owners yet —"]);
+    // A blank choice first, so a new tenant is not silently given the first owner.
+    ownerOpts.unshift(["", ownerOpts.length ? "— Choose the landlord —" : "— No owners yet —"]);
     let body = pmsField("Name *", pmsTxt("pms-ten-name", d.name, "Full name"), "", true) +
       pmsField("Email *", pmsTxt("pms-ten-email", d.email, "you@email.com", "email"), d.authUserId ? "This email is linked to the tenant's Users account and cannot be changed here." : "Creates a pending Users account with a one-time temporary password on the first lease.") +
       pmsField("Phone", pmsTxt("pms-ten-phone", d.phone, "+63 9xx xxx xxxx", "tel")) +
@@ -10070,6 +10156,26 @@ premise: "Fee Simple / As Improved",
     save(); closePmsModal(); toast("Unit saved"); render();
   }
 
+  /* The new login's temporary password, shown until the admin closes it (it
+   * used to be a toast that faded after 2.8 s). Share opens the phone's share
+   * sheet (SMS, Viber...); the person must change it at first sign-in. */
+  async function pmsShowNewLogin(name, email) {
+    const password = pmsCreatedPassword;
+    pmsCreatedPassword = "";
+    if (!password || !email) return;
+    const text = "SEA ESTATES sign-in for " + (name || email) + "\nEmail: " + email + "\nTemporary password: " + password + "\nYou will be asked to change it when you first sign in.";
+    const canShare = !!(navigator.share);
+    const ok = await confirmModal({
+      title: "Account created",
+      message: "Give these details to " + (name || "the person") + " privately. The account needs your approval in Users & Access before it works.\n\nEmail: " + email + "\nTemporary password: " + password,
+      confirmLabel: canShare ? "Share" : "Copy", cancelLabel: "Done"
+    });
+    if (!ok) return;
+    try {
+      if (canShare) await navigator.share({ title: "SEA ESTATES sign-in", text: text });
+      else { await navigator.clipboard.writeText(text); toast("Copied"); }
+    } catch (e) { if (!(e && e.name === "AbortError")) toast("Could not share. Write the password down before closing.", "err"); }
+  }
   async function createPmsOwnerAccount(owner) {
     const email = String(owner.email || "").trim().toLowerCase();
     if (currentUser && currentUser.demo) {
@@ -10187,8 +10293,8 @@ premise: "Fee Simple / As Improved",
     const name = $("#pms-own-name").value.trim();
     if (!name) { toast("Owner name is required", "err"); return; }
     const email = $("#pms-own-email").value.trim();
-    if (!email) { toast("Owner email is required — it's the owner's login", "err"); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast("Enter a valid owner email", "err"); return; }
+    // Email is optional: without one the owner is a record only, with no portal login.
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast("Enter a valid owner email", "err"); return; }
     const id = $("#pms-modal").getAttribute("data-edit-id") || null;
     const data = {
       name: name,
@@ -10207,29 +10313,38 @@ premise: "Fee Simple / As Improved",
       if (ownerRec) { Object.assign(ownerRec, data); ownerRec.updatedAt = Date.now(); }
     } else {
       ownerRec = Object.assign({ id: pmsNewId("o"), createdAt: Date.now(), archived: false }, data);
-      const saveButton = $('[data-pms-save="owner"]');
-      if (saveButton) { saveButton.disabled = true; saveButton.textContent = "Creating account..."; }
-      try {
-        ownerRec.authUserId = await createPmsOwnerAccount(ownerRec);
-        ownerRec.accountStatus = "pending";
-        store.unshift(ownerRec);
-      } catch (err) {
-        if (saveButton) { saveButton.disabled = false; saveButton.innerHTML = icon("check", 15) + " Save"; }
-        toast("Could not create owner account: " + esc(friendlyErr(err.message || err)), "err");
-        return;
+      if (email) {
+        const saveButton = $('[data-pms-save="owner"]');
+        if (saveButton) { saveButton.disabled = true; saveButton.textContent = "Creating account..."; }
+        try {
+          ownerRec.authUserId = await createPmsOwnerAccount(ownerRec);
+          ownerRec.accountStatus = "pending";
+        } catch (err) {
+          if (saveButton) { saveButton.disabled = false; saveButton.innerHTML = icon("check", 15) + " Save"; }
+          toast("Could not create owner account: " + esc(friendlyErr(err.message || err)), "err");
+          return;
+        }
+      } else {
+        ownerRec.accountStatus = "none";
       }
+      store.unshift(ownerRec);
     }
     if (!(currentUser && (currentUser.demo || (SB && currentUser.id)))) ensureOwnerAccount(ownerRec);
     save(); closePmsModal();
-    if (!id) {
+    if (!id && email) {
       state.usersTab = "pending";
-      toastHtml("Owner saved — account pending approval. Temporary password: <b>" + esc(pmsCreatedPassword) + "</b>");
+      toast("Owner saved — approve the account in Users & Access");
+      pmsShowNewLogin(ownerRec.name, email);
       if (!currentUser.demo) loadCloudProfiles(true);
     } else toast("Owner saved");
     render();
   }
 
+  /* Offline demo only (localhost). On the live site logins are real Supabase
+   * accounts made by createPms*Account; this used to write placeholder users
+   * with the password "123456" into the admin's browser there too. */
   function ensureOwnerAccount(owner) {
+    if (!IS_LOCAL_DEV) return;
     const email = owner ? String(owner.email || "").trim() : "";
     const name = owner ? (owner.name || "") : "";
     if (!email || owner.archived === true) return;
@@ -10249,6 +10364,7 @@ premise: "Fee Simple / As Improved",
   }
 
   function ensureTenantAccount(tenant, lease) {
+    if (!IS_LOCAL_DEV) return;
     const email = tenant ? String(tenant.email || "").trim() : "";
     const name = tenant ? (tenant.name || "") : "";
     if (!email || !lease || !tenant || !tenant.id) return;
@@ -10306,12 +10422,17 @@ premise: "Fee Simple / As Improved",
     else state.users.push(Object.assign({}, base));
   }
 
+  // In the cloud only a real account (a uuid) counts as a login; a placeholder
+  // id left by an earlier failed attempt is retried instead of trusted.
+  function pmsCloudAccounts() { return !!(SB && currentUser && currentUser.id && !currentUser.demo); }
+  function pmsHasRealLogin(rec) { return !!(rec && rec.authUserId && (!pmsCloudAccounts() || window.ESPMSCLOUD.uuidOrNull(String(rec.authUserId)))); }
   function pmsTenantAuthExisting(tenant) {
     const email = tenant ? String(tenant.email || "").trim().toLowerCase() : "";
     if (!email) return null;
-    if (tenant.authUserId) return { id: String(tenant.authUserId), status: tenant.accountStatus || "pending", email: email };
+    if (pmsHasRealLogin(tenant)) return { id: String(tenant.authUserId), status: tenant.accountStatus || "pending", email: email };
     const profile = (remoteProfiles || []).find(p => String(p.email || "").trim().toLowerCase() === email);
     if (profile) return { id: String(profile.id), status: profile.registration_status || "pending", email: email };
+    if (pmsCloudAccounts()) return null;
     const local = (state.users || []).find(u => String(u.email || "").trim().toLowerCase() === email);
     if (local) return { id: local.authUserId || local.id, status: local.registrationStatus || (local.active === false ? "rejected" : "approved"), email: email };
     return null;
@@ -10397,9 +10518,9 @@ premise: "Fee Simple / As Improved",
       const email = String(profile.email || "").trim().toLowerCase();
       if (!authId || !email) return;
       let tenant = (pms().tenants || []).find(t => String(t.authUserId || "") === authId);
-      if (!tenant) tenant = (pms().tenants || []).find(t => t.archived !== true && !t.authUserId && String(t.email || "").trim().toLowerCase() === email);
+      if (!tenant) tenant = (pms().tenants || []).find(t => t.archived !== true && !pmsHasRealLogin(t) && String(t.email || "").trim().toLowerCase() === email);
       if (tenant) {
-        if (!tenant.authUserId) { tenant.authUserId = authId; changed = true; }
+        if (String(tenant.authUserId || "") !== authId) { tenant.authUserId = authId; changed = true; }
         if (tenant.accountStatus !== profile.registration_status) { tenant.accountStatus = profile.registration_status; changed = true; }
         return;
       }
@@ -10431,7 +10552,7 @@ premise: "Fee Simple / As Improved",
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { toast("Enter a valid tenant email", "err"); return; }
     const id = $("#pms-modal").getAttribute("data-edit-id") || null;
     const em = String(email).toLowerCase();
-    const duplicate = (pms().tenants || []).find(t => t.id !== id && String(t.email || "").trim().toLowerCase() === em);
+    const duplicate = (pms().tenants || []).find(t => t.id !== id && !t.archived && String(t.email || "").trim().toLowerCase() === em);
     if (duplicate) { toast("Email already used by tenant " + esc(duplicate.name || duplicate.email) + " — each tenant needs a unique email", "err"); return; }
     const current = id ? (pms().tenants || []).find(t => t.id === id) : null;
     const saveButton = $('[data-pms-save="tenant"]');
@@ -10441,7 +10562,7 @@ premise: "Fee Simple / As Improved",
       String(profile.email || "").trim().toLowerCase() === em &&
       (!current || String(profile.id || "") !== String(current.authUserId || ""))
     );
-    const localRegistered = (state.users || []).find(user =>
+    const localRegistered = !pmsCloudAccounts() && (state.users || []).find(user =>
       String(user.email || "").trim().toLowerCase() === em &&
       (!current || (String(user.id || "") !== String(current.authUserId || "") && user.pmsTenantId !== current.id))
     );
@@ -10466,7 +10587,12 @@ premise: "Fee Simple / As Improved",
         Object.assign(rec, data);
         rec.updatedAt = Date.now();
         const lease = (pms().leases || []).find(l => l.tenant_id === rec.id && !l.archived);
-        if (lease) ensureTenantAccount(rec, lease);
+        if (lease && pmsCloudAccounts() && !pmsHasRealLogin(rec)) {
+          try {
+            const acc = await createPmsTenantAccount(rec, lease);
+            if (acc && acc.created) { state.usersTab = "pending"; pmsShowNewLogin(rec.name, rec.email); }
+          } catch (err) { toast("Tenant saved but the login could not be created: " + esc(friendlyErr(err.message || err)), "err"); }
+        } else if (lease) ensureTenantAccount(rec, lease);
       }
     } else {
       const rec = Object.assign({ id: pmsNewId("t"), createdAt: Date.now(), archived: false }, data);
@@ -10537,7 +10663,8 @@ premise: "Fee Simple / As Improved",
           save();
           if (acc && acc.created) {
             state.usersTab = "pending";
-            leaseToast = "Lease saved \u2014 tenant account created. Temporary password: <b>" + esc(pmsCreatedPassword) + "</b>";
+            leaseToast = "Lease saved \u2014 tenant account created";
+            pmsShowNewLogin(tenant.name, tenant.email);
           } else {
             leaseToast = "Lease saved \u2014 tenant already has an account";
           }
@@ -10547,6 +10674,16 @@ premise: "Fee Simple / As Improved",
           leaseToast = "Lease saved but tenant account could not be created: " + esc(friendlyErr(err.message || err));
         } finally {
           if (saveBtn) { saveBtn.disabled = false; }
+        }
+      } else if (pmsCloudAccounts() && !pmsHasRealLogin(tenant)) {
+        // An earlier attempt failed (or predates real logins): try again.
+        try {
+          const acc = await createPmsTenantAccount(tenant, savedLease);
+          save();
+          if (acc && acc.created) { state.usersTab = "pending"; pmsShowNewLogin(tenant.name, tenant.email); }
+        } catch (err) {
+          leaseToastErr = true;
+          leaseToast = "Lease saved but tenant account could not be created: " + esc(friendlyErr(err.message || err));
         }
       } else {
         ensureTenantAccount(tenant, savedLease);
@@ -17009,8 +17146,6 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     if (!finHooked) {
       finHooked = true;
       document.addEventListener("click", e => {
-        const pir = e.target.closest("[data-pi-refresh]");
-    if (pir) { state.pmsInsightsLoaded = false; loadPmsInsights().then(() => render()); return; }
 const tpr = e.target.closest("[data-tperf-refresh]");
     if (tpr) { state.teamPerformanceLoaded = false; loadTeamPerformance().then(() => render()); return; }
 const ccBtn = e.target.closest("[data-cc-calc]");
