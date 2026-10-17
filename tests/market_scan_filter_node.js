@@ -51,6 +51,13 @@ section("province lookup");
     "got " + citiesInProvince("Metro Manila").length);
   chk("Batangas resolves", citiesInProvince("Batangas").length === 34,
     "got " + citiesInProvince("Batangas").length);
+  // Provinces that share a name with a town elsewhere must resolve to the province.
+  chk("Quezon province is not the town of Quezon (Bukidnon)", citiesInProvince("Quezon").indexOf("lucena") >= 0,
+    citiesInProvince("Quezon").slice(0, 3).join(","));
+  chk("Rizal province resolves to Rizal towns", citiesInProvince("Rizal").indexOf("antipolo") >= 0,
+    citiesInProvince("Rizal").slice(0, 3).join(","));
+  chk("Aurora province resolves to Aurora towns", citiesInProvince("Aurora").indexOf("baler") >= 0,
+    citiesInProvince("Aurora").slice(0, 3).join(","));
   chk("Makati is Metro Manila", provinceOfCity("Makati") === "Metro Manila", provinceOfCity("Makati"));
   chk("Calamba is Laguna", provinceOfCity("Calamba") === "Laguna", provinceOfCity("Calamba"));
   chk("Padre Garcia is Batangas", provinceOfCity("Padre Garcia") === "Batangas", provinceOfCity("Padre Garcia"));

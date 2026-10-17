@@ -1385,6 +1385,7 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     await loadCloudTransactions();
     await loadCloudPlaybooks();
     try { await migrateVaultToCloud(); } catch (vaultMigrateErr) {}
+    try { await moveTxDocsToSharedFolder(); } catch (txDocMoveErr) {}
     await refreshNotifications();
     notifSubscribeRealtime();
   }
@@ -3635,6 +3636,8 @@ document.addEventListener("click", e=>{
       if(e.target.closest("#pf-ledger-entry-modal") && !e.target.closest(".modal-card")){ pfCloseLedgerEntryModal(); return; }
       const delProof=e.target.closest("[data-pf-proof-remove]");
       if(delProof){ pfRemoveProof(delProof.getAttribute("data-pf-proof-remove"), delProof.getAttribute("data-pf-proof-id")); return; }
+      const openProof=e.target.closest("[data-pf-proof-open]");
+      if(openProof){ e.preventDefault(); pfOpenProof(openProof.getAttribute("data-pf-proof-open")); return; }
     });
     $("#menu-btn").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
     /* The drawer opens and closes from several places (menu button, outside
@@ -5678,8 +5681,10 @@ html+='</div></div>';
         proofs.forEach(x=>{
           const p=x.proof; const e=x.entry;
           const url=p.dataUrl? esc(p.dataUrl):"#";
+          // Files in Supabase Storage open through a short-lived signed link.
+          const cloudPath = !p.dataUrl && p.mode==="supabase" && p.storagePath ? ' data-pf-proof-open="'+esc(p.storagePath)+'"' : "";
           const cat=p.category||"other";
-          html+='<div class="pf-proof-card" data-pf-proof-cat="'+esc(cat)+'"><a class="pf-proof-thumb-link" href="'+url+'" target="_blank" rel="noopener">'+pfProofThumb(p)+'</a>'
+          html+='<div class="pf-proof-card" data-pf-proof-cat="'+esc(cat)+'"><a class="pf-proof-thumb-link" href="'+url+'" target="_blank" rel="noopener"'+cloudPath+'>'+pfProofThumb(p)+'</a>'
             +'<div class="pf-proof-card-body">'
             +'<b>'+esc(p.filename)+'</b>'
             +'<span class="tiny dim">'+esc(PROOF_CAT_LABEL[cat]||cat)+' · '+esc(p.mimetype||"")+' · '+pfProofSizeLabel(p.size)+'</span>'
@@ -5687,7 +5692,7 @@ html+='</div></div>';
             +'<span class="tiny dim">by '+(p.uploadedBy? esc(p.uploadedBy):"—")+' · <span class="pf-mode-badge">'+esc(p.mode==="supabase"?"Supabase Storage":"Local adapter")+'</span></span>'
             +'<span class="tiny dim">entry '+esc(e.id)+' · '+esc(e.description||"")+'</span>'
             +'<div class="row mt-8" style="gap:6px;flex-wrap:wrap">'
-            +'<a class="btn btn-ghost btn-sm" href="'+url+'" target="_blank" rel="noopener">'+icon("eye",12)+' View</a>'
+            +'<a class="btn btn-ghost btn-sm" href="'+url+'" target="_blank" rel="noopener"'+cloudPath+'>'+icon("eye",12)+' View</a>'
             + (pfCanWrite()? '<label class="btn btn-ghost btn-sm" style="margin:0">Replace<input type="file" class="pf-proof-replace-input" data-pf-proof-replace="'+esc(e.id)+'" data-pf-proof-id="'+esc(p.id||"")+'" accept="image/jpeg,image/png,image/gif,image/webp,application/pdf" style="display:none"></label><button class="btn btn-danger btn-sm" data-pf-proof-remove="'+esc(e.id)+'" data-pf-proof-id="'+esc(p.id||"")+'" title="Remove proof (audited)">'+icon("trash",12)+'</button>' : '')
             +'</div></div></div>';
         });
@@ -5808,21 +5813,69 @@ html+='</div></div>';
     }
     return rec && rec.id;
   }
+  // Cloud writes run one at a time, in the order the app made them, so a row
+  // is saved before the rows that point at it (an entry before its proofs and
+  // invoice, a project before its phases).
+  let pfCloudQueue = Promise.resolve();
+  function pfCloudRun(label, task){
+    pfCloudQueue = pfCloudQueue.then(task).then(
+      r => { if(r && r.error) toast("Cloud save failed ("+label+"): " + esc(friendlyErr(r.error.message)), "err"); },
+      e => { toast("Cloud save error ("+label+"): " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
+    ).catch(() => {});
+    return pfCloudQueue;
+  }
+  const PF_OWNED_TABLES = { portfolio_accounts:1, cash_entries:1, construction_projects:1 };
   function pfCloudWrite(table, payload){
     if(!pfCloud() || !window.ESPFCLOUD) return;
-    try {
-      SB.from(table).upsert(payload).then(r=>{
-        if(r && r.error) toast("Cloud save failed ("+table+"): " + esc(friendlyErr(r.error.message)), "err");
-      }).catch(e=>{ toast("Cloud save error ("+table+"): " + esc(friendlyErr(String(e.message || e))), "err"); });
-    } catch (e) { toast("Cloud save error ("+table+"): " + esc(friendlyErr(String(e.message || e))), "err"); }
+    if(PF_OWNED_TABLES[table] && !payload.owner_id) payload.owner_id = currentUser.id;
+    if(table === "portfolio_proofs" && !payload.uploaded_by) payload.uploaded_by = currentUser.id;
+    pfCloudRun(table, () => SB.from(table).upsert(payload));
   }
   function pfCloudDelete(table, id){
     if(!pfCloud() || !id) return;
+    pfCloudRun(table, () => SB.from(table).delete().eq("id", id));
+  }
+  // A cash entry plus its proofs.
+  function pfCloudWriteEntry(entry){
+    if(!pfCloud() || !window.ESPFCLOUD || !entry) return;
+    window.ESPFCLOUD.ensureUuid(entry);
+    pfCloudWrite("cash_entries", window.ESPFCLOUD.entryToDb(entry));
+    (entry.proofs || []).forEach(pr => pfCloudWriteProof(entry.id, pr));
+  }
+  // Proof files go to private Supabase Storage at
+  // <user id>/portfolio/<entry id>/<proof id> before the proof row is saved.
+  // If the upload fails the row is still saved (as a local copy) and the
+  // user is told.
+  function pfCloudWriteProof(entryId, pr){
+    if(!pfCloud() || !window.ESPFCLOUD || !pr) return;
+    const P = window.ESPFCLOUD;
+    P.ensureUuid(pr);
+    pr.entryId = entryId;
+    pfCloudRun("portfolio_proofs", async () => {
+      if(pr.mode !== "supabase" && pr.dataUrl && /^data:/.test(pr.dataUrl)){
+        try {
+          const blob = dataUrlToBlob(pr.dataUrl);
+          const path = currentUser.id + "/portfolio/" + entryId + "/" + pr.id;
+          const up = await SB.storage.from(VAULT_BUCKET).upload(path, blob, { contentType: blob.type || pr.mimetype || "application/octet-stream", upsert: true });
+          if(up.error) throw up.error;
+          pr.mode = "supabase"; pr.storagePath = path;
+          save();
+        } catch (e) {
+          toast("Proof file upload failed: " + esc(friendlyErr(String((e && e.message) || e))), "err");
+        }
+      }
+      const row = P.proofToDb(pr);
+      if(!row.uploaded_by) row.uploaded_by = currentUser.id;
+      return SB.from("portfolio_proofs").upsert(row);
+    });
+  }
+  async function pfOpenProof(path){
     try {
-      SB.from(table).delete().eq("id", id).then(r=>{
-        if(r && r.error) toast("Cloud delete failed ("+table+"): " + esc(friendlyErr(r.error.message)), "err");
-      }).catch(e=>{ toast("Cloud delete error ("+table+"): " + esc(friendlyErr(String(e.message || e))), "err"); });
-    } catch (e) { /* ignore */ }
+      const res = await SB.storage.from(VAULT_BUCKET).createSignedUrl(path, 60);
+      if(res.error || !res.data || !res.data.signedUrl) throw new Error(res.error ? res.error.message : "Cloud link unavailable");
+      const win = window.open(res.data.signedUrl, "_blank", "noopener");
+      if(!win) toast("Your browser blocked the preview. Allow pop-ups for this site and try again.", "err");
+    } catch (e) { toast(friendlyErr(String((e && e.message) || e)), "err"); }
   }
   async function pfLoadFromCloud(){
     if(!pfCloud() || !window.ESPFCLOUD) return;
@@ -5888,7 +5941,11 @@ html+='</div></div>';
     if(!found) return toast("Proof not found","err");
     if(!(await confirmModal({ title: "Remove proof", message: "Remove proof '"+(found.proof.filename||"")+"' ? The removal is audited.", danger: true, confirmLabel: "Remove" }))) return;
     const name=found.proof.filename||"";
-    if(pfCloud() && window.ESPFCLOUD && window.ESPFCLOUD.isUuid(found.proof.id)) pfCloudDelete("portfolio_proofs", found.proof.id);
+    if(pfCloud() && window.ESPFCLOUD && window.ESPFCLOUD.isUuid(found.proof.id)){
+      pfCloudDelete("portfolio_proofs", found.proof.id);
+      const path = found.proof.mode === "supabase" && found.proof.storagePath;
+      if(path) pfCloudRun("proof file", () => SB.storage.from(VAULT_BUCKET).remove([path]));
+    }
     found.arr.splice(found.idx,1);
     found.entry.proof_count=found.arr.length;
     pfAudit("proof_removed", entryId, found.entry.description, name+" removed");
@@ -5907,7 +5964,7 @@ html+='</div></div>';
       input.value="";
       if(res && res.error){ toast(res.error,"err"); return; }
       const rec=Object.assign({}, res, { id:found.proof.id, category:prevCat, uploadedAt:new Date().toISOString(), uploadedBy:(currentUser&&currentUser.email)||"admin", storagePath:found.proof.storagePath || ("local/"+entryId), mode:"local" });
-      if(pfCloud() && window.ESPFCLOUD){ window.ESPFCLOUD.ensureUuid(rec); pfCloudWrite("portfolio_proofs", window.ESPFCLOUD.proofToDb(rec)); }
+      pfCloudWriteProof(entryId, rec);
       found.arr[found.idx]=rec;
       found.entry.proof_count=found.arr.length;
       pfAudit("proof_replaced", entryId, found.entry.description, oldName+" -> "+rec.filename);
@@ -6093,7 +6150,7 @@ function pfAudit(action, refId, refLabel, detail){
     res.added.forEach(pe=>{
       const entry={ id: pfNextLedgerId(), accountId: acc.id, entry_date: pe.entryDate || new Date().toISOString().slice(0,10), direction: pe.direction, amount: pe.amount, description: pe.description, purpose: pe.purpose||"", subcategory: pe.subcategory||"", counterparty:"", reference_no: pe.ref||"", linked_asset_id:"", linked_construction_id:"", linked_presell_project_id:"", linked_presell_payment_id: pe.link && pe.link.type==="payment"? pe.link.id : "", linked_transaction_id:"", status: pe.status||"posted", idempotencyKey: pe.idempotencyKey, proof_count:0, proofs:[], created_at: new Date().toISOString() };
       state.cashEntries.push(entry);
-      if(pfCloud() && window.ESPFCLOUD){ window.ESPFCLOUD.ensureUuid(entry); pfCloudWrite("cash_entries", window.ESPFCLOUD.entryToDb(entry)); }
+      pfCloudWriteEntry(entry);
       pfAudit("entry_migrated", entry.id, entry.description, "backfilled presell collection "+(pe.link&&pe.link.id||""));
     });
     save(); render(); toast("Imported "+res.added.length+" presell collection(s) into the Cash Ledger","ok");
@@ -6167,12 +6224,7 @@ function pfAudit(action, refId, refLabel, detail){
       pfAudit("proof_uploaded", savedEntry.id, savedEntry.description, rec.filename+" ("+pfProofSizeLabel(rec.size)+", "+rec.mimetype+")");
       pfPendingProof = null;
     }
-    if(pfCloud() && window.ESPFCLOUD){
-      const P=window.ESPFCLOUD;
-      P.ensureUuid(savedEntry);
-      pfCloudWrite("cash_entries", P.entryToDb(savedEntry));
-      (savedEntry.proofs||[]).forEach(pr=>{ P.ensureUuid(pr); pfCloudWrite("portfolio_proofs", P.proofToDb(pr)); });
-    }
+    pfCloudWriteEntry(savedEntry);
     pfCloseLedgerEntryModal(); save(); render(); toast(wantStatus==="posted"? "Posted "+direction+" "+C.money(amt) : "Saved draft "+direction+" "+C.money(amt), wantStatus==="posted"?"ok":"");
   }
   function pfLedgerBalancePreview(){
@@ -6213,8 +6265,12 @@ function pfAudit(action, refId, refLabel, detail){
     const ledger={ opening: 0, entries: state.cashEntries.slice() };
     const res= L? L.reverse(ledger, id, (currentUser&&currentUser.email)||"admin") : {ok:true, reversal:{id:"R"+id, reversalOf:id, direction: e.direction==="in"?"out":"in", amount:e.amount, accountId:e.accountId, status:"posted"}};
     if(!res.ok) return toast(res.errors.join("; "),"err");
+    // The database requires a subcategory and description on "others"
+    // entries, so the reversal carries the original's.
+    if(!res.reversal.description) res.reversal.description = "Reversal of " + (e.description || e.id);
+    if(!res.reversal.subcategory) res.reversal.subcategory = e.subcategory || "";
     state.cashEntries.push(res.reversal);
-    if(pfCloud() && window.ESPFCLOUD){ window.ESPFCLOUD.ensureUuid(res.reversal); pfCloudWrite("cash_entries", window.ESPFCLOUD.entryToDb(res.reversal)); }
+    pfCloudWriteEntry(res.reversal);
     pfAudit("entry_reversed", e.id, e.description, "reversal "+res.reversal.id); save(); render(); toast("Reversed","ok");
   }
   async function pfVoidEntry(id){
@@ -6229,7 +6285,7 @@ function pfAudit(action, refId, refLabel, detail){
     const res= L? L.voidEntry({entries:state.cashEntries}, id, (currentUser&&currentUser.email)||"admin") : {ok:true};
     if(!res.ok) return toast(res.errors.join("; "),"err");
     e.status="voided"; e.voidedBy=(currentUser&&currentUser.email)||"admin"; e.voidedAt=new Date().toISOString();
-    if(pfCloud() && window.ESPFCLOUD){ window.ESPFCLOUD.ensureUuid(e); pfCloudWrite("cash_entries", window.ESPFCLOUD.entryToDb(e)); }
+    pfCloudWriteEntry(e);
     pfAudit("entry_voided", e.id, e.description, "");
     save(); render(); toast("Voided","ok");
   }
@@ -6374,7 +6430,7 @@ function pfGoLedgerFromCashflow(dir){
       pfPendingCollectProof=null;
       pfAudit("proof_uploaded", entry.id, entry.description, "collection proof attached");
     }
-    if(pfCloud() && window.ESPFCLOUD){ window.ESPFCLOUD.ensureUuid(entry); pfCloudWrite("cash_entries", window.ESPFCLOUD.entryToDb(entry)); (entry.proofs||[]).forEach(pr=>{ window.ESPFCLOUD.ensureUuid(pr); pfCloudWrite("portfolio_proofs", window.ESPFCLOUD.proofToDb(pr)); }); }
+    pfCloudWriteEntry(entry);
     if(pfCloud() && SB){
       SB.from("presell_payments").update({ status:"paid", paid_at:pay.paid_at, method:method }).eq("id", payId).then(r=>{ if(r.error) toast("Cloud payment update failed: "+(r.error.message||""),"err"); }).catch(()=>{});
     }
@@ -6767,12 +6823,13 @@ if(editId){
       if(res.errors && res.errors.indexOf("cash out exceeds current balance")>=0) return toast("Insufficient cash — invoice ₱"+C.money(amount)+" exceeds the available balance in "+account.label+". Add cash first.","err");
       return toast((res.errors||["cannot post"]).join(", "),"err");
     }
+    // Give the entry its cloud id before the invoice points at it.
+    if(pfCloud() && window.ESPFCLOUD) window.ESPFCLOUD.ensureUuid(res.entry);
     state.cashEntries.push(res.entry); inv.status="paid"; inv.ledger_entry_id=res.entry.id; inv.paid_at=new Date().toISOString();
     if(phase){ phase.paid=Math.round((Number(phase.paid||0)+amount)*100)/100; }
     if(pfCloud() && window.ESPFCLOUD){
       const P=window.ESPFCLOUD;
-      P.ensureUuid(res.entry);
-      pfCloudWrite("cash_entries", P.entryToDb(res.entry));
+      pfCloudWriteEntry(res.entry);
       pfCloudWrite("construction_invoices", P.invoiceToDb(inv));
       if(phase) pfCloudWrite("construction_phases", P.phaseToDb(phase));
     }
@@ -13492,8 +13549,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (error) {
         if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.broker_transactions"/i)) toast("Transaction sharing needs the broker_transactions table — run supabase/broker_transactions.sql in the SQL Editor.", "err");
         else toast("Could not sync transaction: " + esc(friendlyErr(error.message)), "err");
+        return false;
       }
-    } catch (e) {}
+      return true;
+    } catch (e) { return false; }
   }
   async function deleteTransactionFromCloud(id) {
     if (!SB || !currentUser || !currentUser.id) return;
@@ -16376,6 +16435,58 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
   const VAULT_CATEGORIES = ["Valid ID", "TIN", "Proof of Billing", "Proof of Income", "SPA", "Bank / Financing", "Contract", "Title / Deed", "Other"];
   const TX_VAULT_CATEGORIES = ["Reservation Agreement", "Contract to Sell", "Deed of Absolute Sale", "TCT / CCT", "Tax Declaration", "BIR CAR / eCAR", "Transfer Tax Receipt", "Registry of Deeds Receipt", "Proof of Payment", "Valid ID", "TIN", "SPA", "Bank / Financing", "Other"];
   const VAULT_BUCKET = "private-documents";
+  // fetch(dataUrl) is blocked by the site's connect-src policy, so decode by hand.
+  function dataUrlToBlob(dataUrl) {
+    const m = /^data:([^;,]*)(;base64)?,(.*)$/s.exec(String(dataUrl || ""));
+    if (!m) throw new Error("Not a data URL");
+    const type = m[1] || "application/octet-stream";
+    if (!m[2]) return new Blob([decodeURIComponent(m[3])], { type });
+    const bin = atob(m[3]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type });
+  }
+  /* Transaction files go under <uid>/tx/<transaction id>/ so everyone who can
+   * open the transaction can open its files (storage policy "documents read
+   * shared transaction"). Other files stay in the private <uid>/vault/. */
+  function vaultPath(ownerType, ownerId, docId, name) {
+    const file = docId + "__" + vaultSafeName(name);
+    if (ownerType === "tx" && /^[A-Za-z0-9._-]{1,120}$/.test(String(ownerId || ""))) return currentUser.id + "/tx/" + ownerId + "/" + file;
+    return currentUser.id + "/vault/" + file;
+  }
+  /* Transaction files uploaded before the shared folder existed sit in the
+   * uploader's private vault, where teammates can't open them. Copy them into
+   * the transaction's folder (the uploader can read and write both). */
+  async function moveTxDocsToSharedFolder() {
+    if (!SB || !currentUser || !currentUser.id || currentUser.demo) return;
+    const mine = currentUser.id + "/vault/";
+    let moved = 0;
+    for (const tx of (state.transactions || [])) {
+      // Only someone who can save the transaction can repoint its files.
+      if (!roleIs("super-admin") && !(tx.brokerId === currentUser.id && tx.createdBy === currentUser.id)) continue;
+      const done = [];
+      for (const d of (tx.documents || [])) {
+        if (!d || !d.storagePath || d.storagePath.indexOf(mine) !== 0) continue;
+        const target = vaultPath("tx", tx.id, d.id, d.name);
+        if (target === d.storagePath) continue;
+        try {
+          const cp = await SB.storage.from(VAULT_BUCKET).copy(d.storagePath, target);
+          if (cp.error && !/exists|duplicate/i.test(cp.error.message || "")) continue;
+          done.push({ d, old: d.storagePath });
+          d.storagePath = target;
+        } catch (e) {}
+      }
+      if (!done.length) continue;
+      tx.updatedAt = new Date().toISOString();
+      if (await persistTransactionToCloud(tx)) {
+        moved += done.length;
+        SB.storage.from(VAULT_BUCKET).remove(done.map(x => x.old)).catch(() => {});
+      } else {
+        done.forEach(x => { x.d.storagePath = x.old; });
+      }
+    }
+    if (moved) save();
+  }
   function vaultSafeName(name) { return String(name || "file").replace(/[^A-Za-z0-9._ -]+/g, "_").replace(/ +/g, "_").slice(-80); }
   async function vaultSignedUrl(doc, forDownload) {
     if (doc.storagePath && SB) {
@@ -16396,8 +16507,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       let ok = 0;
       for (const d of pending) {
         try {
-          const blob = await (await fetch(d.dataUrl)).blob();
-          const vpath = currentUser.id + "/vault/" + d.id + "__" + vaultSafeName(d.name);
+          const blob = dataUrlToBlob(d.dataUrl);
+          const vpath = vaultPath(d.ownerType, d.ownerId, d.id, d.name);
           const up = await SB.storage.from(VAULT_BUCKET).upload(vpath, blob, { contentType: blob.type || "application/octet-stream", upsert: true });
           if (up.error) throw up.error;
           d.storagePath = vpath;
@@ -16495,7 +16606,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       try {
         const baseRec = { id: "doc-" + Date.now() + "-" + Math.floor(Math.random() * 999), name: file.name, category: catEl ? catEl.value : "Other", size: (file.size / 1024).toFixed(0) + " KB", ownerType: ov ? ov.getAttribute("data-owner-type") : "", ownerId: ov ? ov.getAttribute("data-owner-id") : "", uploadedAt: new Date().toISOString() };
         if (SB && currentUser && currentUser.id && !currentUser.demo) {
-          const vpath = currentUser.id + "/vault/" + baseRec.id + "__" + vaultSafeName(file.name);
+          const vpath = vaultPath(baseRec.ownerType, baseRec.ownerId, baseRec.id, file.name);
           const up = await SB.storage.from(VAULT_BUCKET).upload(vpath, file, { contentType: file.type || "application/octet-stream" });
           if (up.error) throw new Error(up.error.message || "Upload failed");
           baseRec.storagePath = vpath;

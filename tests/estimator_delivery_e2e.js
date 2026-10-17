@@ -22,6 +22,7 @@ const q = selector => document.querySelector(selector);
         posts.push({ key: options.headers["Idempotency-Key"], data: JSON.parse(options.body) });
         if (responseMode === "error") return new Response(JSON.stringify({ error: "Service busy, retry this request" }), { status: 503 });
         if (responseMode === "bad-json") return new Response("unparseable response", { status: 200 });
+        if (responseMode === "network") throw new TypeError("Failed to fetch");
         return new Response(JSON.stringify({ inquiry: { id: "fixture-saved" }, pdfSent: responseMode === "emailed" }), { status: 201 });
       }
       return oldFetch(url, options);
@@ -53,8 +54,29 @@ const q = selector => document.querySelector(selector);
     appraisalBtn.click(); await wait(200);
     const apprForm = q("[data-est-lead-form]");
     apprForm.elements.name.value = "Appr fixture"; apprForm.elements.email.value = "appr@example.com"; apprForm.elements.phone.value = "0917"; apprForm.elements.consent.checked = true;
+    if (apprForm.elements.message) apprForm.elements.message.value = "Corner lot, clean title";
     responseMode = "saved"; apprForm.querySelector('button[type="submit"]').click(); await wait(250);
     check("appraisal lead labeled professional-appraisal-request", posts[4].data.service_requested === "professional-appraisal-consultation" && posts[4].data.inquiry_type === "professional-appraisal-request", "svc=" + posts[4].data.service_requested);
+    check("the customer's notes reach the report service", !apprForm.elements.message || posts[4].data.notes === "Corner lot, clean title", "notes=" + posts[4].data.notes);
+
+    /* --- report service unreachable: the lead falls back to /contacts; an
+       older listing-api that rejects the appraisal type gets a consultation --- */
+    est._state().leadSubmitted = false; est._state().leadOpen = false; est.debug.render(4); await wait(150);
+    q("[data-est-lead-open]").click(); await wait(200);
+    const fbForm = q("[data-est-lead-form]");
+    fbForm.elements.name.value = "Fallback fixture"; fbForm.elements.email.value = "fb@example.com"; fbForm.elements.phone.value = "0917"; fbForm.elements.consent.checked = true;
+    const contactCalls = [];
+    api.contact = async (inquiry) => {
+      contactCalls.push(inquiry);
+      if (contactCalls.length === 1) { const err = new Error("inquiry_type is invalid"); err.status = 400; throw err; }
+      return { id: "fallback-saved" };
+    };
+    responseMode = "network"; fbForm.querySelector('button[type="submit"]').click(); await wait(400);
+    check("rejected appraisal type is retried once as a consultation",
+      contactCalls.length === 2 && contactCalls[0].inquiry_type === "professional-appraisal-request" && contactCalls[1].inquiry_type === "consult"
+        && /^Requested: professional-appraisal-consultation \| /.test(contactCalls[1].message),
+      JSON.stringify(contactCalls.map(c => c.inquiry_type)));
+    check("fallback save is confirmed to the customer", /saved/.test(q("[data-est-lead-status]") ? q("[data-est-lead-status]").textContent : document.body.textContent));
 
     check("posted report keeps central estimate, range and BIR separate", posts[2].data.report.estimate.marketGuideEstimate === 2352500 && posts[2].data.report.estimate.low === 1999625 && posts[2].data.report.estimate.birZonalValue === 1150000);
     check("results stay visible after submission", !!q(".sf-est-result-value") && !q(".sf-est-price-lock"));

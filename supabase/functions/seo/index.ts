@@ -7,14 +7,15 @@ const corsHeaders = {
 };
 
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const SITE_URL = (Deno.env.get("SITE_URL") ?? "https://tradersgag6.github.io/esrealty").replace(/\/$/, "");
+// The production site (Cloudflare). SITE_URL overrides it.
+const SITE_URL = (Deno.env.get("SITE_URL") ?? "https://esrealty.tradersgag6.workers.dev").replace(/\/$/, "");
 // Canonical host + platform prefix that serves the crawlable per-property
 // pages. Omitting the /functions/v1 prefix makes sitemap URLs 404 from Google.
 const EDGE_ORIGIN = "https://mrngaqtbaseewzcsogqi.supabase.co/functions/v1";
 
 const PUBLIC_COLUMNS = [
   "id", "title", "description", "property_type", "offer_type", "status",
-  "price", "rent", "address", "city", "province", "latitude", "longitude",
+  "price", "rent", "address", "barangay", "city", "province", "latitude", "longitude",
   "bedrooms", "bathrooms", "floor_area_sqm", "lot_size_sqm", "images",
   "updated_at", "published_at", "agent_name",
 ].join(",");
@@ -37,9 +38,22 @@ function html(body: string) {
   return new Response(body, { status: 200, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } });
 }
 
+// The catalog's images are objects ({ url, altText, ... }); older rows may
+// hold plain URL strings.
+function imageUrls(l: any): string[] {
+  if (!Array.isArray(l.images)) return [];
+  return l.images
+    .map((x: any) => (typeof x === "string" ? x : x && x.url) || "")
+    .filter((u: string) => /^https:/.test(u));
+}
+
+// Rentals are priced by `rent`; sales by `price`.
+function listPrice(l: any) {
+  return Number((l.offer_type === "rent" ? l.rent : l.price) || 0);
+}
+
 function listingJsonLd(l: any, url: string) {
-  const imgs = Array.isArray(l.images) ? l.images.filter((x: string) => /^https:/.test(x)).slice(0, 5) : [];
-  const addr = [l.address, l.barangay, l.city, l.province].filter(Boolean).join(", ");
+  const imgs = imageUrls(l).slice(0, 5);
   const isRent = l.offer_type === "rent";
   return {
     "@context": "https://schema.org",
@@ -49,12 +63,12 @@ function listingJsonLd(l: any, url: string) {
     url,
     image: imgs,
     datePosted: l.published_at,
-    address: { "@type": "PostalAddress", streetAddress: l.address, addressLocality: l.city, addressRegion: l.province, addressCountry: "PH" },
+    address: { "@type": "PostalAddress", streetAddress: [l.address, l.barangay].filter(Boolean).join(", "), addressLocality: l.city, addressRegion: l.province, addressCountry: "PH" },
     ...(l.latitude && l.longitude ? { geo: { "@type": "GeoCoordinates", latitude: l.latitude, longitude: l.longitude } } : {}),
     offers: {
       "@type": "Offer",
       priceCurrency: "PHP",
-      price: Number(l.price || 0),
+      price: listPrice(l),
       availability: "https://schema.org/InStock",
       url,
     },
@@ -95,11 +109,11 @@ Deno.serve(async (req) => {
       .select(PUBLIC_COLUMNS).eq("id", id).eq("status", "available").maybeSingle();
     if (!r.data) return html(`<!doctype html><title>Listing not found</title><meta http-equiv="refresh" content="1;url=${SITE_URL}/">`);
     const l: any = r.data;
-    const spaUrl = `${SITE_URL}/#/property/${id}`;
+    const spaUrl = `${SITE_URL}/#/listing/${encodeURIComponent(id)}`;
     const canonicalUrl = `${EDGE_ORIGIN}/seo/property/${id}`;
-    const img = Array.isArray(l.images) && l.images[0] ? l.images[0] : "";
+    const img = imageUrls(l)[0] || "";
     const desc = (l.description || "").slice(0, 300) || `${l.property_type} for ${l.offer_type === "rent" ? "rent" : "sale"} in ${[l.city, l.province].filter(Boolean).join(", ")}.`;
-    const priceTxt = money(l.price || l.rent) + (l.offer_type === "rent" ? "/mo" : "");
+    const priceTxt = money(listPrice(l)) + (l.offer_type === "rent" ? "/mo" : "");
     // `<` is escaped so a `</script>` inside listing text cannot break out of
     // the ld+json block; the escapes are valid JSON and decode back to `<`.
     const ld = JSON.stringify(listingJsonLd(l, canonicalUrl)).replace(/</g, "\\u003c");
@@ -114,7 +128,7 @@ Deno.serve(async (req) => {
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${esc(canonicalUrl)}">
 ${img ? `<meta property="og:image" content="${esc(img)}">` : ""}
-<meta property="og:price:amount" content="${Number(l.price || 0)}">
+<meta property="og:price:amount" content="${listPrice(l)}">
 <meta property="og:price:currency" content="PHP">
 <meta name="twitter:card" content="${img ? "summary_large_image" : "summary"}">
 <script type="application/ld+json">${ld}</script>

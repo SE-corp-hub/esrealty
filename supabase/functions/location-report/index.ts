@@ -1,7 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
-import "../../../js/value_guide_finance.js";
-import TAX_REFERENCE from "../../../data/tax/ph-estate-tax-reference.json" with { type: "json" };
+// Copies of js/value_guide_finance.js and data/tax/ph-estate-tax-reference.json.
+// The deploy bundles only supabase/functions, so the function keeps its own
+// copies; tests/edge_shared_sync_node.js fails if they drift from the originals.
+import "../_shared/value_guide_finance.js";
+import TAX_REFERENCE from "../_shared/ph-estate-tax-reference.json" with { type: "json" };
 const FINANCE = (globalThis as any).ESREALTY_FINANCE;
 
 const corsHeaders = {
@@ -651,6 +654,13 @@ Deno.serve(async (req) => {
     body.notes ? "Notes: " + str(body.notes, 800) : "",
   ].filter(Boolean).join(" | ");
 
+  let adminId: string;
+  try {
+    adminId = (await requireAdmin(admin)).id;
+  } catch (e) {
+    return json({ error: e instanceof Error ? e.message : "No super-admin account is configured" }, 500);
+  }
+
   const leadId = "lead-" + crypto.randomUUID();
   const ref = "LOC-" + leadId.slice(-8).toUpperCase();
   const lead = {
@@ -659,7 +669,7 @@ Deno.serve(async (req) => {
     name: fullName || email || "Website lead",
     assigned_to: "",
     assigned_to_id: null,
-    created_by: (await requireAdmin(admin)).id,
+    created_by: adminId,
     updated_at: now,
     payload: {
       id: leadId,
@@ -681,7 +691,7 @@ Deno.serve(async (req) => {
       notes: summary,
       assignedTo: "",
       assignedToId: null,
-      createdBy: null,
+      createdBy: adminId,
       createdAt: now,
       updatedAt: now,
       activity: [{ date: now, text: inquiryType === "professional-appraisal-request" ? "Professional appraisal consultation requested from the website." : inquiryType === "broker-consultation" ? "Broker consultation requested from the website." : "Full location analysis report requested from the website." }],
@@ -692,20 +702,22 @@ Deno.serve(async (req) => {
   const { error: leadError } = await admin.from("crm_leads").insert(lead);
   if (leadError) return json({ error: leadError.message }, 500);
 
+  // Archive copy for super-admins. Best-effort: the lead is already saved.
   try {
-    await admin.from("storefront_inquiries").insert({
+    const { error: auditError } = await admin.from("storefront_inquiries").insert({
       inquiry_type: inquiryType,
       user_id: null,
       full_name: fullName,
       phone: str(body.phone, 50),
       email,
       message: summary,
-      interest: null,
-      consent: true,
-      created_at: now,
+      consent_at: now,
+      source: "value-guide",
+      metadata: { crmLeadId: leadId, ref },
     });
-  } catch {
-    // archive copy is best-effort
+    if (auditError) console.error("storefront_inquiries audit insert failed", auditError.message);
+  } catch (e) {
+    console.error(e);
   }
 
   let emailSkipped = false;
@@ -715,7 +727,12 @@ Deno.serve(async (req) => {
     // (capped to MAX_ESTIMATE_JSON_BYTES) feeds the generator.
     const pdfReport = JSON.parse(JSON.stringify({ report, full_name: fullName, email }));
     const pdfBytes = await buildPdf(pdfReport);
-    const b64 = btoa(String.fromCharCode(...pdfBytes));
+    // Chunked: spreading a large PDF into one call overflows the stack.
+    let binary = "";
+    for (let i = 0; i < pdfBytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...pdfBytes.subarray(i, i + 0x8000));
+    }
+    const b64 = btoa(binary);
     if (RESEND_API_KEY) {
       const subjectPrefix = inquiryType === "professional-appraisal-request"
         ? "Your SEA ESTATES Property Value Report — "
@@ -740,11 +757,15 @@ Deno.serve(async (req) => {
         }),
       });
       pdfSent = resp.ok;
-      if (!resp.ok) emailSkipped = true;
+      if (!resp.ok) {
+        emailSkipped = true;
+        console.error("Resend rejected the report email", resp.status, await resp.text().catch(() => ""));
+      }
     } else {
       emailSkipped = true;
     }
-  } catch {
+  } catch (e) {
+    console.error("report PDF/email failed", e);
     emailSkipped = true;
   }
 

@@ -1,0 +1,130 @@
+{
+  "id": "ph-estate-tax-reference",
+  "title": "Philippine real estate transaction and estate tax reference",
+  "version": "2026.10.1",
+  "checkedOn": "2026-10-02",
+  "sources": ["https://lawphil.net/statutes/repacts/ra1997/ra_8424_1997.html", "https://lawphil.net/statutes/repacts/ra2017/ra_10963_2017.html", "https://lawphil.net/statutes/repacts/ra2024/ra_11976_2024.html", "https://lawphil.net/statutes/repacts/ra1991/ra_7160_1991.html"],
+  "nextReview": "2026-12-31",
+  "scope": "Illustrative orientation for Batangas residential and vacant-land transactions.",
+  "authorityNote": "Statutory rates published by the BIR, the Registry of Deeds, the LGU and the National Treasury. Rates are reproduced here for orientation only. The BIR and the LGU determine the actual amounts payable, and any figure in this file may be superseded by a later circular or statute.",
+  "taxBaseNote": "For the illustrated qualifying capital-asset sale, CGT uses the higher of selling price and statutory fair market value; statutory FMV considers the BIR zonal reference and assessor schedule values. Without an entered price, the planning estimate is an assumed selling price, not statutory FMV. Missing assessor values, asset classification and exemptions must be confirmed. There is no 50%-of-zonal proxy or excess-only CGT in this model.",
+  "transaction": [
+    {
+      "key": "capital_gains",
+      "label": "Capital gains tax",
+      "ratePct": 6,
+      "base": "higher_of_selling_price_or_fmv",
+      "billedBy": "BIR",
+      "legalBasis": "Sec. 24(D), National Internal Revenue Code",
+      "note": "6% of the higher applicable gross selling price or statutory FMV for qualifying capital-asset real property. Ordinary-asset sales and exemptions require a different assessment.",
+      "deadlineDays": 30,
+      "deadlineFrom": "date of notarisation of the deed of sale",
+      "penalty": "Surcharge and interest depend on taxpayer classification and circumstances; confirm current BIR rules"
+    },
+    {
+      "key": "documentary_stamp",
+      "label": "Documentary stamp tax",
+      "ratePct": 1.5,
+      "base": "higher_of_selling_price_or_fmv",
+      "billedBy": "BIR",
+      "legalBasis": "Sec. 196 NIRC; filing under Sec. 200(B), as amended by RA 11976 Sec. 30",
+      "note": "1.5% planning approximation; the statutory document calculation and applicable exemptions must be checked. General filing deadline is 10 days after the close of the month the taxable document was made, signed, issued, accepted or transferred, subject to applicable rules.",
+      "deadlineDays": 10,
+      "deadlineFrom": "close of the month the taxable document was made, signed, issued, accepted or transferred",
+      "penalty": "Surcharge and interest depend on taxpayer classification and circumstances; confirm current BIR rules"
+    },
+    {
+      "key": "transfer",
+      "label": "Local transfer tax",
+      "ratePct": 0.5,
+      "base": "higher_of_original_price_or_fmv",
+      "billedBy": "City or Municipal Treasurer",
+      "legalBasis": "Secs. 135 and 151, Local Government Code (RA 7160)",
+      "note": "0.5% is an illustrative provincial rate. Cities may impose up to 50% more under Sec. 151 (up to 0.75%); verify the relevant LGU ordinance and valuation basis.",
+      "deadlineDays": 60,
+      "deadlineFrom": "date of the deed of transfer",
+      "penalty": "Interest and penalties fixed by local ordinance"
+    },
+    {
+      "key": "registration",
+      "label": "Registration fee (estimate)",
+      "ratePct": 0.1,
+      "base": "higher_of_selling_price_or_fmv",
+      "billedBy": "Registry of Deeds",
+      "legalBasis": "Presidential Decree 1244, schedule of fees",
+      "note": "An approximation for orientation. The Registry of Deeds computes the fee from its own schedule, which includes a minimum and is not a flat percentage.",
+      "deadlineDays": null,
+      "deadlineFrom": null,
+      "penalty": null
+    },
+    {
+      "key": "notarial",
+      "label": "Notarial fee (estimate)",
+      "ratePct": null,
+      "amount": 0,
+      "base": "fixed_by_notary",
+      "billedBy": "Notary Public",
+      "legalBasis": "Quoted professional fee; no universal amount assumed",
+      "note": "Not supplied and excluded by default. Obtain a written quote; fees may depend on the act and agreement.",
+      "deadlineDays": null,
+      "deadlineFrom": null,
+      "penalty": null
+    },
+    {
+      "key": "broker",
+      "label": "Broker's commission",
+      "ratePctMin": 3,
+      "ratePctMax": 5,
+      "base": "agreed_selling_price",
+      "billedBy": "Negotiated between the parties",
+      "legalBasis": "Contractual; no statutory rate",
+      "note": "Illustrative negotiated 3% to 5% of the agreed price, assumed seller-paid here; confirm rate and allocation in writing.",
+      "deadlineDays": null,
+      "deadlineFrom": null,
+      "penalty": null
+    }
+  ],
+  "estate": {
+    "grossEstateBasis": "The value of the estate at the time of death, typically the BIR zonal value or the market value, whichever the BIR accepts.",
+    "standardDeduction": 5000000,
+    "standardDeductionBasis": "Sec. 86(A)(1) NIRC, as amended by RA 10963 Sec. 23 (citizen/resident estate)",
+    "taxThreshold": 0,
+    "familyHomeDeductionLimit": 10000000,
+    "taxPct": 6,
+    "taxBasis": "Secs. 84 and 86 NIRC, as amended by RA 10963 Secs. 22-23: 6% of net taxable estate",
+    "penalty": "Surcharge and interest depend on circumstances; confirm current BIR rules",
+    "deadlineDays": 365,
+    "deadlineFrom": "date of death (one calendar year, not always exactly 365 days)",
+    "note": "These property-only scenarios assume the property were the entire citizen/resident estate. Actual liability requires all estate assets, applicable death-date values, liabilities and deductions. The PHP 10M family-home limit is conditional, not an additional universal exemption. Registrable property may require an estate return even when estimated tax is zero."
+  },
+  "steps": [
+    { "n": 1, "label": "Execute the deed of absolute sale", "where": "Notary Public", "deadline": "Before any filing" },
+    { "n": 2, "label": "Pay capital gains tax", "where": "BIR RDO", "deadline": "Within 30 days of notarisation" },
+    { "n": 3, "label": "Pay documentary stamp tax", "where": "BIR RDO", "deadline": "Generally within 10 days after the close of the document month; confirm applicable rules" },
+    { "n": 4, "label": "Obtain Certificate Authorizing Registration", "where": "BIR RDO", "deadline": "After CGT and DST are settled" },
+    { "n": 5, "label": "Pay local transfer tax", "where": "City or Municipal Treasurer", "deadline": "Within 60 days of the deed" },
+    { "n": 6, "label": "Register the transfer of title", "where": "Registry of Deeds", "deadline": "After CAR release" },
+    { "n": 7, "label": "Update the tax declaration", "where": "City or Municipal Assessor", "deadline": "After the new title is released" }
+  ],
+  "sellerDocuments": [
+    "Original Owner's Duplicate Certificate of Title (OCT/TCT)",
+    "Tax Declaration, current year",
+    "Real property tax clearance",
+    "Updated receipts of real property tax payments",
+    "Valid government IDs of the seller",
+    "Special Power of Attorney, if a representative signs",
+    "Marital Consent or Spousal Affidavit, if married",
+    "Authority to sell, if the owner is abroad or unavailable",
+    "Electrical and water account clearance, where requested"
+  ],
+  "buyerDocuments": [
+    "Valid government IDs",
+    "TIN, for BIR purposes",
+    "Proof of income or source of funds",
+    "Marriage Certificate, if married",
+    "Down payment receipt or proof of funds",
+    "Pre-approval letter, if bank financed",
+    "Post-dated cheques, if bank financed",
+    "Power of Attorney, if represented"
+  ]
+}

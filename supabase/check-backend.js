@@ -13,7 +13,6 @@
 // secrets to run this — it only hits public/health routes and expects 401/403
 // on protected ones.
 
-const SUPER_BASE = "supabase/functions";
 const fs = require("fs");
 const path = require("path");
 
@@ -45,7 +44,6 @@ const FUNCTIONS = [
       { path: "/seo/robots.txt", method: "GET", expect: 200 },
       { path: "/seo/sitemap.xml", method: "GET", expect: 200 },
     ],
-    parse: (fn, seen) => (/Deno\.env\.get\("([^"]+)"\)/.exec(fn) || []).slice(1).forEach(v => seen.add(v)),
   },
   {
     name: "fb-leads",
@@ -74,6 +72,23 @@ const FUNCTIONS = [
     ],
   },
   {
+    name: "location-report",
+    // Value Guide report emails. Until it is deployed the app saves the lead
+    // through listing-api instead, so a miss is reported but not blocking.
+    skipBlocking: true,
+    deployHint: "Run the Deploy edge functions workflow (needs the SUPABASE_ACCESS_TOKEN repo secret), or: supabase functions deploy location-report --no-verify-jwt --project-ref " + REF,
+    probes: [
+      // An empty body fails validation before anything is saved or sent.
+      { path: "/location-report", method: "POST", expect: 400, note: "rejects a request with no email", body: {} },
+    ],
+  },
+  {
+    name: "agent-dispatch",
+    probes: [
+      { path: "/agent-dispatch", method: "POST", expect: 401, note: "rejects a call without the dispatch secret", body: {} },
+    ],
+  },
+  {
     name: "nearby-scan",
     // NOTE: the app computes nearby amenities locally and does not call this
     // function, so a miss here is informational, not a live outage.
@@ -87,8 +102,11 @@ const FUNCTIONS = [
 
 // Tables the app reads/writes through the REST API (publishable key). Missing
 // tables surface as PGRST205 on the client and break cloud features; this check
-// flags them before the app does. 200 = present, 404 = MISSING (run the SQL),
-// 401 = present but not REST-visible to the publishable key (expected for RLS).
+// flags them before the app does.
+//   200 = present (RLS hides the rows from an anonymous caller, so the body is
+//         usually [] - that is expected, not an error)
+//   401/403 = present, but the anonymous role has no privilege on it (also fine)
+//   404 = MISSING (run the SQL)
 const REST = {
   base: `https://${REF}.supabase.co/rest/v1`,
   headers: {
@@ -115,6 +133,19 @@ const REST_TABLES = [
   { table: "construction_invoices", note: "construction invoices" },
   { table: "construction_change_orders", note: "construction change orders" },
   { table: "portfolio_proofs", note: "proof documents" },
+  { table: "presell_units", note: "presell units" },
+  { table: "broker_transactions", note: "deals / transactions" },
+  { table: "cobroke_agreements", note: "co-broke invitations" },
+  { table: "notifications", note: "in-app notifications" },
+  { table: "sales_playbooks", note: "sales playbooks" },
+  { table: "saved_listings", note: "saved listings" },
+  { table: "agent_tasks", note: "agent follow-up tasks" },
+  { table: "pms_workspaces", note: "property management" },
+];
+
+// Columns other code depends on. A missing column answers 400 (42703).
+const REST_COLUMNS = [
+  { table: "profiles", column: "email", note: "co-broke invites, fb-leads, notify-dispatch (supabase/phase3_broken_features.sql)" },
 ];
 
 async function probeTable(entry) {
@@ -122,13 +153,25 @@ async function probeTable(entry) {
   try {
     const res = await fetch(url, { headers: REST.headers });
     const got = res.status;
-    const ok = got === 200;
+    const ok = got === 200 || got === 401 || got === 403;
     let extra = "";
     if (got === 404) extra = "  <-- MISSING — run the matching supabase/*.sql";
-    if (got === 401) extra = "  [present but not REST-visible to publishable key]";
+    if (got === 401 || got === 403) extra = "  [present; no anonymous privilege]";
     return { table: entry.table, note: entry.note, got, ok, extra };
   } catch (e) {
     return { table: entry.table, note: entry.note, got: "ERR", ok: false, extra: " [not reachable: " + (e && e.message || e) + "]" };
+  }
+}
+
+async function probeColumn(entry) {
+  const url = `${REST.base}/${entry.table}?select=${entry.column}&limit=0`;
+  try {
+    const res = await fetch(url, { headers: REST.headers });
+    const got = res.status;
+    const ok = got === 200 || got === 401 || got === 403;
+    return { table: entry.table + "." + entry.column, note: entry.note, got, ok, extra: got === 400 ? "  <-- COLUMN MISSING" : "" };
+  } catch (e) {
+    return { table: entry.table + "." + entry.column, note: entry.note, got: "ERR", ok: false, extra: " [not reachable: " + (e && e.message || e) + "]" };
   }
 }
 
@@ -136,19 +179,22 @@ async function probeTable(entry) {
 // report. Managed/auto-injected vars (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 // are excluded from the "manual" list.
 const AUTO_VARS = new Set(["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
-const KNOWN_VARS = new Map([
-  ["INQUIRY_RATE_LIMIT_SALT", "listing-api", "private salt for inquiry rate limiting"],
-  ["META_VERIFY_TOKEN", "fb-leads", "Meta webhook verify token"],
-  ["META_PAGE_TOKEN", "fb-leads", "Meta page access token (Graph API)"],
-  ["META_APP_SECRET", "fb-leads", "Meta app secret (signature verification)"],
-  ["FB_LEADS_DEFAULT_BROKER_EMAIL", "fb-leads", "default broker to auto-assign Facebook leads"],
-  ["RESEND_API_KEY", "notify-dispatch", "Resend API key for email notifications"],
-  ["MAIL_FROM", "notify-dispatch", "email from address (defaults to onboarding@resend.dev)"],
-  ["SEMAPHORE_API_KEY", "notify-dispatch", "Semaphore API key for PH SMS"],
-  ["SEMAPHORE_SENDER", "notify-dispatch", "Semaphore sender name (defaults ESRealty)"],
-  ["NOTIFY_DISPATCH_SECRET", "notify-dispatch", "shared secret authorizing /notify-dispatch POSTs"],
-  ["SITE_URL", "seo", "canonical site URL for SEO tags (defaults to GitHub Pages)"],
-]);
+// name -> where it's used and what it is. (A Map built from 3-item arrays kept
+// only the function name, which is how the descriptions went missing.)
+const KNOWN_VARS = new Map(Object.entries({
+  INQUIRY_RATE_LIMIT_SALT: "listing-api, location-report: private salt for inquiry rate limiting",
+  META_VERIFY_TOKEN: "fb-leads: Meta webhook verify token",
+  META_PAGE_TOKEN: "fb-leads: Meta page access token (Graph API)",
+  META_APP_SECRET: "fb-leads: Meta app secret (signature verification)",
+  FB_LEADS_DEFAULT_BROKER_EMAIL: "fb-leads: default broker to auto-assign Facebook leads",
+  RESEND_API_KEY: "notify-dispatch, location-report: Resend API key for email",
+  MAIL_FROM: "notify-dispatch, location-report: from address on a domain verified in Resend (defaults to onboarding@resend.dev, which can only email the Resend account owner)",
+  SEMAPHORE_API_KEY: "notify-dispatch: Semaphore API key for PH SMS",
+  SEMAPHORE_SENDER: "notify-dispatch: Semaphore sender name (defaults ESRealty)",
+  NOTIFY_DISPATCH_SECRET: "notify-dispatch: shared secret authorizing /notify-dispatch POSTs",
+  AGENT_DISPATCH_SECRET: "agent-dispatch: shared secret the scheduler sends",
+  SITE_URL: "seo: site URL the crawlable pages send visitors to (defaults to the Cloudflare site)",
+}));
 
 function extractEnvRefs(file) {
   const src = fs.readFileSync(file, "utf8");
@@ -198,7 +244,7 @@ async function probe(base, p, fnName, optional) {
     // env var report
     const refs = extractEnvRefs(srcFile);
     refs.forEach(v => {
-      envReport.push({ var: v, required: KNOWN_VARS.get(v)[0] === "secret", desc: KNOWN_VARS.get(v) });
+      envReport.push({ var: v, desc: KNOWN_VARS.get(v) });
     });
   }
 
@@ -238,6 +284,12 @@ async function probe(base, p, fnName, optional) {
     console.log("  " + mark + "  " + r.table + (r.note ? "  (" + r.note + ")" : "") + "  ->  got " + r.got + r.extra);
     if (!r.ok) ok = false;
   }
+  for (const entry of REST_COLUMNS) {
+    const r = await probeColumn(entry);
+    tableResults.push(r);
+    console.log("  " + (r.ok ? "OK " : "FAIL") + "  " + r.table + "  (" + r.note + ")  ->  got " + r.got + r.extra);
+    if (!r.ok) ok = false;
+  }
   console.log("");
 
   // 5) Status summary
@@ -245,7 +297,7 @@ async function probe(base, p, fnName, optional) {
   const failed = out.filter(r => !r.ok);
   const missingTables = tableResults.filter(r => !r.ok);
   console.log("=== SUMMARY ===\n");
-  console.log("Probes: " + passed + "/" + total + "   Tables present: " + (REST_TABLES.length - missingTables.length) + "/" + REST_TABLES.length);
+  console.log("Probes: " + passed + "/" + total + "   Tables and columns present: " + (tableResults.length - missingTables.length) + "/" + tableResults.length);
 
   if (failed.length) {
     const blocking = failed.filter(r => !r.optional);
@@ -279,7 +331,7 @@ async function probe(base, p, fnName, optional) {
   if (missingTables.length) {
     console.log("\n=== MISSING REST TABLES (" + missingTables.length + ") ===\n");
     missingTables.forEach(r => console.log("  " + r.table + "  ->  got " + r.got + r.extra + (r.note ? "  [" + r.note + "]" : "")));
-    console.log("  FIX: run the matching supabase/*.sql in the SQL Editor (e.g. portfolio_a_investor.sql for the portfolio_* / construction_* tables), then all good.");
+    console.log("  FIX: run the matching supabase/*.sql in the SQL Editor (e.g. portfolio_a_investor.sql for the portfolio_* / construction_* tables, phase3_broken_features.sql for profiles.email), then all good.");
     console.log("");
   }
 
@@ -287,6 +339,7 @@ async function probe(base, p, fnName, optional) {
   console.log("  - A route returning its EXPECTED status proves the function is DEPLOYED.");
   console.log("  - Protected routes expecting 401/403 prove auth is ENFORCED (not just deployed).");
   console.log("  - '404' = function not deployed; '401' on a public route = deploy with --no-verify-jwt.");
+  console.log("  - Tables answering 200 with no rows are fine: row security hides them from an anonymous check.");
   console.log("  - 'ERR' (no HTTP status) usually means the function is NOT deployed at BASE.");
   if (failed.some(r => !r.optional) || missingTables.length) { process.exit(1); }
 })();

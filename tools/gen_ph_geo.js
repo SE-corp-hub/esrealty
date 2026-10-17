@@ -93,11 +93,14 @@ function normPlace(s) {
 const _CITY_INDEX = new Map();
 for (const city of Object.keys(CITY_PROVINCE)) _CITY_INDEX.set(normPlace(city), CITY_PROVINCE[city]);
 
+// Province names are indexed last so they win over same-named towns: the
+// town of Quezon (Bukidnon) used to overwrite Quezon province, and Rizal and
+// Aurora had the same problem.
 const _PROV_INDEX = new Map();
 for (const prov of Object.keys(PROVINCE_CITIES)) {
-  _PROV_INDEX.set(normPlace(prov), prov);
   for (const city of PROVINCE_CITIES[prov]) _PROV_INDEX.set(normPlace(city), prov);
 }
+for (const prov of Object.keys(PROVINCE_CITIES)) _PROV_INDEX.set(normPlace(prov), prov);
 
 // The province a city/municipality belongs to, or "" when the table has no
 // entry (highly urbanised cities such as Lapu-Lapu and Cebu City are listed

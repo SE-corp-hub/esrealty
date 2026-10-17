@@ -617,18 +617,24 @@ const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pe
 const submitContact = async (req: Request, admin: SupabaseClient, pepper: string) => {
   const body = await parseBody(req);
   const inquiryType = String(body.inquiry_type || "consult").trim().toLowerCase();
-  if (inquiryType !== "consult" && inquiryType !== "guide" && inquiryType !== "project-bt" && inquiryType !== "location-analysis") {
-    throw new HttpError(400, "inquiry_type is invalid");
-  }
+  // What each public form records on the CRM lead.
+  const CONTACT_TYPES: Record<string, { interest: string; activity: string; phone: boolean; email: boolean }> = {
+    "consult": { interest: "Shophouse consultation", activity: "Consultation request submitted from the website.", phone: true, email: false },
+    "guide": { interest: "Shophouse investment guide", activity: "Investment guide request submitted from the website.", phone: false, email: true },
+    "project-bt": { interest: "Project B.T inquiry", activity: "Project B.T inquiry submitted from the website.", phone: false, email: true },
+    "location-analysis": { interest: "Location analysis full report", activity: "Value Guide report requested from the website.", phone: false, email: true },
+    "professional-appraisal-request": { interest: "Professional appraisal (Value Guide)", activity: "Appraisal consultation requested from the Value Guide.", phone: true, email: true },
+    "broker-consultation": { interest: "Broker consultation (Value Guide)", activity: "Broker consultation requested from the Value Guide.", phone: true, email: true },
+  };
+  const kind = Object.prototype.hasOwnProperty.call(CONTACT_TYPES, inquiryType) ? CONTACT_TYPES[inquiryType] : null;
+  if (!kind) throw new HttpError(400, "inquiry_type is invalid");
   const isGuide = inquiryType === "guide";
   const isProjectBt = inquiryType === "project-bt";
-  const isLocation = inquiryType === "location-analysis";
   const fullName = isGuide ? "" : stringValue(body.full_name, 160, "full_name", true);
-  const phone = isGuide ? "" : stringValue(body.phone, 50, "phone", !isProjectBt);
+  const phone = isGuide ? "" : stringValue(body.phone, 50, "phone", kind.phone);
   const email = stringValue(body.email, 254, "email");
   const message = stringValue(body.message, 5000, "message");
-  if (isGuide && !email) throw new HttpError(400, "email is required");
-  if (isProjectBt && !email) throw new HttpError(400, "email is required");
+  if (kind.email && !email) throw new HttpError(400, "email is required");
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new HttpError(400, "email is invalid");
   const interest = isProjectBt ? stringValue(body.interest, 200, "interest") : "";
 
@@ -682,32 +688,23 @@ const submitContact = async (req: Request, admin: SupabaseClient, pepper: string
       consent: true,
       origin: "storefront",
       channel: inquiryType,
-      propertyInterest: isGuide ? "Shophouse investment guide"
-        : isProjectBt ? (interest || "Project B.T inquiry")
-        : isLocation ? "Location analysis full report"
-        : "Shophouse consultation",
+      propertyInterest: isProjectBt ? (interest || kind.interest) : kind.interest,
       notes: isGuide ? "Download the Shophouse Investment Guide" : message,
       assignedTo: "",
       assignedToId: null,
       createdBy: adminAccount.id,
       createdAt: now,
       updatedAt: now,
-      activity: [{
-        date: now,
-        text: isGuide
-          ? "Investment guide request submitted from the website."
-          : isProjectBt
-            ? "Project B.T inquiry submitted from the website."
-            : "Consultation request submitted from the website.",
-      }],
+      activity: [{ date: now, text: kind.activity }],
     },
   };
   const { error: leadError } = await admin.from("crm_leads").insert(lead);
   if (leadError) throw new Error(leadError.message);
 
-  // Audit copy in the storefront archive (super-admin read only).
+  // Audit copy in the storefront archive (super-admin read only). The lead is
+  // already saved, so a failed copy is logged rather than failing the request.
   try {
-    await admin.from("storefront_inquiries").insert({
+    const { error: auditError } = await admin.from("storefront_inquiries").insert({
       inquiry_type: inquiryType,
       user_id: optionalUser?.id || null,
       full_name: fullName,
@@ -718,6 +715,7 @@ const submitContact = async (req: Request, admin: SupabaseClient, pepper: string
       source: "website",
       metadata: { userAgent, crmLeadId: leadId },
     });
+    if (auditError) console.error("storefront_inquiries audit insert failed", auditError.message);
   } catch (error) {
     console.error(error);
   }

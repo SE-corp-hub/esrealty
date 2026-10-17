@@ -22,6 +22,38 @@
     return String(d).slice(0, 10);
   };
 
+  // Postgres rejects "" for uuid, date and timestamp columns, and an explicit
+  // null for NOT NULL columns even when they have a default. These helpers
+  // turn app values into what the column accepts; put() leaves a key out so
+  // the column default applies.
+  var UUIDN = function (v) { return isUuid(v) ? v : null; };
+  var DATEN = function (d) {
+    var s = DATE(d);
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+  };
+  var TSN = function (v) {
+    if (!v) return null;
+    var t = new Date(v);
+    return isNaN(t.getTime()) ? null : t.toISOString();
+  };
+  var ONE_OF = function (v, allowed, fallback) {
+    var s = STREAM(v);
+    return allowed.indexOf(s) >= 0 ? s : fallback;
+  };
+  function put(o, key, value) {
+    if (value !== null && value !== undefined) o[key] = value;
+    return o;
+  }
+  // owner_id and uploaded_by are only emitted when the record already carries
+  // them (rows loaded from the cloud). For new rows the app's pfCloudWrite
+  // fills in the signed-in user.
+
+  // The app's project status words vs the database's.
+  var PROJECT_STATUS_TO_DB = { "planned": "planned", "under construction": "in_progress", "in_progress": "in_progress", "on hold": "on_hold", "on_hold": "on_hold", "completed": "completed", "archived": "archived" };
+  var PROJECT_STATUS_FROM_DB = { "planned": "planned", "in_progress": "under construction", "on_hold": "on hold", "completed": "completed", "archived": "archived" };
+  var PROOF_CATEGORIES = ["receipt", "deposit_slip", "transfer_confirmation", "contract", "invoice", "other"];
+  var PROOF_MIMES = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"];
+
   function isUuid(id) {
     if (typeof id !== "string") return false;
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -56,15 +88,16 @@
   // ---- accounts ------------------------------------------------------
 
   function accountToDb(a) {
-    return {
+    var o = {
       id: STREAM(a.id),
       label: STREAM(a.label),
       bank_name: STREAM(a.bank_name),
-      account_type: STREAM(a.account_type) || "cash",
+      account_type: ONE_OF(a.account_type, ["bank", "cash", "ewallet", "escrow"], "cash"),
       opening_balance: NUM(a.opening_balance),
-      as_of: DATE(a.as_of),
       currency: STREAM(a.currency) || "PHP"
     };
+    put(o, "owner_id", UUIDN(a.owner_id));
+    return put(o, "as_of", DATEN(a.as_of));
   }
 
   function accountFromDb(r) {
@@ -76,6 +109,7 @@
       opening_balance: NUM(r.opening_balance),
       as_of: DATE(r.as_of),
       currency: STREAM(r.currency) || "PHP",
+      owner_id: STREAM(r.owner_id),
       created_at: r.created_at ? new Date(r.created_at).toISOString() : ""
     };
   }
@@ -83,10 +117,10 @@
   // ---- cash entries --------------------------------------------------
 
   function entryToDb(e) {
-    return {
-      id: STREAM(e.id),
+    var id = STREAM(e.id);
+    var o = {
+      id: id,
       account_id: STREAM(e.accountId || e.account_id),
-      entry_date: DATE(e.entry_date || e.entryDate),
       direction: STREAM(e.direction) === "out" ? "out" : "in",
       amount: NUM(e.amount),
       category: STREAM(e.category),
@@ -96,17 +130,21 @@
       counterparty: STREAM(e.counterparty),
       reference_no: STREAM(e.reference_no || e.referenceNo),
       linked_asset_id: STREAM(e.linked_asset_id || e.linkedAssetId),
-      linked_construction_id: STREAM(e.linked_construction_id || e.linkedConstructionId),
-      linked_phase_id: STREAM(e.linked_phase_id || e.linkedPhaseId),
-      linked_presell_project_id: STREAM(e.linked_presell_project_id || e.linkedPresellProjectId),
+      linked_construction_id: UUIDN(e.linked_construction_id || e.linkedConstructionId),
+      linked_phase_id: UUIDN(e.linked_phase_id || e.linkedPhaseId),
+      linked_presell_project_id: UUIDN(e.linked_presell_project_id || e.linkedPresellProjectId),
       linked_presell_payment_id: STREAM(e.linked_presell_payment_id || e.linkedPresellPaymentId),
       linked_transaction_id: STREAM(e.linked_transaction_id || e.linkedTransactionId),
       proof_required: !!(e.proof_required || (e.proofs && e.proofs.length)),
-      status: STREAM(e.status) || "draft",
-      reversal_of: STREAM(e.reversal_of || e.reversalOf) || null,
-      idempotency_key: STREAM(e.idempotency_key || e.idempotencyKey) || null,
-      created_at: e.created_at ? new Date(e.created_at).toISOString() : null
+      status: ONE_OF(e.status, ["draft", "pending", "posted", "voided", "reversed"], "draft"),
+      reversal_of: UUIDN(e.reversal_of || e.reversalOf),
+      // Unique per owner in the database, so an entry without its own key
+      // uses its id; "" would collide with every other keyless entry.
+      idempotency_key: STREAM(e.idempotency_key || e.idempotencyKey) || ("entry:" + id)
     };
+    put(o, "owner_id", UUIDN(e.owner_id));
+    put(o, "entry_date", DATEN(e.entry_date || e.entryDate));
+    return put(o, "created_at", TSN(e.created_at));
   }
 
   function entryFromDb(r) {
@@ -131,6 +169,7 @@
       status: STREAM(r.status) || "draft",
       reversalOf: STREAM(r.reversal_of),
       idempotencyKey: STREAM(r.idempotency_key),
+      owner_id: STREAM(r.owner_id),
       proof_count: 0,
       proofs: [],
       created_at: r.created_at ? new Date(r.created_at).toISOString() : ""
@@ -140,28 +179,30 @@
   // ---- construction projects -----------------------------------------
 
   function projectToDb(p) {
-    return {
+    var o = {
       id: STREAM(p.id),
       asset_id: STREAM(p.asset_id),
-      presell_project_id: STREAM(p.presell_project_id),
+      presell_project_id: UUIDN(p.presell_project_id),
       name: STREAM(p.name),
       site: STREAM(p.site),
       contractor: STREAM(p.contractor),
-      status: STREAM(p.status) || "planned",
+      status: PROJECT_STATUS_TO_DB[STREAM(p.status)] || "planned",
       contract_value: NUM(p.contract_value),
       contingency: NUM(p.contingency),
       retention_rate: NUM(p.retention_rate),
-      allocation: STREAM(p.allocation) || "equal",
-      presell_link: p.presell_link ? JSON.stringify(p.presell_link) : null,
-      created_at: p.created_at ? new Date(p.created_at).toISOString() : null
+      allocation: ONE_OF(p.allocation, ["equal", "floor_area", "actual", "manual"], "equal"),
+      // jsonb NOT NULL: an empty object stands for "no link".
+      presell_link: p.presell_link && typeof p.presell_link === "object" ? p.presell_link : {}
     };
+    put(o, "owner_id", UUIDN(p.owner_id));
+    return put(o, "created_at", TSN(p.created_at));
   }
 
   function projectFromDb(r) {
     var link = null;
     if (typeof r.presell_link === "string" && r.presell_link) {
       try { link = JSON.parse(r.presell_link); } catch (e) { link = null; }
-    } else if (r.presell_link && typeof r.presell_link === "object") {
+    } else if (r.presell_link && typeof r.presell_link === "object" && Object.keys(r.presell_link).length) {
       link = r.presell_link;
     }
     return {
@@ -172,11 +213,12 @@
       presell_link: link,
       site: STREAM(r.site),
       contractor: STREAM(r.contractor),
-      status: STREAM(r.status) || "planned",
+      status: PROJECT_STATUS_FROM_DB[STREAM(r.status)] || STREAM(r.status) || "planned",
       contract_value: NUM(r.contract_value),
       contingency: NUM(r.contingency),
       retention_rate: NUM(r.retention_rate),
       allocation: STREAM(r.allocation) || "equal",
+      owner_id: STREAM(r.owner_id),
       created_at: r.created_at ? new Date(r.created_at).toISOString() : ""
     };
   }
@@ -184,7 +226,7 @@
   // ---- construction phases -------------------------------------------
 
   function phaseToDb(p) {
-    return {
+    return put({
       id: STREAM(p.id),
       project_id: STREAM(p.project_id),
       name: STREAM(p.name),
@@ -194,9 +236,8 @@
       paid: NUM(p.paid),
       percent_complete: NUM(p.percent_complete),
       responsible: STREAM(p.responsible),
-      allocation: STREAM(p.allocation) || "equal",
-      created_at: p.created_at ? new Date(p.created_at).toISOString() : null
-    };
+      allocation: ONE_OF(p.allocation, ["equal", "floor_area", "actual", "manual"], "equal")
+    }, "created_at", TSN(p.created_at));
   }
 
   function phaseFromDb(r) {
@@ -218,14 +259,13 @@
   // ---- construction vendors ------------------------------------------
 
   function vendorToDb(v) {
-    return {
+    return put({
       id: STREAM(v.id),
       project_id: STREAM(v.project_id),
       name: STREAM(v.name),
       contact: STREAM(v.contact),
-      tax_id: STREAM(v.tax_id),
-      created_at: v.created_at ? new Date(v.created_at).toISOString() : null
-    };
+      tax_id: STREAM(v.tax_id)
+    }, "created_at", TSN(v.created_at));
   }
 
   function vendorFromDb(r) {
@@ -242,19 +282,19 @@
   // ---- construction invoices ------------------------------------------
 
   function invoiceToDb(i) {
-    return {
+    var o = {
       id: STREAM(i.id),
       project_id: STREAM(i.project_id),
-      phase_id: STREAM(i.phase_id) || null,
-      vendor_id: STREAM(i.vendor_id) || null,
+      phase_id: UUIDN(i.phase_id),
+      vendor_id: UUIDN(i.vendor_id),
       invoice_no: STREAM(i.invoice_no),
-      date: DATE(i.date),
       amount: NUM(i.amount),
-      status: STREAM(i.status) || "pending",
-      ledger_entry_id: STREAM(i.ledger_entry_id) || null,
-      paid_at: i.paid_at ? new Date(i.paid_at).toISOString() : null,
-      created_at: i.created_at ? new Date(i.created_at).toISOString() : null
+      status: ONE_OF(i.status, ["pending", "approved", "paid"], "pending"),
+      ledger_entry_id: UUIDN(i.ledger_entry_id),
+      paid_at: TSN(i.paid_at)
     };
+    put(o, "invoice_date", DATEN(i.date || i.invoice_date));
+    return put(o, "created_at", TSN(i.created_at));
   }
 
   function invoiceFromDb(r) {
@@ -264,7 +304,7 @@
       phase_id: STREAM(r.phase_id),
       vendor_id: STREAM(r.vendor_id),
       invoice_no: STREAM(r.invoice_no),
-      date: DATE(r.date),
+      date: DATE(r.invoice_date || r.date),
       amount: NUM(r.amount),
       status: STREAM(r.status) || "pending",
       ledger_entry_id: STREAM(r.ledger_entry_id),
@@ -276,16 +316,16 @@
   // ---- construction change orders -------------------------------------
 
   function changeToDb(c) {
-    return {
+    var o = {
       id: STREAM(c.id),
       project_id: STREAM(c.project_id),
       amount: NUM(c.amount),
       reason: STREAM(c.reason),
       approver: STREAM(c.approver),
-      date: DATE(c.date),
-      status: STREAM(c.status) || "",
-      created_at: c.created_at ? new Date(c.created_at).toISOString() : null
+      status: ONE_OF(c.status, ["draft", "approved", "rejected"], "approved")
     };
+    put(o, "co_date", DATEN(c.date || c.co_date));
+    return put(o, "created_at", TSN(c.created_at));
   }
 
   function changeFromDb(r) {
@@ -295,7 +335,7 @@
       amount: NUM(r.amount),
       reason: STREAM(r.reason),
       approver: STREAM(r.approver),
-      date: DATE(r.date),
+      date: DATE(r.co_date || r.date),
       status: STREAM(r.status),
       created_at: r.created_at ? new Date(r.created_at).toISOString() : ""
     };
@@ -304,17 +344,20 @@
   // ---- portfolio proofs ----------------------------------------------
 
   function proofToDb(p) {
-    return {
+    var o = {
+      id: STREAM(p.id),
       entry_id: STREAM(p.entryId || p.entry_id),
       filename: STREAM(p.filename),
-      mimetype: STREAM(p.mimetype),
-      byte_size: NUM(p.byte_size !== undefined ? p.byte_size : p.size),
+      mimetype: ONE_OF(p.mimetype, PROOF_MIMES, ""),
+      byte_size: Math.max(0, Math.round(NUM(p.byte_size !== undefined ? p.byte_size : p.size))),
       checksum: STREAM(p.checksum),
-      category: STREAM(p.category),
-      mode: STREAM(p.mode) || "local",
+      category: ONE_OF(p.category, PROOF_CATEGORIES, "other"),
+      storage_mode: STREAM(p.mode) === "supabase" ? "supabase" : "local",
       storage_path: STREAM(p.storagePath) || "",
-      uploaded_by: STREAM(p.uploadedBy) || ""
     };
+    if (!o.id) delete o.id;
+    put(o, "uploaded_by", UUIDN(p.uploadedBy));
+    return put(o, "uploaded_at", TSN(p.uploadedAt));
   }
 
   function proofFromDb(r) {
@@ -326,7 +369,7 @@
       size: NUM(r.byte_size),
       checksum: STREAM(r.checksum),
       category: STREAM(r.category),
-      mode: STREAM(r.mode) || "local",
+      mode: STREAM(r.storage_mode || r.mode) || "local",
       storagePath: STREAM(r.storage_path),
       uploadedBy: STREAM(r.uploaded_by),
       uploadedAt: r.uploaded_at ? new Date(r.uploaded_at).toISOString() : ""

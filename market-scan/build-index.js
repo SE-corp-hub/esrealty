@@ -77,6 +77,13 @@ async function main() {
     if (r.n >= 3) results.push(r);
   }
 
+  if (!results.length) {
+    // Leave the file exactly as it is: rewriting it here used to blank
+    // `updated` and drop an earlier run's entry for today.
+    console.log("No city produced enough samples today — keeping previous file unchanged.");
+    return;
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   let doc = { updated: "", days: [] };
   try {
@@ -88,16 +95,12 @@ async function main() {
   const cutoff = new Date(Date.now() - MAX_DAYS * 86400000).toISOString().slice(0, 10);
   doc.days = doc.days.filter(d => d.d >= cutoff && d.d !== today);
 
-  if (results.length) {
-    doc.days.push({
-      d: today,
-      cities: results.map(r => ({ c: r.city, p: r.psm, n: r.n }))
-    });
-    doc.updated = today;
-    doc.days.sort((a, b) => a.d.localeCompare(b.d));
-  } else {
-    console.log("No city produced enough samples today — keeping previous file unchanged.");
-  }
+  doc.days.push({
+    d: today,
+    cities: results.map(r => ({ c: r.city, p: r.psm, n: r.n }))
+  });
+  doc.updated = today;
+  doc.days.sort((a, b) => a.d.localeCompare(b.d));
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(doc, null, 1));

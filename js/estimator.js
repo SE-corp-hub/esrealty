@@ -652,7 +652,7 @@
 
   function loadOptionalGuideSettings() {
     if (typeof window === "undefined" || !window.ESREALTY_API_BASE) return Promise.resolve(null);
-    var request = fetch(String(window.ESREALTY_API_BASE).replace(/\/$/, "") + "/site-settings", { credentials: "include" })
+    var request = fetch(String(window.ESREALTY_API_BASE).replace(/\/$/, "") + "/site-settings", { credentials: "omit" })
       .then(function (r) { return r.ok ? r.json() : null; })
       .catch(function () { return null; });
     var timeout = new Promise(function (resolve) { setTimeout(function () { resolve(null); }, 1500); });
@@ -751,7 +751,10 @@
     var base = String(window.ESREALTY_MARKET_SCAN_BASE).replace(/\/$/, "");
     var query = new URLSearchParams({
       city: opts.municipality,
-      type: opts.type === "house_lot" ? "house-and-lot" : "lot-only",
+      /* The scan's own type names: they pick the DotProperty/MyProperty search
+         pages. "house-and-lot"/"lot-only" matched no page and fell back to
+         every property type. */
+      type: opts.type === "house_lot" ? "House & Lot" : "Vacant Lot",
       mode: "sale",
       maxResults: "20",
       live: "true"
@@ -764,7 +767,7 @@
         }) : [];
         rows.retrievalStatus = { source: "External asking search", status: rows.length ? "returned" : "no-records" }; return rows;
       }).catch(function () { var rows = []; rows.retrievalStatus = { source: "External asking search", status: "unavailable" }; return rows; });
-    var timeout = new Promise(function (resolve) { setTimeout(function () { var rows = []; rows.retrievalStatus = { source: "External asking search", status: "timeout" }; resolve(rows); }, 7500); });
+    var timeout = new Promise(function (resolve) { setTimeout(function () { var rows = []; rows.retrievalStatus = { source: "External asking search", status: "timeout" }; resolve(rows); }, 12000); });
     return Promise.race([request, timeout]);
   }
 
@@ -2766,6 +2769,7 @@ return {
         : est.leadKind === "broker" ? "broker-consultation"
         : "valuation-report",
       message: message.join(" | "),
+      notes: notes ? String(notes) : "",
       report: {
         property: {
           purpose: est.purpose, type: snap ? snap.type : est.type,
@@ -2789,13 +2793,23 @@ return {
     if (status) { status.textContent = "Sending…"; status.className = "sf-form-status"; }
     function fallback() {
       if (!api || !api.contact) throw new Error("Contact service unavailable");
-      return api.contact({
-         inquiry_type: payload.inquiry_type,
+      var inquiry = {
+        inquiry_type: payload.inquiry_type,
         full_name: payload.full_name,
         email: payload.email,
         phone: payload.phone,
         message: payload.message,
         consent: payload.consent
+      };
+      /* An older listing-api only knows consult/guide/project-bt/location-analysis.
+         If it rejects the appraisal or broker type, save the lead as a
+         consultation with the requested service named in the message. */
+      return api.contact(inquiry).catch(function (err) {
+        if (!err || err.status !== 400 || !/inquiry_type/.test(err.message || "")) throw err;
+        return api.contact(Object.assign({}, inquiry, {
+          inquiry_type: "consult",
+          message: "Requested: " + payload.service_requested + " | " + payload.message
+        }));
       });
     }
     var url = locationReportUrl();

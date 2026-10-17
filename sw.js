@@ -21,7 +21,7 @@
  * Deploy note: bump VERSION when you ship. The activate handler deletes every
  * cache not named here, so a bump evicts the previous generation.
  */
-const VERSION = "esrealty-pages-v40";
+const VERSION = "esrealty-pages-v41";
 const SHELL_CACHE = VERSION + "-shell";
 const ASSET_CACHE = VERSION + "-asset";
 const VENDOR_CACHE = VERSION + "-vendor";
@@ -42,6 +42,7 @@ const SHELL = [
   "./js/value_guide_finance.js",
   "./js/value_guide_evidence.js",
   "./js/value_guide_reference.js",
+  "./js/value_guide_ui.js",
   "./js/data.js",
   "./js/playbook_seed.js",
   "./js/core.js",
@@ -51,6 +52,7 @@ const SHELL = [
   "./js/estimator.js",
   "./js/value_guide_tax.js",
   "./js/value_guide_pdf.js",
+  "./js/value_guide_flow.js",
   "./js/compliance_due.js",
   "./js/agent_next.js",
   "./js/app.min.js",
@@ -124,6 +126,10 @@ async function networkFirst(request, cacheName, fallbackUrl) {
   }
 }
 
+// The site runs at the domain root (Cloudflare) and under /esrealty/ (GitHub
+// Pages), so path rules are relative to this worker's scope.
+const SCOPE_PATH = new URL(self.registration.scope).pathname;
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
@@ -147,12 +153,12 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Correctness-sensitive reference data: always prefer the network.
-  if (url.pathname.startsWith("/data/") || url.pathname.startsWith("./data/")) {
+  if (url.pathname.startsWith(SCOPE_PATH + "data/")) {
     event.respondWith(networkFirst(req, ASSET_CACHE));
     return;
   }
 
-  if (url.pathname.startsWith("/vendor/") || url.pathname.startsWith("./vendor/")) {
+  if (url.pathname.startsWith(SCOPE_PATH + "vendor/")) {
     event.respondWith(cacheFirst(req, VENDOR_CACHE));
     return;
   }
