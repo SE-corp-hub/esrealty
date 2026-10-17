@@ -158,5 +158,6 @@ const setVal = (sel, v) => { const el = q(sel); el.value = v; el.dispatchEvent(n
   } catch (e) {
     check("runner", false, e && e.stack ? e.stack : String(e));
   }
+  window.__msOk = window.__msChecks.every(c => c.ok);
   window.__msDone = true;
 })();
