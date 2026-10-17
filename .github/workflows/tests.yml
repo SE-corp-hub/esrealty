@@ -1,8 +1,10 @@
 name: tests
 
-# Two jobs with different economics:
+# Three jobs with different economics:
 #   node-tests  — runs on every push and PR. Pure Node, no browser, no network.
 #                 ~700 assertions in a few seconds. This is the merge gate.
+#   database-tests — a throwaway Postgres built from the baseline migration;
+#                 checks the row-level access rules as each kind of user.
 #   e2e-tests   — headless Chromium against a local server. Heavier and
 #                 network-sensitive, so it runs on a schedule and on main
 #                 (and on demand), not on every PR.
@@ -78,6 +80,34 @@ jobs:
             node "$t" || fail=1
           done
           exit $fail
+
+  database-tests:
+    name: Database access rules (Postgres)
+    runs-on: ubuntu-latest
+    # Builds a fresh database from supabase/migrations/0000_baseline.sql plus
+    # any later migrations, loads tests/db/10_fixture.sql and runs every
+    # tests/db/test_*.sql as different users: owners and tenants see only their
+    # own records, brokers only their own books, visitors can't write, and so on.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the database tests
+        run: bash tests/db/run.sh
 
   e2e-tests:
     name: Browser e2e (headless Chromium)
