@@ -13,7 +13,7 @@ const PUBLIC_LISTING_COLUMNS = [
   "region", "postal_code", "latitude", "longitude", "bedrooms", "bathrooms",
   "floor_area_sqm", "floor_area_sqft", "lot_size_sqm", "lot_size_sqft", "year_built",
   "featured", "agent_id", "agent_name", "views", "inquiries", "published_at",
-  "updated_at", "images", "details",
+  "updated_at", "images",
 ].join(",");
 
 const MANAGED_LISTING_COLUMNS = [
