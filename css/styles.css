@@ -2357,3 +2357,23 @@ html.modal-open, html.modal-open body { overflow: hidden; }
 .vg-request-steps li.now { color: var(--text, #111827); font-weight: 700; }
 .vg-request-steps li.done { color: #15803d; }
 .vg-request-steps li.done::before { content: "✓"; background: #15803d; border-color: #15803d; color: #fff; }
+.pms-proof-btn { padding: 0; border: 0; background: none; cursor: pointer; min-width: 44px; min-height: 44px; }
+.pms-proof-btn:focus-visible { outline: 2px solid var(--brand, #2563eb); outline-offset: 2px; border-radius: 6px; }
+
+/* PMS print preview: the statement is visible in its dialog on screen too
+   (it used to show only when printing). */
+@media screen {
+  .modal-body > .print-root { display: block !important; color: var(--text); }
+  .modal-body > .print-root table { border-collapse: collapse; width: 100%; margin: 6px 0 14px; font-size: 13px; }
+  .modal-body > .print-root th, .modal-body > .print-root td { border: 1px solid var(--stroke, #d6dde6); padding: 6px 8px; text-align: left; }
+  .modal-body > .print-root .print-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 4px 16px; margin: 8px 0 14px; font-size: 14px; }
+  .modal-body > .print-root .print-brand h1 { font-size: 20px; margin: 0; }
+  .modal-body > .print-root .print-foot { margin-top: 16px; font-size: 12px; color: var(--text-dim); }
+}
+/* Row actions in card tables wrap instead of squeezing labels (PMS due rows). */
+.tbl-stack td .row { flex-wrap: wrap; justify-content: flex-end; }
+.tbl-stack td .row .btn { white-space: nowrap; }
+/* A cell that only holds buttons uses the card's full width; the buttons name themselves. */
+.table-wrap table.tbl-stack tr > td[data-label]:has(> .row > .btn) { padding-left: 0; }
+.table-wrap table.tbl-stack tr > td[data-label]:has(> .row > .btn)::before { content: none; }
+a.btn, a.btn:hover { text-decoration: none; }

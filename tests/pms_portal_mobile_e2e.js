@@ -23,7 +23,7 @@
     // each pms tab loads without h-scroll
     var tabNames=["units","tenants","leases","payments"];
     for(var i=0;i<tabNames.length;i++){
-      var t=document.querySelector('[data-pms-tab="'+tabNames[i]+'"]');
+      var t=document.querySelector('[data-pmtab="'+tabNames[i]+'"]');
       if(t){ t.click(); await wait(350);
         var sw=document.documentElement.scrollWidth;
         log.push(tabNames[i]+": sw="+sw);

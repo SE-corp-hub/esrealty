@@ -8864,6 +8864,7 @@ premise: "Fee Simple / As Improved",
     { value: "maintenance", label: "Maintenance", color: "gold" }
   ];
   const LEASE_STATUSES = [
+    { value: "upcoming", label: "Starts Soon", color: "cyan" },
     { value: "active", label: "Active", color: "green" },
     { value: "expiring", label: "Expiring Soon", color: "gold" },
     { value: "expired", label: "Expired", color: "red" },
@@ -8929,159 +8930,49 @@ premise: "Fee Simple / As Improved",
   function pmsPaySum(list, statuses) {
     return list.filter(p => statuses.indexOf(p.status) !== -1).reduce((s, p) => s + C.num(p.amount, 0), 0);
   }
-  function pmsPaidByMonth(leaseId) {
-    const map = {};
-    pmsActivePayments().forEach(p => {
-      if (p.lease_id !== leaseId || p.status !== "paid") return;
-      let key = String(p.month || "").trim().toLowerCase();
-      if (!key && p.date) {
-        const dt = new Date(String(p.date).slice(0, 10) + "T00:00:00");
-        if (!isNaN(dt.getTime())) key = pmsMonthLabel(new Date(dt.getFullYear(), dt.getMonth(), 1)).toLowerCase();
-      }
-      if (key) map[key] = (map[key] || 0) + C.num(p.amount, 0);
-    });
-    return map;
-  }
-  function pmsLeaseArrears(l) {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const pays = pmsActivePayments().filter(p => p.lease_id === l.id);
-    if (l.rent_type === "lease") {
-      const end = l.end ? new Date(String(l.end).slice(0, 10) + "T00:00:00") : null;
-      if (end && end.getTime() >= today.getTime()) return 0;
-      const paidTotal = pays.filter(p => p.status === "paid").reduce((s, p) => s + C.num(p.amount, 0), 0);
-      return Math.max(0, C.num(l.rent, 0) - paidTotal);
-    }
-    const paidByMonth = pmsPaidByMonth(l.id);
-    const start = l.start ? new Date(String(l.start).slice(0, 10) + "T00:00:00") : new Date(today.getFullYear(), today.getMonth(), 1);
-    const end = l.end ? new Date(String(l.end).slice(0, 10) + "T00:00:00") : null;
-    const dd = pmsDueDay(l);
-    let total = 0, guard = 0;
-    for (let y = start.getFullYear(), mo = start.getMonth(); guard < 120; guard++) {
-      const monthStart = new Date(y, mo, 1);
-      if (monthStart > today) break;
-      if (end && monthStart > end) break;
-      const dueDate = new Date(y, mo, dd);
-      if (dueDate.getTime() < today.getTime()) {
-        const label = pmsMonthLabel(monthStart).toLowerCase();
-        const amt = C.num(l.rent, 0);
-        total += Math.max(0, amt - Math.min(paidByMonth[label] || 0, amt));
-      }
-      mo++; if (mo > 11) { mo = 0; y++; }
-    }
-    return total;
-  }
+  /* Rent figures come from one ledger (js/pms_ledger.js): months are billed
+   * from the first due date on or after move-in to the end (or termination)
+   * date, money received pays the month it names and then the oldest unpaid
+   * month, and dates are calendar dates so the time zone cannot shift them. */
+  const PL = () => window.ESPMSLEDGER;
+  function pmsToday() { return PL().today(); }
+  function pmsDateObj(iso) { return iso ? new Date(iso + "T00:00:00") : null; }
+  function pmsLeaseLedger(l) { return PL().ledger(l, pmsActivePayments(), pmsToday()); }
+  function pmsLeaseArrears(l) { return pmsLeaseLedger(l).overdue; }
   function pmsArrearsFor(list) { return (list || []).reduce((s, l) => s + pmsLeaseArrears(l), 0); }
+  // Running now: started, not ended, not terminated (an expiring lease still counts).
+  function pmsLeaseLive(l) { return PL().coversDate(l, pmsToday()); }
   function pmsMonthLabel(d) { return d.toLocaleString("en-US", { month: "long", year: "numeric" }); }
-  function pmsMonthOptions(extra) {
-    const out = [], seen = {};
-    const now = new Date();
-    for (let i = -12; i <= 2; i++) {
-      const label = pmsMonthLabel(new Date(now.getFullYear(), now.getMonth() + i, 1));
-      if (!seen[label]) { seen[label] = true; out.push([label, label]); }
+  function pmsMonthText(v) { const k = PL().monthKey(v); return k ? PL().monthLabel(k) : String(v || ""); }
+  // Months for the payment form: the whole lease term when a lease is known.
+  function pmsMonthOptions(extra, lease) {
+    const keys = lease ? PL().leaseMonthKeys(lease) : [];
+    if (!keys.length) {
+      const now = new Date();
+      for (let i = -12; i <= 2; i++) keys.push(PL().monthKey(new Date(now.getFullYear(), now.getMonth() + i, 1)));
     }
-    if (extra && !seen[extra]) out.push([extra, extra]);
-    return out;
+    const ex = PL().monthKey(extra);
+    if (ex && keys.indexOf(ex) < 0) keys.push(ex);
+    return keys.map(k => [k, PL().monthLabel(k)]);
   }
   function pmsDispDate(d) { return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }); }
-  function pmsDueDay(lease) {
-    const v = lease ? lease.due_day : "";
-    if (v === "wlast") return 25;
-    if (v === "w2") return 10;
-    const n = Math.floor(C.num(v, 0));
-    if (n > 0) return Math.min(28, Math.max(1, n));
-    return 10;
-  }
+  function pmsDueDay(lease) { return PL().dueDay(lease); }
   function pmsLeaseDueInfo(l) {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const dd = pmsDueDay(l);
-    const curDue = new Date(today.getFullYear(), today.getMonth(), dd);
-    const curLabel = pmsMonthLabel(today);
-    const inPeriod = p => {
-      const m = String(p.month || "").trim().toLowerCase();
-      if (m && m === curLabel.toLowerCase()) return true;
-      if (p.date) {
-        const dt = new Date(String(p.date).slice(0, 10) + "T00:00:00");
-        if (!isNaN(dt.getTime()) && dt.getFullYear() === today.getFullYear() && dt.getMonth() === today.getMonth()) return true;
-      }
-      return false;
-    };
-    const pays = pmsActivePayments().filter(p => p.lease_id === l.id && inPeriod(p));
-    const paid = pays.some(p => p.status === "paid");
-    const late = pays.some(p => p.status === "late");
-    let state;
-    if (paid) state = "paid";
-    else if (late || today.getTime() > curDue.getTime()) state = "overdue";
-    else state = "due";
-    const nextDue = paid ? new Date(today.getFullYear(), today.getMonth() + 1, dd) : curDue;
-    return { curDue: curDue, nextDue: nextDue, label: curLabel, paid: paid, state: state };
+    const c = pmsLeaseLedger(l).current;
+    const due = pmsDateObj(c.nextDue);
+    return { curDue: due, nextDue: due, label: c.month ? PL().monthLabel(c.month) : "", paid: c.state === "paid", state: c.state };
   }
+  // Months owed so far (and this month's rent), oldest first.
   function pmsUnpaidMonths(l) {
-    const out = [];
-    const paidKeys = {};
-    pmsActivePayments().forEach(p => {
-      if (p.lease_id !== l.id || p.status !== "paid") return;
-      const m = String(p.month || "").trim().toLowerCase();
-      if (m) paidKeys[m] = true;
-      if (p.date) {
-        const dt = new Date(String(p.date).slice(0, 10) + "T00:00:00");
-        if (!isNaN(dt.getTime())) paidKeys[dt.getFullYear() + "-" + (dt.getMonth() + 1)] = true;
-      }
-    });
-    const today = new Date();
-    const start = l.start ? new Date(String(l.start).slice(0, 10) + "T00:00:00") : new Date(today.getFullYear(), today.getMonth(), 1);
-    let count = 0;
-    for (let y = start.getFullYear(); y <= today.getFullYear() && count < 36; y++) {
-      const mStart = y === start.getFullYear() ? start.getMonth() : 0;
-      const mEnd = y === today.getFullYear() ? today.getMonth() : 11;
-      for (let mo = mStart; mo <= mEnd && count < 36; mo++) {
-        const label = pmsMonthLabel(new Date(y, mo, 1));
-        const byLabel = paidKeys[label.toLowerCase()] || false;
-        const byDate = paidKeys[y + "-" + (mo + 1)] || false;
-        if (byLabel || byDate) continue;
-        out.push({ label: label, date: new Date(y, mo, pmsDueDay(l)) });
-        count++;
-      }
-    }
-    return out;
+    const thisMonth = pmsToday().slice(0, 7);
+    return pmsLeaseLedger(l).months
+      .filter(m => m.balance > 0 && (m.due <= pmsToday() || m.key === thisMonth))
+      .map(m => ({ key: m.key, label: m.label, due: m.due, date: pmsDateObj(m.due), balance: m.balance, amount: m.amount }));
   }
   function pmsTenantPayable(l) {
-    const pays = pmsActivePayments().filter(p => p.lease_id === l.id);
-    const paidTotal = pays.filter(p => p.status === "paid").reduce((s, p) => s + C.num(p.amount, 0), 0);
-    const rows = [];
-    if (l.rent_type === "lease") {
-      const total = C.num(l.rent, 0);
-      rows.push({ label: "Lease total", due: null, amount: total, status: total > 0 && paidTotal >= total ? "paid" : (paidTotal > 0 ? "partial" : "due") });
-    } else {
-      const start = l.start ? new Date(String(l.start).slice(0, 10) + "T00:00:00") : new Date();
-      const end = l.end ? new Date(String(l.end).slice(0, 10) + "T00:00:00") : start;
-      const today = new Date();
-      const paidKeys = {};
-      pays.filter(p => p.status === "paid").forEach(p => {
-        const m = String(p.month || "").trim().toLowerCase();
-        if (m) paidKeys[m] = true;
-        if (p.date) {
-          const dt = new Date(String(p.date).slice(0, 10) + "T00:00:00");
-          if (!isNaN(dt.getTime())) paidKeys[dt.getFullYear() + "-" + (dt.getMonth() + 1)] = true;
-        }
-      });
-      let count = 0;
-      for (let y = start.getFullYear(); y <= end.getFullYear() && count < 60; y++) {
-        const mStart = y === start.getFullYear() ? start.getMonth() : 0;
-        const mEnd = y === end.getFullYear() ? end.getMonth() : 11;
-        for (let mo = mStart; mo <= mEnd && count < 60; mo++) {
-          const label = pmsMonthLabel(new Date(y, mo, 1));
-          const paid = paidKeys[label.toLowerCase()] || paidKeys[y + "-" + (mo + 1)];
-          const due = new Date(y, mo, pmsDueDay(l));
-          let status = "upcoming";
-          if (paid) status = "paid";
-          else if (due.getTime() < today.getTime()) status = "overdue";
-          else status = "due";
-          rows.push({ label: label, due: due, amount: C.num(l.rent, 0), status: status });
-          count++;
-        }
-      }
-    }
-    return { rows: rows, paidTotal: paidTotal, total: rows.reduce((s, r) => s + r.amount, 0) };
+    const r = pmsLeaseLedger(l);
+    const rows = r.months.map(m => ({ label: l.rent_type === "lease" ? "Lease total" : m.label, due: pmsDateObj(m.due), amount: m.amount, paid: m.paid, balance: m.balance, status: m.status }));
+    return { rows: rows, paidTotal: r.paidTotal, total: rows.reduce((s, x) => s + x.amount, 0), dueToDate: r.dueToDate, restOfTerm: r.restOfTerm, credit: r.credit };
   }
   function pmsFilterStatusOpts(tab) {
     if (tab === "properties") return PROPERTY_STATUSES;
@@ -9091,25 +8982,20 @@ premise: "Fee Simple / As Improved",
     if (tab === "maintenance") return MAINT_STATUSES;
     return null;
   }
-  function pmsUnitCapacity(u) { return Math.max(1, Math.floor(C.num(u ? u.bedrooms : 0, 0))); }
+  // How many tenants a unit takes: its own capacity setting (1 unless set),
+  // never less than the leases already running in it.
+  function pmsUnitCapacity(u) {
+    const set = Math.floor(C.num(u ? u.capacity : 0, 0));
+    return Math.max(1, set, u ? pmsUnitTenantCount(u.id) : 0);
+  }
   function pmsUnitTenantCount(unitId) {
-    return pmsActiveLeases().filter(l => l.unit_id === unitId && l.status === "active").length;
+    return pmsActiveLeases().filter(l => l.unit_id === unitId && pmsLeaseLive(l)).length;
   }
   function pmsUnitTenants(unitId) {
-    return pmsActiveLeases().filter(l => l.unit_id === unitId && l.status === "active").map(l => pmsTenantName(l.tenant_id)).filter(n => n && n !== "—");
+    return pmsActiveLeases().filter(l => l.unit_id === unitId && pmsLeaseLive(l)).map(l => pmsTenantName(l.tenant_id)).filter(n => n && n !== "—");
   }
-  function pmsAutoStatus(l) {
-    if (!l || l.status === "terminated") return l ? l.status : "active";
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const start = l.start ? new Date(String(l.start).slice(0, 10) + "T00:00:00") : null;
-    const end = l.end ? new Date(String(l.end).slice(0, 10) + "T00:00:00") : null;
-    if (start && today < start) return "active";
-    if (!end) return "active";
-    const daysLeft = Math.ceil((end.getTime() - today.getTime()) / 86400000);
-    if (today > end) return "expired";
-    if (daysLeft <= 30) return "expiring";
-    return "active";
-  }
+  // Lease status from its dates (terminated stays terminated).
+  function pmsAutoStatus(l) { return PL().leaseStatus(l, pmsToday()); }
   function syncUnitFromLeases() {
     pmsActiveUnits().forEach(u => {
       const names = pmsUnitTenants(u.id);
@@ -9124,7 +9010,8 @@ premise: "Fee Simple / As Improved",
   }
   async function pmsSyncStatuses(btn) {
     if (!pmsCan("manage") && userRole() !== "super-admin") { toast("You don't have permission to sync statuses", "err"); return; }
-    const changed = pmsActiveLeases().filter(l => pmsAutoStatus(l) !== l.status).length + pmsActiveUnits().length;
+    const unitWant = u => pmsUnitTenants(u.id).length ? "occupied" : (u.status === "maintenance" ? "maintenance" : "vacant");
+    const changed = pmsActiveLeases().filter(l => pmsAutoStatus(l) !== l.status).length + pmsActiveUnits().filter(u => unitWant(u) !== u.status).length;
     const confirmed = await confirmModal({
       title: "Sync lease / unit statuses?",
       message: "Re-marks lease statuses (active / expiring / expired) and unit occupancy based on today's date, then saves. Changed records: " + changed + ".",
@@ -9136,7 +9023,8 @@ premise: "Fee Simple / As Improved",
     pmsActiveLeases().forEach(l => { const s = pmsAutoStatus(l); if (s !== l.status) { l.status = s; count++; } });
     pmsActiveUnits().forEach(u => {
       const names = pmsUnitTenants(u.id);
-      const want = names.length ? "occupied" : "vacant";
+      // A unit under maintenance stays so until someone moves in.
+      const want = unitWant(u);
       if (u.status !== want) { u.status = want; u.tenant_name = names.join(", "); count++; }
     });
     save(); render(); toast("Synced " + count + " status change(s)", "ok");
@@ -9163,7 +9051,7 @@ premise: "Fee Simple / As Improved",
     const canManage = pmsCan("manage");
     const props = pmsActiveProperties(), units = pmsActiveUnits(), owners = pmsActiveOwners(),
       tenants = pmsActiveTenants(), leases = pmsActiveLeases(), payments = pmsActivePayments();
-    const activeLeases = leases.filter(l => l.status === "active");
+    const activeLeases = leases.filter(l => pmsLeaseLive(l));
     const collected = pmsPaySum(payments, ["paid"]);
     const arrears = pmsArrearsFor(activeLeases);
     const nb = PMS_NEW[tab];
@@ -9172,7 +9060,7 @@ premise: "Fee Simple / As Improved",
     html += '<div class="grid grid-4 mb-24">' +
       kpi("Properties", props.length, "active in the portfolio", "green", "briefcase") +
       kpi("Units", units.length, "across all properties", "blue", "layers") +
-      kpi("Occupied Units", units.filter(u => u.status === "occupied").length, "of " + units.length + " units", "cyan", "check") +
+      kpi("Occupied Units", units.filter(u => pmsUnitTenantCount(u.id) > 0).length, "of " + units.length + " units", "cyan", "check") +
       kpi("Owners", owners.length, "registered contacts", "purple", "star") + '</div>';
     html += '<div class="grid grid-4 mb-24">' +
       kpi("Tenants", tenants.length, "on file", "blue", "star") +
@@ -9259,24 +9147,27 @@ premise: "Fee Simple / As Improved",
     const sf = state.pmsStatusFilter || "";
     const pf = state.pmsPropertyFilter || "";
     let list = pmsActiveUnits();
-    if (sf) list = list.filter(u => u.status === sf);
+    // Occupied comes from the leases running today; vacant/maintenance from the unit.
+    const unitNow = u => pmsUnitTenantCount(u.id) > 0 ? "occupied" : (u.status === "maintenance" ? "maintenance" : "vacant");
+    if (sf) list = list.filter(u => unitNow(u) === sf);
     if (pf) list = list.filter(u => u.property_id === pf);
-    if (q) list = list.filter(u => (u.unit_number + " " + (u.tenant_name || "") + " " + pmsPropertyTitle(u.property_id)).toLowerCase().indexOf(q) !== -1);
+    if (q) list = list.filter(u => (u.unit_number + " " + pmsUnitTenants(u.id).join(" ") + " " + pmsPropertyTitle(u.property_id)).toLowerCase().indexOf(q) !== -1);
     if (!list.length) return pmsEmpty("No units match", "Adjust your filters or add a new unit.");
     const canManage = pmsCan("manage");
     let h = '<div class="table-wrap"><table class="data"><tr><th>Property</th><th>Unit</th><th class="num">Occupant</th><th class="num">Bed / Bath</th><th class="num">Size</th><th class="num">Rent</th><th>Status</th>' + (canManage ? "<th>Actions</th>" : "") + '</tr>';
     list.forEach(u => {
-      const sc = UNIT_STATUSES.find(x => x.value === u.status);
+      const sc = UNIT_STATUSES.find(x => x.value === unitNow(u));
       const used = pmsUnitTenantCount(u.id), cap = pmsUnitCapacity(u), avail = Math.max(0, cap - used);
+      const occupants = pmsUnitTenants(u.id).join(", ");
       const occBadge = used === 0 ? '<span class="badge green">Vacant</span>' : (avail === 0 ? '<span class="badge red">Full</span>' : '<span class="badge gold">' + avail + ' of ' + cap + ' open</span>');
       h += '<tr><td>' + esc(pmsPropertyTitle(u.property_id)) + '</td>' +
-        '<td><b>' + esc(u.unit_number || "—") + '</b>' + (u.tenant_name ? '<div class="dim tiny">' + esc(u.tenant_name) + '</div>' : "") + '</td>' +
-        '<td class="num">' + used + ' / ' + cap + ' ' + (cap === 1 ? "bed" : "beds") + '<div class="mt-8">' + occBadge + '</div></td>' +
+        '<td><b>' + esc(u.unit_number || "—") + '</b>' + (occupants ? '<div class="dim tiny">' + esc(occupants) + '</div>' : "") + '</td>' +
+        '<td class="num">' + used + ' / ' + cap + ' ' + (cap === 1 ? "tenant" : "tenants") + '<div class="mt-8">' + occBadge + '</div></td>' +
         '<td class="num">' + (C.num(u.bedrooms, 0) > 0 ? C.num(u.bedrooms, 0) : "—") + ' / ' + (C.num(u.bathrooms, 0) > 0 ? C.num(u.bathrooms, 0) : "—") + '</td>' +
         '<td class="num">' + (C.num(u.size, 0) > 0 ? C.numFmt(u.size) + " sqm" : "—") + '</td>' +
         '<td class="num">' + (C.num(u.rent_amount, 0) > 0 ? C.money(u.rent_amount) + "/mo" : "—") + '</td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (u.status || "—")) + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-edit="unit:' + u.id + '">' + icon("edit", 13) + '</button><button class="btn btn-danger btn-sm" data-pms-archive="unit:' + u.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
+        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-edit="unit:' + u.id + '">' + icon("edit", 13) + ' Edit</button><button class="btn btn-danger btn-sm" data-pms-archive="unit:' + u.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9313,7 +9204,7 @@ premise: "Fee Simple / As Improved",
     let h = '<div class="table-wrap"><table class="data"><tr><th>Tenant</th><th>Contact</th><th>Employment</th><th class="num">Active Leases</th><th class="num">Outstanding</th>' + (canManage ? "<th>Actions</th>" : "") + '</tr>';
     list.forEach(t => {
       const leases = pmsActiveLeases().filter(l => l.tenant_id === t.id);
-      const active = leases.filter(l => l.status === "active");
+      const active = leases.filter(l => pmsLeaseLive(l));
       const out = pmsArrearsFor(leases);
       const accountStatus = t.accountStatus || (t.authUserId ? "pending" : "");
       h += '<tr><td><b>' + esc(t.name || "—") + '</b>' + (accountStatus ? '<div class="mt-8"><span class="badge ' + (accountStatus === "approved" ? "green" : accountStatus === "rejected" ? "red" : "gold") + '">User: ' + esc(accountStatus) + '</span></div>' : "") + '</td>' +
@@ -9333,24 +9224,27 @@ premise: "Fee Simple / As Improved",
     const sf = state.pmsStatusFilter || "";
     const pf = state.pmsPropertyFilter || "";
     let list = pmsActiveLeases();
-    if (sf) list = list.filter(l => l.status === sf);
+    // Status shown and filtered is worked out from the dates, so it is never stale.
+    if (sf) list = list.filter(l => pmsAutoStatus(l) === sf);
     if (pf) list = list.filter(l => l.property_id === pf);
     if (q) list = list.filter(l => pmsLeaseLabel(l).toLowerCase().indexOf(q) !== -1);
     if (!list.length) return pmsEmpty("No leases match", "Adjust your filters or add a new lease.");
     const canManage = pmsCan("manage");
     let h = '<div class="table-wrap"><table class="data"><tr><th>Property / Unit</th><th>Tenant</th><th class="num">Rent</th><th class="num">Deposit</th><th class="num">Due Date</th><th>Term</th><th>Status</th>' + (canManage ? "<th>Actions</th>" : "") + '</tr>';
     list.forEach(l => {
-      const sc = LEASE_STATUSES.find(x => x.value === l.status);
-      const due = (l.status === "active" || l.status === "expiring") ? pmsLeaseDueInfo(l) : null;
-      const dueNote = due ? (due.state === "paid" ? "paid" : (due.state === "overdue" ? "overdue" : "due")) : "";
-      const dueBadge = due && due.state !== "paid"
-        ? '<div class="mt-8">' + (due.state === "overdue" ? pmsStatusBadge({ color: "red" }, "Payment overdue") : pmsStatusBadge({ color: "gold" }, "Payment due")) + '</div>'
-        : (due ? '<div class="mt-8">' + pmsStatusBadge({ color: "green" }, "Paid") + '</div>' : "");
+      const sc = LEASE_STATUSES.find(x => x.value === pmsAutoStatus(l));
+      const due = (pmsLeaseLive(l) || pmsLeaseArrears(l) > 0) ? pmsLeaseDueInfo(l) : null;
+      const owed = pmsLeaseArrears(l);
+      const dueNote = due ? (due.state === "paid" ? "paid to date" : due.state === "overdue" ? C.money(owed) + " overdue" : due.state === "upcoming" ? "first rent" : "due") : "";
+      const dueBadge = due && due.state === "overdue"
+        ? '<div class="mt-8">' + pmsStatusBadge({ color: "red" }, "Overdue " + C.money(owed)) + '</div>'
+        : due && due.state === "due" ? '<div class="mt-8">' + pmsStatusBadge({ color: "gold" }, "Payment due") + '</div>'
+        : due && due.state === "paid" ? '<div class="mt-8">' + pmsStatusBadge({ color: "green" }, "Paid to date") + '</div>' : "";
       h += '<tr><td><b>' + esc(pmsPropertyTitle(l.property_id)) + '</b><div class="dim tiny">' + esc(pmsUnitName(l.unit_id)) + '</div></td>' +
         '<td>' + esc(pmsTenantName(l.tenant_id)) + '</td>' +
         '<td class="num">' + (C.num(l.rent, 0) > 0 ? C.money(l.rent) : "—") + (l.rent_type === "lease" ? '<div class="dim tiny">lease \u00B7 total</div>' : '<div class="dim tiny">per month</div>') + '</td>' +
         '<td class="num">' + (C.num(l.deposit, 0) > 0 ? C.money(l.deposit) : "—") + '</td>' +
-        '<td class="num">' + (due ? '<b>' + esc(pmsDispDate(due.nextDue)) + '</b>' + (dueNote ? '<div class="dim tiny">' + esc(dueNote) + '</div>' : "") : "—") + '</td>' +
+        '<td class="num">' + (due && due.nextDue ? '<b>' + esc(pmsDispDate(due.nextDue)) + '</b>' + (dueNote ? '<div class="dim tiny">' + esc(dueNote) + '</div>' : "") : "—") + '</td>' +
         '<td>' + (l.start ? esc(String(l.start).slice(0, 10)) : "—") + ' \u2192 ' + (l.end ? esc(String(l.end).slice(0, 10)) : "—") + '</td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (l.status || "—")) + dueBadge + '</td>' +
         (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-paylink="' + l.id + '" title="View payments">' + icon("dollar", 13) + '</button><button class="btn btn-ghost btn-sm" data-pms-print="lease:' + l.id + '" title="Printable payable list">' + icon("print", 13) + '</button><button class="btn btn-ghost btn-sm" data-pms-edit="lease:' + l.id + '">' + icon("edit", 13) + '</button><button class="btn btn-danger btn-sm" data-pms-archive="lease:' + l.id + '">' + icon("archive", 13) + '</button></div></td>' : "") +
@@ -9367,17 +9261,17 @@ premise: "Fee Simple / As Improved",
     const lf = state.pmsLeaseFilter || "";
     let list = pmsActivePayments();
     pmsActiveLeases().forEach(l => {
-      if ((l.status !== "active" && l.status !== "expiring") || l.rent_type === "lease") return;
+      if (l.rent_type === "lease" || (!pmsLeaseLive(l) && pmsLeaseArrears(l) <= 0)) return;
       pmsUnpaidMonths(l).forEach(u => {
         list.push({
-          id: "due-" + l.id + "-" + u.label.replace(/[^a-z0-9]/gi, ""),
+          id: "due-" + l.id + "-" + u.key,
           lease_id: l.id,
           property_id: l.property_id,
           unit_id: l.unit_id,
           tenant_id: l.tenant_id,
-          amount: C.num(l.rent, 0),
-          date: u.date.toISOString().slice(0, 10),
-          month: u.label,
+          amount: u.balance,
+          date: u.due,
+          month: u.key,
           method: "",
           status: "due",
           notes: "",
@@ -9391,7 +9285,7 @@ premise: "Fee Simple / As Improved",
     if (sf) list = list.filter(p => p.status === sf);
     if (pf) list = list.filter(p => p.property_id === pf);
     if (lf) list = list.filter(p => p.lease_id === lf);
-    if (q) list = list.filter(p => (pmsLeaseLabel(pms().leases.find(l => l.id === p.lease_id)) + " " + p.month + " " + p.method + " " + p.amount).toLowerCase().indexOf(q) !== -1);
+    if (q) list = list.filter(p => (pmsLeaseLabel(pms().leases.find(l => l.id === p.lease_id)) + " " + pmsMonthText(p.month) + " " + p.method + " " + p.amount).toLowerCase().indexOf(q) !== -1);
     if (!list.length) return pmsEmpty("No payments match", "Adjust your filters or record a payment.");
     const canManage = pmsCan("manage");
     const paid = pmsPaySum(list, ["paid"]), pending = pmsPaySum(list, ["pending"]), late = pmsPaySum(list, ["late"]), due = pmsPaySum(list, ["due"]);
@@ -9406,14 +9300,17 @@ premise: "Fee Simple / As Improved",
       const proof = safePaymentProofUrl(p.proof);
       h += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td>' +
         '<td>' + esc(pmsLeaseLabel(pms().leases.find(l => l.id === p.lease_id))) + '</td>' +
-        '<td>' + esc(p.month || "—") + '</td>' +
-        '<td class="num">' + C.money(p.amount) + '</td>' +
+        '<td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td>' +
+        '<td class="num">' + C.money(p.amount) + (p.synthetic ? '<div class="dim tiny">still owed</div>' : "") + '</td>' +
         '<td>' + esc(p.method || "—") + '</td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td>' +
         '<td>' + (proof
-          ? '<a href="' + esc(proof) + '" target="_blank" rel="noopener" title="' + esc(p.proofName || "View proof") + '"><img src="' + esc(proof) + '" alt="proof" style="width:44px;height:32px;object-fit:cover;border-radius:6px;border:1px solid var(--stroke)"></a>'
+          ? '<button type="button" class="pms-proof-btn" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View proof") + '"><img src="' + esc(proof) + '" alt="Proof of payment" style="width:56px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--stroke)"></button>'
           : '<span class="dim">—</span>') + '</td>' +
-        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-email-payment="' + esc(p.id) + '" data-lease-id="' + esc(p.lease_id || "") + '" data-payment-amount="' + esc(String(p.amount || 0)) + '" data-payment-date="' + esc(p.date || "") + '" data-payment-month="' + esc(p.month || "") + '" data-payment-status="' + esc(p.status || "") + '" data-payment-method="' + esc(p.method || "") + '" title="Send payment details to tenant">' + icon("mail", 13) + ' Email</button>' + (!p.synthetic ? '<button class="btn btn-ghost btn-sm" data-pms-edit="payment:' + p.id + '">' + icon("edit", 13) + '</button><button class="btn btn-danger btn-sm" data-pms-archive="payment:' + p.id + '">' + icon("archive", 13) + '</button>' : "") + '</div></td>' : "") +
+        (canManage ? '<td><div class="row" style="gap:6px"><button class="btn btn-ghost btn-sm" data-pms-email-payment="' + esc(p.id) + '" data-lease-id="' + esc(p.lease_id || "") + '" data-payment-amount="' + esc(String(p.amount || 0)) + '" data-payment-date="' + esc(p.date || "") + '" data-payment-month="' + esc(p.month || "") + '" data-payment-status="' + esc(p.status || "") + '" data-payment-method="' + esc(p.method || "") + '" title="Send payment details to tenant">' + icon("mail", 13) + ' Email</button>' +
+          (p.synthetic
+            ? '<button class="btn btn-primary btn-sm" data-pms-markpaid="' + esc(p.lease_id) + '|' + esc(p.month) + '|' + esc(String(p.amount || 0)) + '">' + icon("check", 13) + ' Mark paid</button>' + pmsReminderLink(p)
+            : '<button class="btn btn-ghost btn-sm" data-pms-edit="payment:' + p.id + '">' + icon("edit", 13) + ' Edit</button><button class="btn btn-danger btn-sm" data-pms-archive="payment:' + p.id + '" aria-label="Archive payment">' + icon("archive", 13) + ' Archive</button>') + '</div></td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9508,9 +9405,9 @@ premise: "Fee Simple / As Improved",
   function pmsReports() {
     const props = pmsActiveProperties(), units = pmsActiveUnits(), leases = pmsActiveLeases(),
       payments = pmsActivePayments(), expenses = pmsActiveExpenses();
-    const occupied = units.filter(u => u.status === "occupied").length;
+    const occupied = units.filter(u => pmsUnitTenantCount(u.id) > 0).length;
     const paid = pmsPaySum(payments, ["paid"]);
-    const arrears = pmsArrearsFor(leases.filter(l => l.status === "active"));
+    const arrears = pmsArrearsFor(leases);
     const totalExp = expenses.reduce((s, e) => s + C.num(e.amount, 0), 0);
     const occPct = units.length ? Math.round(occupied / units.length * 100) : 0;
     let html = '<div class="grid grid-4 mb-24">' +
@@ -9525,16 +9422,16 @@ premise: "Fee Simple / As Improved",
     html += '<div class="card card-pad mb-24"><h3 class="mb-16">Occupancy by Property</h3><div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">Units</th><th class="num">Occupied</th><th class="num">Vacant</th><th class="num">Occupancy</th></tr>';
     props.forEach(p => {
       const u = pmsActiveUnits().filter(x => x.property_id === p.id);
-      const oc = u.filter(x => x.status === "occupied").length;
+      const oc = u.filter(x => pmsUnitTenantCount(x.id) > 0).length;
       const pct = u.length ? Math.round(oc / u.length * 100) : 0;
       html += '<tr><td>' + esc(p.title) + '</td><td class="num">' + u.length + '</td><td class="num">' + oc + '</td><td class="num">' + (u.length - oc) + '</td><td class="num">' + pct + '%</td></tr>';
     });
     html += '</table></div></div>';
     html += '<div class="card card-pad mb-24"><h3 class="mb-16">Income Summary by Property</h3><div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">Monthly Rent</th><th class="num">Collected</th><th class="num">Arrears</th><th class="num">Expenses</th><th class="num">Net</th></tr>';
     props.forEach(p => {
-      const monthly = leases.filter(l => l.property_id === p.id && l.status === "active" && l.rent_type !== "lease").reduce((s, l) => s + C.num(l.rent, 0), 0);
+      const monthly = leases.filter(l => l.property_id === p.id && pmsLeaseLive(l) && l.rent_type !== "lease").reduce((s, l) => s + C.num(l.rent, 0), 0);
       const coll = pmsPaySum(payments.filter(x => x.property_id === p.id), ["paid"]);
-      const arr = pmsArrearsFor(leases.filter(x => x.property_id === p.id && x.status === "active"));
+      const arr = pmsArrearsFor(leases.filter(x => x.property_id === p.id));
       const ex = expenses.filter(x => x.property_id === p.id).reduce((s, e) => s + C.num(e.amount, 0), 0);
       html += '<tr><td>' + esc(p.title) + '</td><td class="num">' + C.money(monthly) + '</td><td class="num">' + C.money(coll) + '</td><td class="num">' + C.money(arr) + '</td><td class="num">' + C.money(ex) + '</td><td class="num"><b>' + C.money(coll - ex) + '</b></td></tr>';
     });
@@ -9542,16 +9439,19 @@ premise: "Fee Simple / As Improved",
     html += '<div class="card card-pad mb-24"><h3 class="mb-16">Property Reports</h3><div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">Units</th><th class="num">Active Leases</th><th class="num">Collected</th><th class="num">Arrears</th><th>Actions</th></tr>';
     props.forEach(p => {
       const u = pmsActiveUnits().filter(x => x.property_id === p.id);
-      const lc = pmsActiveLeases().filter(x => x.property_id === p.id && (x.status === "active" || x.status === "expiring"));
+      const lc = pmsActiveLeases().filter(x => x.property_id === p.id && pmsLeaseLive(x));
       const pc = pmsPaySum(pmsActivePayments().filter(x => x.property_id === p.id), ["paid"]);
-      const ac = pmsArrearsFor(pmsActiveLeases().filter(x => x.property_id === p.id && x.status === "active"));
+      const ac = pmsArrearsFor(pmsActiveLeases().filter(x => x.property_id === p.id));
       html += '<tr><td>' + esc(p.title) + '</td><td class="num">' + u.length + '</td><td class="num">' + lc.length + '</td><td class="num">' + C.money(pc) + '</td><td class="num">' + C.money(ac) + '</td>' +
         '<td><button class="btn btn-ghost btn-sm" data-pms-printrep="property:' + p.id + '">' + icon("print", 13) + " Print Report</button></td></tr>";
     });
     html += '</table></div></div>';
     html += '<div class="row" style="gap:10px">' +
-      '<button class="btn btn-ghost btn-sm" data-pms-export="occupancy">' + icon("download", 13) + " Export Occupancy CSV</button>" +
-      '<button class="btn btn-ghost btn-sm" data-pms-export="income">' + icon("download", 13) + " Export Income CSV</button>" +
+      '<button class="btn btn-ghost btn-sm" data-pms-export="rentroll">' + icon("download", 13) + " Rent roll CSV</button>" +
+      '<button class="btn btn-ghost btn-sm" data-pms-export="ageing">' + icon("download", 13) + " Arrears ageing CSV</button>" +
+      '<button class="btn btn-ghost btn-sm" data-pms-export="payments">' + icon("download", 13) + " Payments CSV</button>" +
+      '<button class="btn btn-ghost btn-sm" data-pms-export="occupancy">' + icon("download", 13) + " Occupancy CSV</button>" +
+      '<button class="btn btn-ghost btn-sm" data-pms-export="income">' + icon("download", 13) + " Income CSV</button>" +
       '</div>';
     return html;
   }
@@ -9563,22 +9463,49 @@ premise: "Fee Simple / As Improved",
       rows = [["Property", "Units", "Occupied", "Vacant", "Occupancy %"]];
       pmsActiveProperties().forEach(p => {
         const u = pmsActiveUnits().filter(x => x.property_id === p.id);
-        const oc = u.filter(x => x.status === "occupied").length;
+        const oc = u.filter(x => pmsUnitTenantCount(x.id) > 0).length;
         rows.push([p.title, u.length, oc, u.length - oc, u.length ? Math.round(oc / u.length * 100) : 0]);
+      });
+    } else if (kind === "rentroll") {
+      rows = [["Property", "Unit", "Tenant", "Phone", "Start", "End", "Status", "Monthly rent", "Deposit", "Paid to date", "Owed to date", "Next due"]];
+      pmsActiveLeases().forEach(l => {
+        const r = pmsLeaseLedger(l);
+        const t = pms().tenants.find(x => x.id === l.tenant_id) || {};
+        rows.push([pmsPropertyTitle(l.property_id), pmsUnitName(l.unit_id), t.name || "", t.phone || "", String(l.start || "").slice(0, 10), String(l.end || "").slice(0, 10), pmsAutoStatus(l), l.rent_type === "lease" ? "" : C.num(l.rent, 0), C.num(l.deposit, 0), r.paidTotal, r.dueToDate, r.current.nextDue || ""]);
+      });
+    } else if (kind === "ageing") {
+      // Arrears by how long each unpaid month has been overdue.
+      rows = [["Property", "Unit", "Tenant", "0-30 days", "31-60 days", "61-90 days", "Over 90 days", "Total overdue"]];
+      const today = pmsToday();
+      pmsActiveLeases().forEach(l => {
+        const b = [0, 0, 0, 0];
+        pmsLeaseLedger(l).months.forEach(m => {
+          if (m.balance <= 0 || m.due >= today) return;
+          const days = Math.round((new Date(today + "T00:00:00") - new Date(m.due + "T00:00:00")) / 86400000);
+          b[days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3] += m.balance;
+        });
+        const total = b[0] + b[1] + b[2] + b[3];
+        if (total > 0) rows.push([pmsPropertyTitle(l.property_id), pmsUnitName(l.unit_id), pmsTenantName(l.tenant_id)].concat(b, [total]));
+      });
+    } else if (kind === "payments") {
+      rows = [["Date", "Period", "Property", "Unit", "Tenant", "Amount", "Method", "Status", "Notes"]];
+      pmsActivePayments().slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))).forEach(p => {
+        rows.push([String(p.date || "").slice(0, 10), pmsMonthText(p.month), pmsPropertyTitle(p.property_id), pmsUnitName(p.unit_id), pmsTenantName(p.tenant_id), C.num(p.amount, 0), p.method || "", p.status || "", p.notes || ""]);
       });
     } else {
       rows = [["Property", "Monthly Rent", "Collected", "Arrears", "Expenses", "Net"]];
       pmsActiveProperties().forEach(p => {
-        const monthly = pmsActiveLeases().filter(l => l.property_id === p.id && l.status === "active" && l.rent_type !== "lease").reduce((s, l) => s + C.num(l.rent, 0), 0);
+        const monthly = pmsActiveLeases().filter(l => l.property_id === p.id && pmsLeaseLive(l) && l.rent_type !== "lease").reduce((s, l) => s + C.num(l.rent, 0), 0);
         const coll = pmsPaySum(pmsActivePayments().filter(x => x.property_id === p.id), ["paid"]);
-        const arr = pmsArrearsFor(pmsActiveLeases().filter(x => x.property_id === p.id && x.status === "active"));
+        const arr = pmsArrearsFor(pmsActiveLeases().filter(x => x.property_id === p.id));
         const ex = pmsActiveExpenses().filter(x => x.property_id === p.id).reduce((s, e) => s + C.num(e.amount, 0), 0);
         rows.push([p.title, monthly, coll, arr, ex, coll - ex]);
       });
     }
-    const csv = rows.map(r => r.map(escCsv).join(",")).join("\n");
+    // The byte-order mark makes Excel read "Las Piñas" and "₱" correctly.
+    const csv = "\uFEFF" + rows.map(r => r.map(escCsv).join(",")).join("\r\n");
     try {
-      const blob = new Blob([csv], { type: "text/csv" });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = "esrealty-pms-" + kind + ".csv";
@@ -9599,7 +9526,7 @@ premise: "Fee Simple / As Improved",
     const leases = pmsActiveLeases().filter(l => l.tenant_id === tenant.id);
     const payIds = leases.map(l => l.id);
     const payments = pmsActivePayments().filter(p => payIds.indexOf(p.lease_id) !== -1);
-    const active = leases.filter(l => l.status === "active");
+    const active = leases.filter(l => pmsLeaseLive(l));
     const due = pmsArrearsFor(leases);
     const paid = pmsPaySum(payments, ["paid"]);
     html += '<div class="grid grid-4 mb-24">' +
@@ -9632,9 +9559,9 @@ premise: "Fee Simple / As Improved",
       payments.forEach(p => {
         const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
         const proof = safePaymentProofUrl(p.proof);
-        html += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(p.month || "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td>' +
+        html += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td>' +
           '<td>' + (proof
-            ? '<a href="' + esc(proof) + '" target="_blank" rel="noopener" title="' + esc(p.proofName || "View proof") + '"><img src="' + esc(proof) + '" alt="proof" style="width:44px;height:32px;object-fit:cover;border-radius:6px;border:1px solid var(--stroke)"></a>'
+            ? '<button type="button" class="pms-proof-btn" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View proof") + '"><img src="' + esc(proof) + '" alt="Proof of payment" style="width:56px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--stroke)"></button>'
             : '<span class="dim">—</span>') + '</td></tr>';
       });
       html += '</table></div>';
@@ -9659,7 +9586,7 @@ premise: "Fee Simple / As Improved",
     const tenants = pmsActiveTenants().filter(t => tenIds.indexOf(t.id) !== -1 || t.owner_id === owner.id);
     const payIds = leases.map(l => l.id);
     const payments = pmsActivePayments().filter(p => payIds.indexOf(p.lease_id) !== -1);
-    const active = leases.filter(l => l.status === "active");
+    const active = leases.filter(l => pmsLeaseLive(l));
     const myExpenses = pmsActiveExpenses().filter(e => propIds.indexOf(e.property_id) !== -1);
     const myMaint = pmsActiveMaintenance().filter(m => propIds.indexOf(m.property_id) !== -1);
     const openMaint = myMaint.filter(m => m.status !== "completed");
@@ -9724,9 +9651,9 @@ premise: "Fee Simple / As Improved",
       payments.forEach(p => {
         const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
         const proof = safePaymentProofUrl(p.proof);
-        html += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(p.month || "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td>' +
+        html += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (p.status || "—")) + '</td>' +
           '<td>' + (proof
-            ? '<a href="' + esc(proof) + '" target="_blank" rel="noopener" title="' + esc(p.proofName || "View proof") + '"><img src="' + esc(proof) + '" alt="proof" style="width:44px;height:32px;object-fit:cover;border-radius:6px;border:1px solid var(--stroke)"></a>'
+            ? '<button type="button" class="pms-proof-btn" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View proof") + '"><img src="' + esc(proof) + '" alt="Proof of payment" style="width:56px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--stroke)"></button>'
             : '<span class="dim">—</span>') + '</td></tr>';
       });
       html += '</table></div>';
@@ -9818,12 +9745,12 @@ premise: "Fee Simple / As Improved",
     const p = pmsTenantPayable(l);
     const statusBadge = s => s === "paid" ? '<span class="badge green">Paid</span>' : s === "overdue" ? '<span class="badge red">Overdue</span>' : s === "partial" ? '<span class="badge gold">Partial</span>' : s === "due" ? '<span class="badge gold">Due</span>' : '<span class="badge blue">Upcoming</span>';
     const rows = p.rows.map(r =>
-      '<tr><td>' + esc(r.label) + '</td><td class="num">' + (r.due ? esc(pmsDispDate(r.due)) : "—") + '</td><td class="num">' + C.money(r.amount) + '</td><td>' + statusBadge(r.status) + '</td></tr>'
+      '<tr><td>' + esc(r.label) + '</td><td class="num">' + (r.due ? esc(pmsDispDate(r.due)) : "—") + '</td><td class="num">' + C.money(r.amount) + (r.status === "partial" ? '<div class="dim tiny">' + C.money(r.balance) + ' left</div>' : "") + '</td><td>' + statusBadge(r.status) + '</td></tr>'
     ).join("");
     const pays = pmsActivePayments().filter(x => x.lease_id === l.id).slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
     const payRows = pays.map(pay => {
       const sc = PAYMENT_STATUSES.find(x => x.value === pay.status);
-      return '<tr><td class="num">' + esc(String(pay.date || "—").slice(0, 10)) + '</td><td>' + esc(pay.month || "—") + '</td><td class="num">' + C.money(pay.amount) + '</td><td>' + esc(pay.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (pay.status || "—")) + '</td><td>' + esc(pay.notes || "—") + '</td></tr>';
+      return '<tr><td class="num">' + esc(String(pay.date || "—").slice(0, 10)) + '</td><td>' + esc(pay.month ? pmsMonthText(pay.month) : "—") + '</td><td class="num">' + C.money(pay.amount) + '</td><td>' + esc(pay.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (pay.status || "—")) + '</td><td>' + esc(pay.notes || "—") + '</td></tr>';
     }).join("");
     const body = '<div class="print-root" id="pms-print-root">' +
       '<div class="print-brand"><h1>Tenant Payable Statement</h1><div class="dim tiny">Generated ' + esc(pmsDispDate(new Date())) + '</div></div>' +
@@ -9837,8 +9764,11 @@ premise: "Fee Simple / As Improved",
       '<table class="print-sched"><tr><th>Period</th><th>Due Date</th><th class="num">Amount</th><th>Status</th></tr>' + rows + '</table>' +
       '<h3>Payments Recorded</h3>' +
       '<table class="print-pays"><tr><th>Date</th><th>Period</th><th class="num">Amount</th><th>Method</th><th>Status</th><th>Notes</th></tr>' + (payRows || '<tr><td colspan="6">No payments recorded</td></tr>') + '</table>' +
-      '<table class="print-sum"><tr><th>Total</th><th>Paid</th><th>Balance</th></tr>' +
-      '<tr><td class="num">' + C.money(p.total) + '</td><td class="num">' + C.money(p.paidTotal) + '</td><td class="num"><b>' + C.money(p.total - p.paidTotal) + '</b></td></tr></table>' +
+      // Owed to date and the rest of the term are separate: an up-to-date
+      // tenant used to see the whole remaining term as their "balance".
+      '<table class="print-sum"><tr><th>Paid</th><th>Owed to date</th><th>Rest of term</th></tr>' +
+      '<tr><td class="num">' + C.money(p.paidTotal) + '</td><td class="num"><b>' + C.money(p.dueToDate) + '</b></td><td class="num">' + C.money(p.restOfTerm) + '</td></tr></table>' +
+      (p.credit > 0 ? '<p class="dim tiny">Advance credit not yet applied: ' + C.money(p.credit) + '</p>' : "") +
       '<div class="print-foot"><span>Prepared by SEA ESTATES · Property Management System</span></div>' +
       '</div>';
     pmsPrintModal("Tenant Payable — " + pmsTenantName(l.tenant_id), body);
@@ -9853,11 +9783,11 @@ premise: "Fee Simple / As Improved",
     const exps = pmsActiveExpenses().filter(x => x.property_id === p.id);
     const owner = pmsActiveOwners().find(o => o.id === p.owner_id);
     const psc = PROPERTY_STATUSES.find(x => x.value === p.status);
-    const occ = units.filter(u => u.status === "occupied").length;
+    const occ = units.filter(u => pmsUnitTenantCount(u.id) > 0).length;
     const occPct = units.length ? Math.round(occ / units.length * 100) : 0;
-    const monthly = leases.filter(l => l.status === "active" && l.rent_type !== "lease").reduce((s, l) => s + C.num(l.rent, 0), 0);
+    const monthly = leases.filter(l => pmsLeaseLive(l) && l.rent_type !== "lease").reduce((s, l) => s + C.num(l.rent, 0), 0);
     const paid = pmsPaySum(pays, ["paid"]);
-    const arr = pmsArrearsFor(pmsActiveLeases().filter(x => x.property_id === p.id && x.status === "active"));
+    const arr = pmsArrearsFor(pmsActiveLeases().filter(x => x.property_id === p.id));
     const totalExp = exps.reduce((s, e) => s + C.num(e.amount, 0), 0);
 
     const unitRows = units.map(u => {
@@ -9943,9 +9873,9 @@ premise: "Fee Simple / As Improved",
       pmsField("Status", pmsSel("pms-unit-status", UNIT_STATUSES.map(s => [s.value, s.label]), d.status || "vacant")) +
       pmsField("Bedrooms", pmsNum("pms-unit-beds", d.bedrooms)) +
       pmsField("Bathrooms", pmsNum("pms-unit-baths", d.bathrooms)) +
+      pmsField("Tenants it takes", pmsNum("pms-unit-capacity", d.capacity || 1), "1 for a family or a single lease; more for a bedspace or boarding unit.") +
       pmsField("Size (sqm)", pmsNum("pms-unit-size", d.size)) +
       pmsField("Monthly Rent (\u20B1)", pmsNum("pms-unit-rent", d.rent_amount)) +
-      pmsField("Tenant Name", pmsTxt("pms-unit-tenant", d.tenant_name, "if occupied")) +
       pmsField("Notes", pmsTxt("pms-unit-notes", d.notes), "", true);
     pmsModal(id ? "Edit Unit" : "New Unit", body, "unit", id);
   }
@@ -9997,14 +9927,14 @@ premise: "Fee Simple / As Improved",
       const used = pmsUnitTenantCount(u.id), cap = pmsUnitCapacity(u);
       const full = used >= cap;
       const dis = full && editUnit !== u.id ? " disabled" : "";
-      return '<option value="' + u.id + '"' + (defaultUnit === u.id ? " selected" : "") + dis + '>' + esc(pmsPropertyTitle(u.property_id) + " \u00B7 " + pmsUnitName(u.id) + " (" + used + "/" + cap + " beds)") + '</option>';
+      return '<option value="' + u.id + '"' + (defaultUnit === u.id ? " selected" : "") + dis + '>' + esc(pmsPropertyTitle(u.property_id) + " \u00B7 " + pmsUnitName(u.id) + " (" + used + "/" + cap + (cap === 1 ? " tenant" : " tenants") + ")") + '</option>';
     }).join("");
     const unitSel = '<select class="input" id="pms-lease-unit">' + unitOpts + '</select>';
     const selUnit = pms().units.find(x => x.id === defaultUnit);
     const selProp = selUnit ? pms().properties.find(x => x.id === selUnit.property_id) : null;
     const defaultRent = C.num(d.rent, 0) > 0 ? d.rent : (selUnit ? (C.num(selUnit.rent_amount, 0) > 0 ? selUnit.rent_amount : (selProp ? C.num(selProp.rent, 0) : 0)) : 0);
     const rt = d.rent_type === "lease" ? "lease" : "monthly";
-    let body = pmsField("Unit *", unitSel, "Max tenants = number of beds in the unit.", true) +
+    let body = pmsField("Unit *", unitSel, "How many tenants a unit takes is set on the unit.", true) +
       pmsField("Tenant *", pmsSel("pms-lease-tenant", tenants.map(t => [t.id, t.name]), d.tenant_id || "")) +
       pmsField("Start Date", pmsDate("pms-lease-start", d.start)) +
       pmsField("End Date", pmsDate("pms-lease-end", d.end)) +
@@ -10013,9 +9943,13 @@ premise: "Fee Simple / As Improved",
       '<div class="field col-full" id="pms-lease-rent-wrap"' + (rt === "lease" ? ' style="display:none"' : "") + '><label>Monthly Rent (\u20B1)</label>' + pmsNum("pms-lease-rent", defaultRent) + '<div class="field-hint">Collected every month.</div></div>' +
       '<div class="field col-full" id="pms-lease-total-wrap"' + (rt === "lease" ? "" : ' style="display:none"') + '><label>Lease Amount / Total (\u20B1)</label>' + pmsNum("pms-lease-total", rt === "lease" ? d.rent : 0) + '<div class="field-hint">Total payable over the lease term.</div></div>' +
       pmsField("Security Deposit (\u20B1)", pmsNum("pms-lease-dep", d.deposit)) +
-      pmsField("Status", pmsSel("pms-lease-status", LEASE_STATUSES.map(s => [s.value, s.label]), d.status || "active")) +
+      // Active / expiring / expired follow the dates; only termination is chosen.
+      pmsField("Status", pmsSel("pms-lease-status", [["active", "Running (follows the dates)"], ["terminated", "Terminated early"]], d.status === "terminated" ? "terminated" : "active")) +
+      '<div class="field" id="pms-lease-term-wrap"' + (d.status === "terminated" ? "" : ' style="display:none"') + '><label for="pms-lease-termdate">Termination date</label>' + pmsDate("pms-lease-termdate", d.terminated_on || pmsToday()) + '<div class="field-hint">Rent stops after this date.</div></div>' +
       pmsField("Notes", pmsTxt("pms-lease-notes", d.notes), "", true);
     pmsModal(id ? "Edit Lease" : "New Lease", body, "lease", id);
+    const stSel = $("#pms-lease-status");
+    if (stSel) stSel.addEventListener("change", () => { const w = $("#pms-lease-term-wrap"); if (w) w.style.display = stSel.value === "terminated" ? "" : "none"; });
     const rtSel = $("#pms-lease-rtype");
     if (rtSel) rtSel.addEventListener("change", () => {
       const isLease = rtSel.value === "lease";
@@ -10026,22 +9960,70 @@ premise: "Fee Simple / As Improved",
   }
 
   function openPaymentEditor(id) {
-    const d = id ? pms().payments.find(x => x.id === id) || {} : {};
+    const pre = !id && pmsPayPrefill ? pmsPayPrefill : null;
+    pmsPayPrefill = null;
+    const d = id ? pms().payments.find(x => x.id === id) || {} : (pre ? { lease_id: pre.lease_id, month: pre.month, amount: pre.amount, status: "paid" } : {});
     const proof = safePaymentProofUrl(d.proof);
-    const leases = pmsActiveLeases();
+    // Running leases, plus ended ones still owing; ended and settled ones stay out of the way.
+    const leases = pmsActiveLeases().filter(l => l.id === d.lease_id || pmsLeaseLive(l) || pmsLeaseArrears(l) > 0);
     if (!leases.length) { toast("Add a lease first before recording a payment", "err"); return; }
-    let body = pmsField("Lease *", pmsSel("pms-pay-lease", leases.map(l => [l.id, pmsLeaseLabel(l)]), d.lease_id || leases[0].id), "", true) +
-      pmsField("Amount (\u20B1)", pmsNum("pms-pay-amount", d.amount)) +
-      pmsField("Payment Date", pmsDate("pms-pay-date", d.date || new Date().toISOString().slice(0, 10))) +
-      pmsField("Period (month)", pmsSel("pms-pay-month", pmsMonthOptions(d.month), d.month || pmsMonthLabel(new Date()))) +
+    const leaseId = d.lease_id || leases[0].id;
+    const lease = leases.find(l => l.id === leaseId) || leases[0];
+    const firstOwed = pmsUnpaidMonths(lease)[0];
+    const monthSel = PL().monthKey(d.month) || (firstOwed && firstOwed.key) || pmsToday().slice(0, 7);
+    let body = pmsField("Lease *", pmsSel("pms-pay-lease", leases.map(l => [l.id, pmsLeaseLabel(l)]), leaseId), "", true) +
+      pmsField("Amount (\u20B1)", pmsNum("pms-pay-amount", d.amount != null ? d.amount : (firstOwed ? firstOwed.balance : lease.rent))) +
+      pmsField("Payment Date", pmsDate("pms-pay-date", d.date || pmsToday())) +
+      pmsField("Period (month)", pmsSel("pms-pay-month", pmsMonthOptions(monthSel, lease), monthSel), "A payment bigger than one month pays the next unpaid months too.") +
       pmsField("Method", pmsSel("pms-pay-method", PAYMENT_METHODS.map(m => [m, m]), d.method || "Cash")) +
       pmsField("Status", pmsSel("pms-pay-status", PAYMENT_STATUSES.map(s => [s.value, s.label]), d.status || "paid")) +
       pmsField("Notes", pmsTxt("pms-pay-notes", d.notes), "", true) +
       '<div class="field col-full"><label>Proof of Payment</label>' +
       '<label class="btn btn-ghost btn-sm" style="margin:0">' + icon("upload", 14) + ' Choose image<input type="file" id="pms-pay-proof" style="display:none" accept="image/*"></label>' +
-      (proof ? '<div class="mt-8"><a href="' + esc(proof) + '" target="_blank" rel="noopener"><img src="' + esc(proof) + '" alt="proof" style="max-width:100%;max-height:120px;border-radius:8px;border:1px solid var(--stroke)"></a></div>' : "") +
-      '<div class="field-hint">Attach a photo or screenshot of the receipt (GCash, bank transfer, etc.). Stored locally and compressed.</div></div>';
+      (proof ? '<div class="mt-8"><img src="' + esc(proof) + '" alt="Current proof of payment" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid var(--stroke)"></div>' : "") +
+      '<div class="field-hint">Attach a photo or screenshot of the receipt (GCash, bank transfer, etc.). It is shrunk before saving.</div></div>';
     pmsModal(id ? "Edit Payment" : "New Payment", body, "payment", id);
+    // Choosing another lease refreshes its months and suggests what it owes.
+    const leaseEl = $("#pms-pay-lease");
+    if (leaseEl) leaseEl.addEventListener("change", () => {
+      const l = pms().leases.find(x => x.id === leaseEl.value);
+      if (!l) return;
+      const owed = pmsUnpaidMonths(l)[0];
+      const key = (owed && owed.key) || pmsToday().slice(0, 7);
+      const monthEl = $("#pms-pay-month");
+      if (monthEl) monthEl.innerHTML = pmsMonthOptions(key, l).map(o => '<option value="' + esc(o[0]) + '"' + (o[0] === key ? " selected" : "") + ">" + esc(o[1]) + "</option>").join("");
+      const amountEl = $("#pms-pay-amount");
+      if (amountEl) amountEl.value = C.fmtNum(owed ? owed.balance : C.num(l.rent, 0));
+    });
+  }
+  let pmsPayPrefill = null;
+  // "Mark paid" on a due row: the payment form, filled in for that month.
+  function pmsMarkPaid(spec) {
+    const parts = String(spec || "").split("|");
+    pmsPayPrefill = { lease_id: parts[0], month: parts[1], amount: C.num(parts[2], 0) };
+    openPaymentEditor(null);
+  }
+  function pmsReminderLink(p) {
+    const lease = pms().leases.find(l => l.id === p.lease_id);
+    const tenant = lease ? pms().tenants.find(t => t.id === lease.tenant_id) : null;
+    const phone = tenant && String(tenant.phone || "").replace(/[^0-9+]/g, "");
+    if (!phone) return "";
+    const text = "Hi " + (tenant.name || "") + ", this is a reminder from SEA ESTATES that your rent of " + C.money(p.amount) + " for " + pmsMonthText(p.month) + " (" + pmsPropertyTitle(lease.property_id) + ") is due" + (p.date ? " on " + p.date : "") + ". Thank you!";
+    return '<a class="btn btn-ghost btn-sm" href="sms:' + esc(phone) + '?&body=' + esc(encodeURIComponent(text)) + '">' + icon("chat", 13) + " Text</a>";
+  }
+  // Receipt photos open in the app: Android blocks opening a data URL in a new tab.
+  function pmsShowProof(id) {
+    const p = pms().payments.find(x => x.id === id);
+    const url = p && safePaymentProofUrl(p.proof);
+    if (!url) return;
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "pms-proof-view"; ov.style.zIndex = "600";
+    ov.setAttribute("role", "dialog"); ov.setAttribute("aria-label", "Proof of payment");
+    ov.innerHTML = '<div class="modal-card" style="max-width:640px;width:100%"><div class="modal-head"><h3>Proof of payment</h3><button class="icon-btn" data-proof-close aria-label="Close">&times;</button></div>' +
+      '<div class="modal-body"><img src="' + esc(url) + '" alt="Proof of payment" style="width:100%;height:auto;border-radius:8px"></div></div>';
+    const close = () => ov.remove();
+    ov.addEventListener("click", e => { if (e.target === ov || e.target.closest("[data-proof-close]")) close(); });
+    document.body.appendChild(ov);
   }
 
   function openMaintEditor(id) {
@@ -10141,9 +10123,9 @@ premise: "Fee Simple / As Improved",
       status: $("#pms-unit-status").value,
       bedrooms: C.num($("#pms-unit-beds").value, 0),
       bathrooms: C.num($("#pms-unit-baths").value, 0),
+      capacity: Math.max(1, Math.floor(C.num($("#pms-unit-capacity").value, 1))),
       size: C.num($("#pms-unit-size").value, 0),
       rent_amount: C.num($("#pms-unit-rent").value, 0),
-      tenant_name: $("#pms-unit-tenant").value.trim(),
       notes: $("#pms-unit-notes").value.trim()
     };
     const store = pms().units;
@@ -10617,13 +10599,20 @@ premise: "Fee Simple / As Improved",
     if (!startVal || !endVal) { toast("Lease start and end dates are required", "err"); return; }
     if (new Date(endVal + "T00:00:00") < new Date(startVal + "T00:00:00")) { toast("Lease end date cannot be before the start date", "err"); return; }
     if (rentAmount <= 0) { toast("Lease rent must be greater than zero", "err"); return; }
-    const autoStatus = pmsAutoStatus({ start: startVal, end: endVal, status: "active" });
-    const finalStatus = status === "terminated" ? "terminated" : autoStatus;
-    if (finalStatus === "active" && unit) {
-      const cap = pmsUnitCapacity(unit), beds = Math.floor(C.num(unit.bedrooms, 0));
-      const used = pmsActiveLeases().filter(l => l.unit_id === unit_id && l.status === "active" && l.id !== id).length;
-      if (used >= cap) {
-        toast("Unit full \u2014 max " + cap + " tenant" + (cap === 1 ? "" : "s") + " for " + (beds > 0 ? beds + " bed" + (beds === 1 ? "" : "s") : "this unit"), "err");
+    const terminatedOn = status === "terminated" ? ($("#pms-lease-termdate").value || pmsToday()) : "";
+    const finalStatus = status === "terminated" ? "terminated" : pmsAutoStatus({ start: startVal, end: endVal, status: "active" });
+    if (finalStatus !== "terminated" && unit) {
+      // Count leases on this unit whose dates overlap this one, so the next
+      // tenant can be signed ahead but the unit can never be double-booked.
+      const myEnd = endVal;
+      const overlapping = pmsActiveLeases().filter(l => {
+        if (l.unit_id !== unit_id || l.id === id) return false;
+        const lEnd = PL().endLimit(l);
+        if (l.status === "terminated" && !lEnd) return false;
+        return String(l.start || "").slice(0, 10) <= myEnd && startVal <= (lEnd || "9999-12-31");
+      }).length;
+      if (overlapping >= Math.max(1, Math.floor(C.num(unit.capacity, 1)) || 1)) {
+        toast("This unit already has " + overlapping + " lease" + (overlapping === 1 ? "" : "s") + " for those dates (it takes " + (Math.floor(C.num(unit.capacity, 1)) || 1) + "). Change the dates, or raise \u201CTenants it takes\u201D on the unit.", "err");
         return;
       }
     }
@@ -10639,6 +10628,7 @@ premise: "Fee Simple / As Improved",
       deposit: C.num($("#pms-lease-dep").value, 0),
       due_day: String(Math.min(28, Math.max(1, Math.floor(C.num($("#pms-lease-due").value, 0)) || 10))),
       status: finalStatus,
+      terminated_on: terminatedOn,
       notes: $("#pms-lease-notes").value.trim()
     };
     const store = pms().leases;
@@ -10695,7 +10685,8 @@ premise: "Fee Simple / As Improved",
 
   function pmsReadProof(file, cb) {
     if (!file) { cb(""); return; }
-    if (file.size > 3000000) { toast("Image too large (max 3MB)", "err"); cb(null); return; }
+    // Phone camera photos are often 3-8 MB; they are shrunk to 900 px below.
+    if (file.size > 15000000) { toast("Image too large (max 15 MB)", "err"); cb(null); return; }
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
@@ -10740,6 +10731,8 @@ premise: "Fee Simple / As Improved",
     };
     if (existing.proof) { data.proof = existing.proof; data.proofName = existing.proofName || ""; }
     const fileEl = $("#pms-pay-proof");
+    const saveBtn = $('[data-pms-save="payment"]');
+    if (saveBtn) { if (saveBtn.disabled) return; saveBtn.disabled = true; }
     const persist = () => {
       const store = pms().payments;
       if (id) {
@@ -10752,9 +10745,9 @@ premise: "Fee Simple / As Improved",
     };
     if (fileEl && fileEl.files && fileEl.files.length) {
       const f = fileEl.files[0];
-      if (!/^image\//.test(f.type)) { toast("Proof must be an image (JPEG/PNG)", "err"); return; }
+      if (!/^image\//.test(f.type)) { if (saveBtn) saveBtn.disabled = false; toast("Proof must be an image (JPEG/PNG)", "err"); return; }
       pmsReadProof(f, proof => {
-        if (proof === null) return;
+        if (proof === null) { if (saveBtn) saveBtn.disabled = false; return; }
         data.proof = proof;
         data.proofName = f.name;
         persist();
@@ -12381,6 +12374,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (pl) { state.pmsTab = "payments"; state.pmsQuery = ""; state.pmsStatusFilter = ""; state.pmsPropertyFilter = ""; state.pmsExtraFilter = ""; state.pmsLeaseFilter = pl.getAttribute("data-pms-paylink"); save(); render(); return; }
       const emailPayment = e.target.closest("[data-pms-email-payment]");
       if (emailPayment) { emailPmsPayment(emailPayment); return; }
+      const markPaid = e.target.closest("[data-pms-markpaid]");
+      if (markPaid) { pmsMarkPaid(markPaid.getAttribute("data-pms-markpaid")); return; }
+      const proofBtn = e.target.closest("[data-pms-proof]");
+      if (proofBtn) { pmsShowProof(proofBtn.getAttribute("data-pms-proof")); return; }
       const cl = e.target.closest("[data-pms-clear-lease]");
       if (cl) { state.pmsLeaseFilter = ""; render(); return; }
       const ex = e.target.closest("[data-pms-export]");
