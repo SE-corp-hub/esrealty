@@ -13659,6 +13659,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         (snoozing ? '<div style="margin-bottom:4px"><span class="badge purple">' + icon("bell", 11) + " Snoozed until " + esc(snzAt.toLocaleDateString()) + "</span></div>" : "") +
         (fu ? '<div style="margin-bottom:4px"><span class="badge ' + fu.cls + '">' + icon("calendar", 11) + " " + fu.label + "</span></div>" : "") +
         (l.serviceRequested ? '<div style="margin-bottom:4px"><span class="badge blue">' + icon("briefcase", 11) + " " + esc(l.serviceRequested) + "</span></div>" : "") +
+        (isVgRequest(l) && vgRequestStatus(l) !== "sent" ? '<div style="margin-bottom:4px"><span class="badge ' + (vgRequestStatus(l) === "verified" ? "gold" : "red") + '">' + icon("doc", 11) + " " + (vgRequestStatus(l) === "verified" ? "Report to send" : "Call to confirm") + "</span></div>" : "") +
         (l.budget || l.askingPrice || l.rentBudget ? '<div class="lead-card-budget">' + leadBudget(l) + "</div>" : "") +
         '<div class="dim tiny">' + icon("pin", 11) + " " + esc(l.source ? leadSourceLabel(l.source) : "—") + "</div>" +
       "</div>" +
@@ -14132,6 +14133,103 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (state.leadDetail === leadId) render();
     } catch (e) {}
   }
+  /* ---- Value Guide requests: call first, then prepare and email the report.
+   * The website only saves the request (location-report); the team confirms
+   * the details by phone, rebuilds the report in the Value Guide tool from the
+   * customer's own inputs, downloads the PDF and emails it themselves. */
+  const VG_REQUEST_CHANNELS = { "location-analysis": 1, "professional-appraisal-request": 1, "broker-consultation": 1 };
+  function isVgRequest(l) { return !!(l && (l.fullReport || VG_REQUEST_CHANNELS[l.channel])); }
+  function vgRequestStatus(l) { return l.reportStatus || (l.fullReport ? "awaiting-call" : ""); }
+  function vgRequestCard(l, canEdit) {
+    if (!isVgRequest(l)) return "";
+    const rep = l.fullReport || {};
+    const loc = rep.location || {}, prop = rep.property || {}, est = rep.estimate || {};
+    const st = vgRequestStatus(l) || "awaiting-call";
+    const steps = [["awaiting-call", "Call to confirm"], ["verified", "Prepare report"], ["sent", "Report emailed"]];
+    const at = Math.max(0, steps.findIndex(x => x[0] === st));
+    const place = [loc.town, loc.barangay, loc.address].filter(Boolean).map(x => titleCaseSafe(x)).join(" · ");
+    const range = Number(est.low) > 0 && Number(est.high) > 0 ? C.money(est.low) + " – " + C.money(est.high) : "";
+    const mailBody = "Hi " + (l.name || "") + ",\n\nThank you for confirming your details on the phone. Attached is your SEA ESTATES property value report" + (place ? " for " + place : "") + ".\n\nIt is a planning guide, not a formal appraisal. Reply to this email if you have any questions.\n\nSEA ESTATES";
+    const mailto = l.email ? "mailto:" + encodeURIComponent(l.email) + "?subject=" + encodeURIComponent("Your SEA ESTATES property value report") + "&body=" + encodeURIComponent(mailBody) : "";
+    let html = '<div class="card card-pad mb-24 vg-request" data-vg-request="' + esc(l.id) + '">' +
+      '<div class="row spread" style="flex-wrap:wrap;gap:8px"><h3 style="margin:0">' + icon("doc", 15) + " Value Guide request</h3>" +
+      '<span class="badge ' + (st === "sent" ? "green" : st === "verified" ? "gold" : "blue") + '">' + esc(steps[at][1]) + "</span></div>" +
+      '<ol class="vg-request-steps">' + steps.map((x, i) => '<li class="' + (i < at || st === "sent" ? "done" : i === at ? "now" : "") + '">' + esc(x[1]) + "</li>").join("") + "</ol>" +
+      '<div class="table-wrap mt-8"><table class="data"><tbody>' +
+      leadDetailRow("Property", [prop.typeLabel || prop.type, Number(prop.area) > 0 ? C.fmtNum(prop.area) + " sqm" : "", Number(prop.floorArea) > 0 ? C.fmtNum(prop.floorArea) + " sqm floor" : ""].filter(Boolean).join(" · ")) +
+      leadDetailRow("Location", place) +
+      leadDetailRow("Website estimate", Number(est.marketGuideEstimate) > 0 ? C.money(est.marketGuideEstimate) + (range ? " (" + range + ")" : "") : "") +
+      leadDetailRow("BIR zonal value", Number(est.birZonalValue) > 0 ? C.money(est.birZonalValue) : "") +
+      "</tbody></table></div>" +
+      '<p class="dim tiny mt-8">Figures were entered by the customer on the website. Confirm them on the call before preparing the report.</p>';
+    if (canEdit) {
+      html += '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' +
+        (st === "awaiting-call" ? phoneChatLinks(l.phone) + '<button class="btn btn-primary btn-sm" data-vg-verify="' + esc(l.id) + '">' + icon("check", 13) + " Called &amp; verified</button>" : "") +
+        (can("appraisal.view") ? '<button class="btn ' + (st === "verified" ? "btn-primary" : "btn-ghost") + ' btn-sm" data-vg-prepare="' + esc(l.id) + '">' + icon("doc", 13) + " Prepare report</button>" : "") +
+        (st !== "awaiting-call" && mailto ? '<a class="btn btn-ghost btn-sm" href="' + esc(mailto) + '">' + icon("mail", 13) + " Email draft</a>" : "") +
+        (st === "verified" ? '<button class="btn btn-ghost btn-sm" data-vg-sent="' + esc(l.id) + '">' + icon("check", 13) + " Mark report sent</button>" : "") +
+        "</div>" +
+        (st === "verified" ? '<p class="dim tiny mt-8">Prepare report opens the Value Guide with these inputs. Download the PDF there, attach it to the email draft, then mark it sent.</p>' : "");
+    }
+    return html + "</div>";
+  }
+  function titleCaseSafe(v) {
+    return String(v || "").toLowerCase().replace(/\b([a-z])/g, m => m.toUpperCase())
+      .replace(/\b(Ii|Iii|Iv|Vi|Vii|Viii|Ix|Xi|Xii)\b/g, m => m.toUpperCase());
+  }
+  function vgRequestStep(id, next) {
+    const l = (state.leads || []).find(x => x.id === id);
+    if (!l) return;
+    if (!leadCanEdit(l)) { toast("You can only edit leads you created", "err"); return; }
+    const now = new Date().toISOString();
+    const who = (currentUser && (currentUser.name || currentUser.email)) || "team";
+    l.reportStatus = next;
+    l.activity = l.activity || [];
+    l.activity.push({ date: now, text: next === "verified" ? "Called the customer and confirmed the details (" + who + ")." : "Value Guide report emailed to the customer (" + who + ")." });
+    if (next === "verified" && l.status === "new") l.status = "contacted";
+    l.updatedAt = now;
+    save(); render();
+    syncLead(l);
+    toast(next === "verified" ? "Marked as verified" : "Marked as sent");
+  }
+  /* Opens the back-office Value Guide pre-filled from the request, so the
+   * report is rebuilt from the customer's own inputs (corrected on the call
+   * if needed) rather than from the figures the website showed. */
+  function vgPrepareFromLead(id) {
+    const l = (state.leads || []).find(x => x.id === id);
+    if (!l) return;
+    const rep = l.fullReport || {};
+    const inp = rep.inputs || {};
+    const loc = rep.location || {}, prop = rep.property || {};
+    state.vg = null;
+    const d = vgDraft();
+    const f = d.form;
+    const pick = (a, b) => (a !== undefined && a !== null && a !== "" ? a : b);
+    f.purpose = pick(inp.purpose, f.purpose);
+    f.type = pick(inp.type, prop.kind === "built" ? "house_lot" : f.type);
+    f.municipality = String(pick(inp.municipality, loc.town) || "").toUpperCase();
+    f.barangay = String(pick(inp.barangay, loc.barangay) || "").toUpperCase();
+    f.streetKey = pick(inp.streetKey, "");
+    f.allOther = !!inp.allOther;
+    f.classification = pick(inp.classification, f.classification);
+    f.area = pick(inp.area, prop.area) || "";
+    f.corner = !!pick(inp.corner, prop.corner);
+    f.construction = pick(inp.construction, f.construction);
+    f.floorArea = pick(inp.floorArea, prop.floorArea) || "";
+    f.floors = String(pick(inp.floors, f.floors));
+    f.ageBand = pick(inp.ageBand, f.ageBand);
+    f.features = Array.isArray(inp.features) ? inp.features.slice() : [];
+    if (inp.salePrice != null) f.salePrice = inp.salePrice;
+    if (inp.saleContext) f.saleContext = inp.saleContext;
+    d.preparedFor = l.name || "";
+    d.preparedBy = (currentUser && currentUser.name) || d.preparedBy || "";
+    d.stage = 1;
+    d.fromLead = l.id;
+    state.view = "value-guide";
+    save(); render();
+    toast("Value Guide opened with " + (l.name || "the customer") + "'s details");
+  }
+
   function renderLeadDetail(l) {
     const can = leadCanEdit(l);
     const acts = (l.activity || []).slice().reverse();
@@ -14151,6 +14249,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       (l.convertedTxId ? '<span class="badge green">Converted → ' + esc(l.convertedTxId) + "</span>" : "") +
       (can ? '<button class="btn btn-ghost btn-sm" data-lead-del="' + esc(l.id) + '">' + icon("trash", 14) + " Delete</button>" : "") +
       "</div></div>";
+    html += vgRequestCard(l, can);
     html += '<div class="grid grid-3 mb-24">';
     html += '<div style="grid-column:span 2" class="card card-pad">' +
       '<h3>Lead Information</h3><div class="table-wrap mt-8"><table class="data"><tbody>' +
@@ -14661,6 +14760,12 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         if (del) { leadDelete(del.getAttribute("data-lead-del")); return; }
         const act = e.target.closest("[data-lead-act]");
         if (act) { leadAddActivity(act.getAttribute("data-lead-act")); return; }
+        const vgVerify = e.target.closest("[data-vg-verify]");
+        if (vgVerify) { vgRequestStep(vgVerify.getAttribute("data-vg-verify"), "verified"); return; }
+        const vgSent = e.target.closest("[data-vg-sent]");
+        if (vgSent) { vgRequestStep(vgSent.getAttribute("data-vg-sent"), "sent"); return; }
+        const vgPrep = e.target.closest("[data-vg-prepare]");
+        if (vgPrep) { vgPrepareFromLead(vgPrep.getAttribute("data-vg-prepare")); return; }
         const golo = e.target.closest("[data-lead-goto-listing]");
         if (golo) { state.listingDetail = golo.getAttribute("data-lead-goto-listing"); state.view = "listings"; save(); render(); return; }
         const visit = e.target.closest("[data-lead-visit]");

@@ -9,11 +9,13 @@ const q = selector => document.querySelector(selector);
     location.hash = "#/home"; await wait(2500);
     const est = window.ESREALTY_EST;
     const result = await est.estimate({ municipality: "BAUAN", barangay: "POBLACION III", streetKey: "binay st ressurreccion st", classification: "RR", area: 100, type: "vacant_lot", purpose: "Selling" });
+    /* The funnel would have set these while the user answered; the fixture sets them directly. */
+    Object.assign(est._state(), { municipality: "BAUAN", barangay: "POBLACION III", streetKey: "binay st ressurreccion st", classification: "RR", area: 100, type: "vacant_lot" });
     est._state().result = result; est._state().leadSubmitted = false; est._state().leadOpen = false; est.debug.render(4);
     q("[data-est-email-open]").click();
     const form = q("[data-est-lead-form]");
-    check("email purpose and optional phone", !form.elements.phone.required && /Email my guide/.test(form.querySelector("h3").textContent));
-    form.elements.name.value = "Delivery fixture"; form.elements.email.value = "fixture@example.com"; form.elements.consent.checked = true;
+    check("report request needs a phone (the team calls first)", form.elements.phone.required && /Get my full report/.test(form.querySelector("h3").textContent));
+    form.elements.name.value = "Delivery fixture"; form.elements.email.value = "fixture@example.com"; form.elements.phone.value = "0917"; form.elements.consent.checked = true;
     window.ESREALTY_API_BASE = "https://example.invalid/functions/v1/listing-api/api";
     let fallback = 0, responseMode = "error"; const posts = [];
     api.contact = async () => { fallback++; return { id: "unexpected-fallback" }; };
@@ -33,7 +35,8 @@ const q = selector => document.querySelector(selector);
     check("malformed HTTP response cannot create a second contact", fallback === 0 && !!q("[data-est-lead-form]"));
     check("retry reuses idempotency key", posts.length === 2 && posts[0].key === posts[1].key);
     responseMode = "saved"; form.querySelector('button[type="submit"]').click(); await wait(250);
-    check("saved request never implies email delivery", /saved/.test(q("[data-est-lead-status]").textContent) && /no emailed delivery has been confirmed/.test(q("[data-est-lead-status]").textContent));
+    check("saved request says the team will call before emailing", /saved/.test(q("[data-est-lead-status]").textContent) && /call you to confirm your details, then email your report/.test(q("[data-est-lead-status]").textContent));
+    check("request carries the estimator inputs for the back office", posts[2].data.report.inputs && posts[2].data.report.inputs.municipality === "BAUAN" && posts[2].data.report.inputs.area === 100, JSON.stringify(posts[2].data.report.inputs || null).slice(0, 120));
     check("email request distinct from professional consultation", posts[2].data.service_requested === "valuation-report" && posts[2].data.inquiry_type === "location-analysis");
 
     /* --- broker path: the second professional CTA labels the lead --- */

@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - name: Check the functions' shared copies are current
+      - name: Check the functions are self-contained
         run: node tests/edge_shared_sync_node.js
       - uses: supabase/setup-cli@v1
         with:

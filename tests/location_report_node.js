@@ -37,12 +37,10 @@ c("location-report idempotency header consumed", /idempotency-key/i.test(LR), "i
 c("location-report dedupes on retry before insert", /payload->>idempotencyKey/.test(LR), "existing-key lookup");
 c("location-report sanitizes the report object", /sanitizeReport/.test(LR) && /sanitizeEstimate/.test(LR), "sanitizers used");
 c("location-report marks data client-supplied", /trusted: false/.test(LR) && /client-supplied/.test(LR), "truthfulness marker");
+c("location-report sends no email (the team calls first, then emails the report)", !/resend|MAIL_FROM|buildPdf|pdf-lib/i.test(LR), "no mailer");
+c("location-report keeps the estimator inputs for the back office", /sanitizeInputs/.test(LR) && /inputs: sanitizeInputs\(source\.inputs\)/.test(LR), "inputs kept");
+c("location-report starts the call-first workflow", /reportStatus: "awaiting-call"/.test(LR), "status");
 c("location-report caps free strings", /\.slice\(0, \d+\)/.test(LR), "string caps");
-const pdfRegion = LR.split("function buildPdf").pop().split("function emailHtml")[0];
-c("PDF currency is ASCII-safe", /moneyPdf/.test(LR) && !/₱/.test(pdfRegion), "no peso glyph in PDF builder");
-c("PDF paint paths never embed the peso glyph", !/drawText\([^)]*₱/.test(pdfRegion), "drawText clean of U+20B1");
-c("PDF rotates to a fresh page (paginator)", /let page = doc\.addPage/.test(LR) && /page = doc\.addPage/.test(LR) && /function newPage\(\)/.test(LR), "page reassignment");
-c("PDF body wraps long values", /function wrap\(/.test(LR), "wrap helper");
 c("location-report returns 201 on success", /\}, 201\)/.test(LR), "201 response");
 
 /* ---------- canonical sanitize spec -> behavioral conformance ---------- */
@@ -111,10 +109,6 @@ c("manifest carries appraisal provenance block", /"provenance"/.test(L("data/dat
 c("estimator loads the manifest it renders", /data-manifest\.json/.test(EST) && /provenanceHtml/.test(EST), "single source of wording");
 c("estimator renders the audit section", /How this number was built/.test(EST) && /Basis of value/i.test(EST), "customer-facing section");
 c("report sanitizes provenance instead of trusting it", /if \(raw\.provenance && typeof raw\.provenance === "object"\)/.test(LR) && /basisOfValue/.test(LR), "allowlisted");
-c("pdf shows the land-rate build-up", /Effective land rate build-up/.test(LR), "factor arithmetic in PDF");
-c("pdf states basis and provenance", /Basis and provenance/.test(LR) && /Order of adjustments/.test(LR), "provenance block in PDF");
-c("email carries the same provenance", /Basis and provenance/.test(LR) && /provHtml/.test(LR), "provenance in email");
-c("report discloses what the guide excludes", /This guide does not cover/.test(LR), "limitations disclosed");
 
 /* ----------------- build + workflow contract ----------------- */
 

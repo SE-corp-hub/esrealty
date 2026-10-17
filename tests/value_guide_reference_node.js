@@ -37,47 +37,13 @@ function pdfText(bytes) {
   check("DST deadline trigger comes from EOPT month-end rule", () => { const deadline = TAX.deadlines(ref).find(r => /Documentary/.test(r.label)); assert.equal(deadline.days, 10); assert(/close of the month/.test(deadline.from)); });
   check("unapproved settings (the endpoint's built-in defaults) never change the factors", () => { const same = EST.core.applyGuideSettings(config, { data: { valueGuide: { version: "2026.09.4", approvedBy: "", approvedAt: "", proxyFactors: { commercial: 1.7 }, construction: { mixed_chb: 25000 } } } }); assert.equal(same.proxyFactors.commercial.factor, config.proxyFactors.commercial.factor); assert.equal(same.construction.mixed_chb.costPerSqm, config.construction.mixed_chb.costPerSqm); });
   check("real settings envelope applies factors without replacing formula version", () => { const updated = EST.core.applyGuideSettings(config, { data: { valueGuide: { version: "approved-fixture", approvedBy: "admin@example.com", approvedAt: "2026-10-14T00:00:00Z", proxyFactors: { residential: 1.2 } } } }); assert.equal(updated.proxyFactors.residential.factor, 1.2); assert.equal(updated.factorSettingsVersion, "approved-fixture"); assert.equal(updated.calculationVersion, "2026.10.7"); assert.equal(config.proxyFactors.residential.factor, 1); });
-  const source = fs.readFileSync("supabase/functions/location-report/index.ts", "utf8").replace(/^import .*;\r?$/gm, "");
-  const context = vm.createContext({ ESREALTY_FINANCE: FINANCE, TAX_REFERENCE: ref, Deno: { env: { get: () => "" }, serve: () => {} }, console, Response, Request, Headers, TextDecoder, setTimeout, crypto: require("crypto").webcrypto });
-  // Run pdf-lib in the same realm: its Array type checks reject cross-realm
-  // page-size literals, which is a harness issue rather than a renderer error.
-  vm.runInContext(fs.readFileSync("vendor/pdf-lib/pdf-lib.min.js", "utf8"), context);
-  Object.assign(context, context.PDFLib);
-  const painted = [];
-  const originalDraw = context.PDFLib.PDFPage.prototype.drawText;
-  context.PDFLib.PDFPage.prototype.drawText = function (text, options) {
-    const font = options.font, size = options.size;
-    const ascent = font.heightAtSize(size, { descender: false });
-    const height = font.heightAtSize(size);
-    painted.push({ page: this, text, x: options.x, y: options.y, width: font.widthOfTextAtSize(text, size), top: options.y + ascent, bottom: options.y - (height - ascent) });
-    return originalDraw.call(this, text, options);
-  };
-  vm.runInContext(stripTypeScriptTypes(source, { mode: "transform" }), context);
-  const api = vm.runInContext("({ buildPdf, sanitizeReport, emailHtml })", context);
-  const payload = { report: api.sanitizeReport({ property: { area: 100, kind: "land", typeLabel: "Vacant lot" }, location: { region: "Region IV-A (CALABARZON)", province: "Batangas", town: "Bauan", barangay: "Poblacion III", address: "BINAY ST (RESSURRECCION ST)" }, asOf: result.effectivityDate, disclaimer: result.disclaimer, estimate: { ...result, sourceLevel: result.source.level, proxyFactor: result.factors.proxyFactor, bandMid: result.factors.bandMid, regionalAdj: result.factors.regionalAdj, provenance } }) };
-  const bytes = await api.buildPdf(payload), text = pdfText(bytes);
-  check("emailed public PDF contains same valuation and cost fixtures", () => { for (const n of ["2,352,500", "1,999,625", "3,058,250", "1,150,000", "141,150", "35,288", "190,554", "2,161,946", "2,140,775"]) assert(text.includes("PHP " + n), n); });
-  check("emailed report contains six ordered sections", () => { let last = -1; for (const title of ["01 Valuation Summary", "02 Detailed Computation", "03 Transaction Costs", "04 Market Evidence", "05 Documents", "06 Pricing Scenarios"]) { const at = text.indexOf(title); assert(at > last, title); last = at; } });
-  check("emailed PDF discloses missing analysis, whole-estate assumption and source trust", () => { assert(/not assessed/.test(text)); assert(/property-only scenarios/i.test(text)); assert(/client-supplied/.test(text)); assert(!/50% of the BIR zonal value|excess of the price/.test(text)); });
-  check("email summary uses central estimate and scenario range", () => { const email = api.emailHtml(payload); assert(email.includes("2,352,500") && email.includes("1,999,625") && email.includes("3,058,250")); });
-  const timeResult = EST.core.computeEstimate({ ...config, governmentReferenceRegister: read("data/government-reference-register.json") }, index, md, { ...options, landMethod: "time-indexed", timeAnnualPct: 5, timeBaseDate: "2022-07-23", timeTargetDate: "2026-10-03" });
-  const timePayload = { report: api.sanitizeReport({ ...payload.report, estimate: { ...timeResult, sourceLevel: timeResult.source.level, proxyFactor: timeResult.factors.proxyFactor, bandMid: timeResult.factors.bandMid, regionalAdj: timeResult.factors.regionalAdj } }) };
-  const timeText = pdfText(await api.buildPdf(timePayload));
-  check("public PDF preserves indexing trace without replacing original reference", () => { assert(timeText.includes("Indexed-reference planning scenario")); assert(timeText.includes("2022-07-23") && timeText.includes("2026-10-03")); assert(timeText.includes("PHP 1,150,000")); assert(/No stacked market, region, corner or property-use multipliers/.test(timeText)); assert(/Latest applicability unverified/.test(timeText)); });
-  check("public PDF text fits page and columns without collisions", () => {
-    assert(painted.length > 100);
-    for (const run of painted) { assert(run.x >= 47 && run.x + run.width <= 548, run.text); assert(run.bottom >= 20 && run.top <= 820, run.text); }
-    for (let i = 0; i < painted.length; i++) for (let j = i + 1; j < painted.length; j++) {
-      const a = painted[i], b = painted[j]; if (a.page !== b.page) continue;
-      const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
-      const overlapY = Math.min(a.top, b.top) - Math.max(a.bottom, b.bottom);
-      assert(!(overlapX > .5 && overlapY > .5), a.text + " overlaps " + b.text);
-    }
-  });
+  /* The emailed server PDF was retired on 2026-10-17: the team calls the
+     customer first, then builds the report in the back office with
+     js/value_guide_pdf.js (tested in value_guide_pdf_*_node.js). */
+  check("location-report sends no email and builds no PDF", () => { const lr = fs.readFileSync("supabase/functions/location-report/index.ts", "utf8"); assert(!/resend|buildPdf|pdf-lib/i.test(lr)); });
   if (process.argv.includes("--capture")) {
     const dir = "docs/sea-guide-upgrade";
     assert(fs.existsSync(dir), "Capture folder must already exist");
-    fs.writeFileSync(dir + "/bauan-public-report.pdf", bytes);
     const VG = require("../js/value_guide_pdf.js"), PDFLib = require("../vendor/pdf-lib/pdf-lib.min.js");
     const blob = await VG.toBlob(PDFLib, result, { preparedFor: "Bauan reference verification", preparedBy: "SEA ESTATES", generatedOn: "2026-10-02", tax: await TAX.full(result), provenance, muniRow: index.municipalities.find(m => m.name === "BAUAN") });
     fs.writeFileSync(dir + "/bauan-internal-report.pdf", Buffer.from(await blob.arrayBuffer()));

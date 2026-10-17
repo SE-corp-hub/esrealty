@@ -1667,8 +1667,7 @@ out += "</div>";
    * nothing left to ask for.
    *
    * The status message is carried INTO the confirmation rather than dropped:
-   * it distinguishes "report emailed" from "request saved", which is a real
-   * difference for the user and was the only confirmation they got before. */
+   * it tells the user what happens next (a call, then the report). */
   function showLeadConfirmation(message) {
     var root = typeof document !== "undefined" ? document.querySelector("[data-est-screen=\"4\"]") : null;
     if (!root) return;
@@ -1992,7 +1991,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       "</div>" +
       '<div class="sf-est-nextstep-grid">' +
       '<button type="button" class="sf-est-nextstep-tile" data-est-broker-open>' + icon('<path d="M4 7a2.5 2.5 0 0 1 2.5-2.5h11A2.5 2.5 0 0 1 20 7v6.5a2.5 2.5 0 0 1-2.5 2.5H12l-4.5 3.5V16H6.5A2.5 2.5 0 0 1 4 13.5V7Z"/><path d="M8.5 10.5h7"/>') + "<span><b>Talk to a licensed broker</b><small>Discuss selling, buying or marketing this property.</small></span><i class=\"sf-est-nextstep-go\" aria-hidden=\"true\">→</i></button>" +
-      '<button type="button" class="sf-est-nextstep-tile" data-est-email-open>' + icon('<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="m4.5 7.5 7.5 5.5 7.5-5.5"/>') + "<span><b>Email my guide</b><small>Get a copy in your inbox. No follow-up unless you ask.</small></span><i class=\"sf-est-nextstep-go\" aria-hidden=\"true\">→</i></button>" +
+      '<button type="button" class="sf-est-nextstep-tile" data-est-email-open>' + icon('<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="m4.5 7.5 7.5 5.5 7.5-5.5"/>') + "<span><b>Get my full report</b><small>We call to confirm your details, then email the report.</small></span><i class=\"sf-est-nextstep-go\" aria-hidden=\"true\">→</i></button>" +
       "</div>" +
       '<button type="button" class="sf-est-nextstep-more" data-est-lead-open>Need a formal valuation? Request an appraisal consultation</button>' +
       '<p class="sf-est-nextstep-reassure">Your results are open above. A specialist replies within one business day.</p>' +
@@ -2013,12 +2012,12 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       '<button type="button" class="sf-est-lead-cta alt" data-est-lead-open><span class="sf-est-cta-icon" aria-hidden="true">✓</span>Request an appraisal consultation →</button>' +
       '<button type="button" class="sf-est-lead-cta alt" data-est-broker-open><span class="sf-est-cta-icon" aria-hidden="true">✓</span>Talk to a licensed broker →</button></div>';
     if (est.leadOpen) {
-      var leadTitle = est.leadKind === "broker" ? "Talk to a licensed broker" : est.leadKind === "appraisal" ? "Request an appraisal consultation" : "Email my guide";
+      var leadTitle = est.leadKind === "broker" ? "Talk to a licensed broker" : est.leadKind === "appraisal" ? "Request an appraisal consultation" : "Get my full report";
       var leadReassure = est.leadKind === "broker"
         ? "A licensed broker will contact you about selling, buying, or marketing this property. No obligation."
         : est.leadKind === "appraisal"
           ? "No obligation to list. A specialist replies within one business day."
-          : "We email the guide to you. No follow-up unless you ask.";
+          : "We'll call you to confirm your details, then email your report. No other follow-up unless you ask.";
       out += '<form class="sf-est-lead-form" data-est-lead-form>' +
         "<h3>" + leadTitle + "</h3>" +
         '<p class="sf-est-lead-ctx">For: <b>' + esc(titleCase(est.municipality) + " · " + titleCase(est.barangay) + (est.streetLabel && !est.allOther ? " · " + est.streetLabel : "")) + "</b> · " + leadValue + ".</p>" +
@@ -2026,11 +2025,13 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
         '<div class="sf-est-lead-grid">' +
         '<label>Full name<input name="name" autocomplete="name" required maxlength="160" placeholder="Your name"></label>' +
         '<label>Email<input type="email" name="email" autocomplete="email" required maxlength="254" placeholder="you@email.com"></label>' +
-        '<label>Phone' + (est.leadKind === "appraisal" || est.leadKind === "broker" ? "" : " (optional)") + '<input name="phone" type="tel" autocomplete="tel"' + (est.leadKind === "appraisal" || est.leadKind === "broker" ? " required" : "") + ' maxlength="50" placeholder="Mobile number"></label>' +
+        /* Required on every path: the team calls to confirm details before
+           any report is sent. */
+        '<label>Phone<input name="phone" type="tel" autocomplete="tel" required maxlength="50" placeholder="Mobile number"></label>' +
         '<label>Message<textarea name="message" maxlength="600" rows="3">' + (est.leadKind === "broker" ? "I’m interested in buying or selling this Batangas property." : est.leadKind === "appraisal" ? "I’m interested in an appraisal consultation for this property." : "I’m interested in this Batangas property estimate.") + '</textarea></label>' +
         "</div>" +
-        '<label class="sf-consent"><input type="checkbox" name="consent" required><span>I consent to SEA ESTATES emailing this report to me and contacting me about this request. See our <a href="#/privacy">Privacy Notice</a>.</span></label>' +
-        '<button type="submit">' + (est.leadKind === "broker" ? "Request broker contact →" : est.leadKind === "appraisal" ? "Send my consultation request →" : "Email my guide →") + '</button>' +
+        '<label class="sf-consent"><input type="checkbox" name="consent" required><span>I consent to SEA ESTATES calling me to confirm these details, emailing my report, and contacting me about this request. See our <a href="#/privacy">Privacy Notice</a>.</span></label>' +
+        '<button type="submit">' + (est.leadKind === "broker" ? "Request broker contact →" : est.leadKind === "appraisal" ? "Send my consultation request →" : "Request my report →") + '</button>' +
         '<p class="sf-form-status" data-est-lead-status aria-live="polite"></p></form>';
     }
     return out + "</div>";
@@ -2788,6 +2789,15 @@ return {
           streetListed: !est.allOther, lat: null, lng: null
         },
         estimate: snap,
+        /* The estimator's own inputs, so the team can reopen this request in
+           the back-office Value Guide and build the report after the call. */
+        inputs: {
+          purpose: est.purpose, type: est.type, municipality: est.municipality, barangay: est.barangay,
+          streetKey: est.allOther ? "" : est.streetKey, allOther: !!est.allOther, classification: est.classification,
+          area: est.area || 0, corner: !!est.corner, construction: est.construction, floorArea: est.floorArea || 0,
+          floors: est.floors, ageBand: est.ageBand, features: est.features || [],
+          salePrice: est.salePrice == null ? null : est.salePrice, saleContext: est.saleContext
+        },
         asOf: snap ? snap.asOf : "",
         disclaimer: r && r.disclaimer ? r.disclaimer : (DATA && DATA.config.disclaimer)
       }
@@ -2843,12 +2853,12 @@ return {
     send.then(function (res) {
       form.reset();
       delete form.dataset.estIdempotencyKey;
-      // An inquiry ID confirms saving, not report delivery. The report endpoint
-      // explicitly returns pdfSent; the contact fallback may also return an ID.
-      var emailed = !!(res && res.pdfSent === true);
-      var confirmMsg = emailed
-        ? "Your report has been sent. Check your inbox, including your spam folder. The SEA ESTATES team has also received your request."
-        : "Your report request has been saved. The SEA ESTATES team will review your details and follow up; no emailed delivery has been confirmed.";
+      // Saving is all the website does: the team calls, then sends the report.
+      var confirmMsg = est.leadKind === "broker"
+        ? "Your request has been saved. A licensed SEA ESTATES broker will call you."
+        : est.leadKind === "appraisal"
+          ? "Your request has been saved. The SEA ESTATES team will call you to confirm your details and arrange the consultation."
+          : "Your request has been saved. The SEA ESTATES team will call you to confirm your details, then email your report.";
       if (status) {
         status.textContent = confirmMsg;
         status.className = "sf-form-status success";
@@ -2856,8 +2866,7 @@ return {
       est.pricingUnlocked = true;
       est.leadSubmitted = true;
       unlockPricing();
-      /* Carries confirmMsg through so the emailed-vs-saved distinction the
-       * user was just shown is not thrown away by the swap. */
+      /* Carries confirmMsg through so the swap keeps the "we'll call you" note. */
       showLeadConfirmation(confirmMsg);
     }).catch(function (err) {
       if (status) {
@@ -2865,7 +2874,7 @@ return {
         status.className = "sf-form-status error";
       }
     }).finally(function () {
-       if (button) { button.disabled = false; button.textContent = est.appraisalRequested ? "Request appraisal consultation →" : "Email me the report →"; }
+       if (button) { button.disabled = false; button.textContent = est.leadKind === "broker" ? "Request broker contact →" : est.leadKind === "appraisal" ? "Send my consultation request →" : "Request my report →"; }
     });
   }
 

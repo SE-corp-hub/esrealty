@@ -2349,3 +2349,11 @@ html.modal-open, html.modal-open body { overflow: hidden; }
   body .modal-overlay .modal-card:has(:is(input, select, textarea)) .modal-body { flex: 1 1 auto; max-height: none !important; overflow: visible !important; }
   body .modal-overlay .modal-card:has(:is(input, select, textarea)) .modal-foot { position: sticky; bottom: 0; z-index: 3; background: var(--surface); padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
 }
+
+/* ===== Value Guide requests in the lead detail (2026-10-17) ===== */
+.vg-request-steps { display: flex; flex-wrap: wrap; gap: 6px 14px; list-style: none; margin: 12px 0 4px; padding: 0; counter-reset: vgstep; }
+.vg-request-steps li { counter-increment: vgstep; display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted, #5b6472); }
+.vg-request-steps li::before { content: counter(vgstep); display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid currentColor; font-size: 12px; font-weight: 700; }
+.vg-request-steps li.now { color: var(--text, #111827); font-weight: 700; }
+.vg-request-steps li.done { color: #15803d; }
+.vg-request-steps li.done::before { content: "✓"; background: #15803d; border-color: #15803d; color: #fff; }
