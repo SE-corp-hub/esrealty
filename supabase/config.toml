@@ -1,0 +1,35 @@
+# Supabase CLI settings for this repo. The deploy workflow
+# (.github/workflows/deploy-functions.yml) reads each function's verify_jwt
+# from here, so this file is the one place that says which functions the
+# gateway leaves open.
+#
+# verify_jwt = false: the function checks its own secret or the caller's role
+# (public listing API and forms, Meta's webhook, the scheduler, account creation
+# with its own super-admin/broker check). verify_jwt = true: the gateway only
+# lets signed-in users through.
+project_id = "esrealty"
+
+[functions.listing-api]
+verify_jwt = false
+
+[functions.location-report]
+verify_jwt = false
+
+[functions.seo]
+verify_jwt = false
+
+[functions.fb-leads]
+verify_jwt = false
+
+[functions.agent-dispatch]
+verify_jwt = false
+
+[functions.admin-create-account]
+verify_jwt = false
+
+[functions.notify-dispatch]
+verify_jwt = true
+
+# Unused (kept by the owner's decision); live has it behind a login.
+[functions.nearby-scan]
+verify_jwt = true

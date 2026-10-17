@@ -51,13 +51,11 @@ jobs:
             *) echo "::error::SUPABASE_ACCESS_TOKEN is not a personal access token (those start with sbp_). Make one at supabase.com/dashboard/account/tokens, not the project's API keys."; exit 1 ;;
           esac
           for fn in $FUNCTIONS; do
-            # Public functions check their own secrets or roles, so the gateway
-            # must not demand a login. notify-dispatch keeps the login check.
-            case "$fn" in
-              listing-api|location-report|seo|fb-leads|agent-dispatch|admin-create-account) flag="--no-verify-jwt" ;;
-              notify-dispatch) flag="" ;;
-              *) echo "::error::Unknown function: $fn"; exit 1 ;;
-            esac
+            # Whether the gateway demands a login comes from supabase/config.toml
+            # (public functions check their own secrets or roles).
+            if ! flag=$(node tools/fn_verify_jwt.js "$fn"); then
+              echo "::error::Unknown function: $fn (it needs a [functions.$fn] entry in supabase/config.toml)"; exit 1
+            fi
             echo "Deploying $fn $flag"
             # On failure, repeat the CLI's last lines as an annotation so the
             # reason shows on the run summary.
