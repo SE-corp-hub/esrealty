@@ -32,7 +32,13 @@ Deno.serve(async (req) => {
     .select("role, registration_status")
     .eq("id", authData.user.id)
     .maybeSingle();
-  if (callerError || caller?.role !== "super-admin" || caller.registration_status !== "approved") {
+  // Super-admins can make any login. Approved brokers can make owner and tenant
+  // logins for their own Property Management records, and those work straight
+  // away (owner's decision, claude/pms-broker-books-2026-10-17.md).
+  const callerApproved = !callerError && caller?.registration_status === "approved";
+  const callerIsAdmin = callerApproved && caller?.role === "super-admin";
+  const callerIsBroker = callerApproved && caller?.role === "broker";
+  if (!callerIsAdmin && !callerIsBroker) {
     return json({ error: "Super Admin access required" }, 403);
   }
 
@@ -59,6 +65,10 @@ Deno.serve(async (req) => {
   if (!roles.includes(role)) return json({ error: "Invalid role" }, 400);
   if (role === "broker" && !prc) return json({ error: "Broker PRC license is required" }, 400);
   if (role === "agent" && !broker) return json({ error: "Agents must be linked to a supervising broker" }, 400);
+  if (callerIsBroker && role !== "owner" && role !== "tenant") {
+    return json({ error: "Brokers can only create owner and tenant logins" }, 403);
+  }
+  const status = callerIsBroker ? "approved" : "pending";
 
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
@@ -66,7 +76,13 @@ Deno.serve(async (req) => {
     email_confirm: true,
     // The temporary password must be changed at first sign-in (the app sends the
     // user to Settings until they do).
-    user_metadata: { full_name: fullName, requested_role: role, must_change_password: true },
+    user_metadata: {
+      full_name: fullName,
+      requested_role: role,
+      must_change_password: true,
+      created_by: authData.user.id,
+      created_by_role: caller?.role,
+    },
   });
   if (createError || !created.user) return json({ error: createError?.message || "Could not create account" }, 400);
 
@@ -74,11 +90,11 @@ Deno.serve(async (req) => {
     id: created.user.id,
     full_name: fullName,
     role,
-    registration_status: "pending",
-    prc,
-    resa,
+    registration_status: status,
+    prc: callerIsBroker ? null : prc,
+    resa: callerIsBroker ? null : resa,
     agency,
-    broker,
+    broker: callerIsBroker ? null : broker,
   };
   const { error: profileError } = await admin.from("profiles").upsert(profile, { onConflict: "id" });
   if (profileError) {
@@ -88,11 +104,11 @@ Deno.serve(async (req) => {
 
   await admin.from("audit_events").insert({
     owner_id: authData.user.id,
-    event_type: "manual_create",
+    event_type: callerIsBroker ? "broker_create_login" : "manual_create",
     entity_type: "profile",
     entity_id: created.user.id,
-    detail: { role },
+    detail: { role, status, created_by_role: caller?.role },
   });
 
-  return json({ id: created.user.id });
+  return json({ id: created.user.id, status });
 });

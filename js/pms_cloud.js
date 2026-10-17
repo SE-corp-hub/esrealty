@@ -25,12 +25,17 @@
     expenses: { table: "pms_expenses", links: function (r) { return { property_id: idOrNull(r.property_id) }; } },
     documents: { table: "pms_documents", links: function (r) { return { property_id: idOrNull(r.property_id), unit_id: idOrNull(r.unit_id) }; } }
   };
+  // The company book: the super-admins' shared records.
+  var COMPANY_BOOK = "00000000-0000-0000-0000-000000000000";
   var ORDER = ["owners", "tenants", "properties", "units", "leases", "payments", "maintenance", "expenses", "documents"];
 
-  function toRow(kind, rec) {
+  // book: the manager's book id (supabase/pms_v3_books.sql). Left out until
+  // that script has run, so the row fits the tables either way.
+  function toRow(kind, rec, book) {
     var k = KINDS[kind];
     if (!k) throw new Error("Unknown PMS kind: " + kind);
     var row = { id: String(rec.id), data: rec, archived: !!rec.archived };
+    if (book) row.book_id = String(book);
     var links = k.links(rec);
     for (var key in links) row[key] = links[key];
     return row;
@@ -60,7 +65,7 @@
   }
 
   return {
-    KINDS: KINDS, ORDER: ORDER,
+    KINDS: KINDS, ORDER: ORDER, COMPANY_BOOK: COMPANY_BOOK,
     uuidOrNull: uuidOrNull,
     toRow: toRow, fromRow: fromRow,
     fingerprint: fingerprint, changed: changed

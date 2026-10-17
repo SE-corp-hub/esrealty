@@ -274,6 +274,7 @@
   let passwordResetsLoaded = false;
   let demoResetRequests = [];
   let pmsCreatedPassword = "";
+  let pmsCreatedStatus = ""; // "approved" when a broker made the login (it works straight away)
   let lsCarIndex = 0;
   const PAGE_SIZE = 24;
   let pagState = { listings: 1, transactions: 1, users: 1 };
@@ -430,29 +431,51 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
    * it replaces, so a stale phone cannot overwrite newer data. Owners and
    * tenants read only their own rows (row rules on the server).
    * "legacy": the old single JSON record (pms_workspaces), used until that SQL
-   * has been run. */
+   * has been run.
+   * Books (supabase/pms_v3_books.sql): each approved broker manages a book of
+   * their own; super-admins share the company book and can look at broker
+   * books read-only. Until that script has run there is one shared PMS and only
+   * super-admins manage it. */
   let pmsStore = null;
+  let pmsBooks = false;     // the tables have book_id
+  let pmsViewBook = null;   // a super-admin looking at a broker's book (read only)
+  let pmsBookList = [];     // super-admin: the books there are (pms_books)
+  function pmsMyBook() {
+    if (!currentUser || !currentUser.id) return null;
+    if (currentUser.role === "super-admin") return window.ESPMSCLOUD.COMPANY_BOOK;
+    if (currentUser.role === "broker") return currentUser.id;
+    return null;
+  }
+  // Who saves PMS records to the cloud: super-admins always; brokers once books exist.
+  function pmsIsManager() { return !!currentUser && (currentUser.role === "super-admin" || (currentUser.role === "broker" && pmsBooks)); }
+  function pmsCanWrite() { return pmsIsManager() && !pmsViewBook; }
   const pmsSynced = {};
   let pmsQueue = Promise.resolve();
   const PMS_KIND_LABEL = { owners: "owner", tenants: "tenant", properties: "property", units: "unit", leases: "lease", payments: "payment", maintenance: "work order", expenses: "expense", documents: "document" };
   async function detectPmsStore() {
+    const missing = e => /does not exist|schema cache|PGRST20|could not find|column|42703/i.test(String((e && (e.message || e.code)) || ""));
+    // book_id only exists once pms_v3_books.sql has run.
+    const b = await SB.from("pms_properties").select("id,archived,book_id").limit(1);
+    if (!b.error) { pmsBooks = true; return "tables"; }
+    pmsBooks = false;
+    if (!missing(b.error)) throw b.error;
     // The old copy tables have no "archived" column, so this only succeeds on v2.
     const r = await SB.from("pms_properties").select("id,archived").limit(1);
     if (!r.error) return "tables";
-    if (/does not exist|schema cache|PGRST20|could not find|column/i.test(String(r.error.message || r.error.code || ""))) return "legacy";
+    if (missing(r.error)) return "legacy";
     throw r.error;
   }
   function schedulePmsCloudSave() {
-    if (!SB || !currentUser || !currentUser.id || currentUser.role !== "super-admin") return;
-    if (pmsStore === "legacy") return scheduleLegacyPmsSave();
-    if (pmsStore !== "tables") return;
+    if (!SB || !currentUser || !currentUser.id) return;
+    if (pmsStore === "legacy") { if (currentUser.role === "super-admin") scheduleLegacyPmsSave(); return; }
+    if (pmsStore !== "tables" || !pmsCanWrite()) return;
     clearTimeout(pmsSaveTimer);
     pmsSaveTimer = setTimeout(pmsFlush, 550);
   }
   function pmsFlush() {
     clearTimeout(pmsSaveTimer);
     pmsSaveTimer = null;
-    if (pmsStore !== "tables" || !SB || !currentUser || currentUser.role !== "super-admin" || !window.ESPMSCLOUD) return pmsQueue;
+    if (pmsStore !== "tables" || !SB || !pmsCanWrite() || !window.ESPMSCLOUD) return pmsQueue;
     const PC = window.ESPMSCLOUD, P = pms();
     PC.ORDER.forEach(kind => {
       const synced = pmsSynced[kind] || (pmsSynced[kind] = {});
@@ -468,7 +491,7 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
   }
   async function pmsWriteRecord(kind, rec, fp) {
     const PC = window.ESPMSCLOUD, table = PC.KINDS[kind].table, synced = pmsSynced[kind];
-    const row = PC.toRow(kind, rec);
+    const row = PC.toRow(kind, rec, pmsBooks ? pmsMyBook() : null);
     row.updated_by = currentUser.id;
     let known = synced[rec.id] && synced[rec.id].v;
     let res;
@@ -512,7 +535,13 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     pmsStore = await detectPmsStore();
     if (pmsStore === "legacy") return loadLegacyPms();
     const PC = window.ESPMSCLOUD;
-    const results = await Promise.all(PC.ORDER.map(kind => SB.from(PC.KINDS[kind].table).select("*").order("created_at", { ascending: false })));
+    // Managers load one book: their own, or the broker book a super-admin is viewing.
+    const book = pmsBooks && (currentUser.role === "super-admin" || currentUser.role === "broker") ? (pmsViewBook || pmsMyBook()) : null;
+    const results = await Promise.all(PC.ORDER.map(kind => {
+      let q = SB.from(PC.KINDS[kind].table).select("*");
+      if (book) q = q.eq("book_id", book);
+      return q.order("created_at", { ascending: false });
+    }));
     const next = defaultState().pms;
     PC.ORDER.forEach((kind, i) => {
       if (results[i].error) throw results[i].error;
@@ -530,9 +559,67 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
       if (!r.error && Array.isArray(r.data)) r.data.forEach(x => { if (!next[extra[0]].some(y => y.id === x.id)) next[extra[0]].push(x); });
     }
     state.pms = next;
+    if (pmsBooks && currentUser.role === "super-admin") {
+      const r = await SB.rpc("pms_books");
+      pmsBookList = !r.error && Array.isArray(r.data) ? r.data : [];
+    }
+    // Brokers can't use the super-admin user list; their people's login status comes from here.
+    if (pmsBooks && currentUser.role === "broker") pmsApplyLoginStatus();
     // Receipt photos still stored inside payment records move to private storage.
-    if (currentUser.role === "super-admin") setTimeout(() => { pmsMoveReceiptsToStorage(); }, 3000);
+    if (pmsCanWrite()) setTimeout(() => { pmsMoveReceiptsToStorage(); }, 3000);
     return true;
+  }
+  async function pmsApplyLoginStatus() {
+    const r = await SB.rpc("pms_login_status");
+    if (r.error || !Array.isArray(r.data)) return;
+    const status = {};
+    r.data.forEach(x => { status[String(x.id)] = x.status; });
+    let changed = false;
+    ["owners", "tenants"].forEach(kind => pms()[kind].forEach(rec => {
+      const st = rec.authUserId && status[String(rec.authUserId)];
+      if (st && rec.accountStatus !== st) { rec.accountStatus = st; changed = true; }
+    }));
+    if (changed) { save(); if (state.view === "pms") render(); }
+  }
+  // Super-admin: move every record of the broker book on screen to the company
+  // or to another approved broker (for example when a broker leaves). Logged.
+  function pmsTransferDialog() {
+    if (!pmsViewBook || userRole() !== "super-admin") return;
+    const from = pmsBookList.find(b => b.book_id === pmsViewBook) || { name: "this broker" };
+    const brokers = (remoteProfiles || []).filter(p => p.role === "broker" && p.registration_status === "approved" && String(p.id) !== String(pmsViewBook));
+    const opts = '<option value="' + esc(window.ESPMSCLOUD.COMPANY_BOOK) + '">Company records</option>' + brokers.map(b => '<option value="' + esc(b.id) + '">' + esc(b.full_name || b.email) + '</option>').join("");
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "pms-transfer"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-label", "Move records");
+    ov.innerHTML = '<div class="modal-card" style="max-width:520px;width:100%"><div class="modal-head"><h3>Move all records</h3><button class="icon-btn" data-transfer-close aria-label="Close">&times;</button></div>' +
+      '<div class="modal-body"><p>Every owner, tenant, property, unit, lease, payment, repair, expense and document of <b>' + esc(from.name) + '</b> moves to:</p>' +
+      '<div class="field"><label for="pms-transfer-to">New manager</label><select class="input" id="pms-transfer-to">' + opts + '</select></div>' +
+      '<p class="dim">Owners and tenants keep their logins and portals. The move is logged.</p></div>' +
+      '<div class="modal-foot"><button class="btn btn-ghost" data-transfer-close>Cancel</button><button class="btn btn-primary" data-transfer-go>' + icon("check", 15) + ' Move records</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener("click", async e => {
+      if (e.target === ov || e.target.closest("[data-transfer-close]")) { ov.remove(); return; }
+      const go = e.target.closest("[data-transfer-go]");
+      if (!go || go.disabled) return;
+      go.disabled = true;
+      const to = $("#pms-transfer-to").value;
+      const r = await SB.rpc("pms_transfer_book", { p_from: pmsViewBook, p_to: to });
+      if (r.error) { go.disabled = false; toast("Could not move the records: " + esc(friendlyErr(r.error.message)), "err"); return; }
+      ov.remove();
+      const moved = r.data && r.data.pms_properties != null ? r.data.pms_properties : 0;
+      toast("Moved " + moved + (Number(moved) === 1 ? " property" : " properties") + " and everything linked to them", "ok");
+      await pmsSwitchBook(to);
+    });
+  }
+  // Super-admin: look at a broker's book (read only), or back to the company book.
+  async function pmsSwitchBook(book) {
+    const target = book && book !== window.ESPMSCLOUD.COMPANY_BOOK ? book : null;
+    if (target === pmsViewBook) return;
+    await pmsFlush();
+    pmsViewBook = target;
+    state.pmsTab = "properties"; state.pmsQuery = ""; state.pmsStatusFilter = ""; state.pmsPropertyFilter = ""; state.pmsExtraFilter = ""; state.pmsLeaseFilter = "";
+    try { await loadCloudPms(); }
+    catch (e) { pmsViewBook = null; toast("Could not open that book: " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
+    render();
   }
   function scheduleLegacyPmsSave() {
     if (!SB || !currentUser || !currentUser.id || currentUser.role !== "super-admin") return;
@@ -3518,6 +3605,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
         try { await SB.auth.signOut({ scope: "local" }); } catch (e) {}
       }
       currentUser = null;
+      pmsViewBook = null; pmsBookList = []; pmsBooks = false; pmsStore = null;
       brokerTeamCache = null;
       brokerTeamList = [];
       brokerTeamStatus = "idle";
@@ -8902,7 +8990,16 @@ premise: "Fee Simple / As Improved",
   function roleCfg(r) { return ROLES.find(x => x.value === r); }
   function roleLabel(r) { const c = roleCfg(r); return c ? c.label : "Unassigned"; }
   function userRole() { return (currentUser && currentUser.role) || ""; }
-  function pmsCan(perm) { return can("pms." + (perm || "view")); }
+  function pmsCan(perm) {
+    perm = perm || "view";
+    if (perm === "manage") {
+      if (pmsViewBook) return false; // a super-admin looking at a broker's book
+      if (pmsBrokerWaiting()) return false;
+    }
+    return can("pms." + perm);
+  }
+  // A broker on the live site before pms_v3_books.sql has run: nothing to manage yet.
+  function pmsBrokerWaiting() { return userRole() === "broker" && !!SB && !!currentUser && !currentUser.demo && !pmsBooks; }
   function pms() {
     if (!state.pms) state.pms = {};
     const empty = ["properties", "units", "owners", "tenants", "leases", "payments", "maintenance", "expenses", "documents"];
@@ -9056,6 +9153,10 @@ premise: "Fee Simple / As Improved",
   function renderPMS() {
     if (userRole() === "tenant") return pmsTenantPortal();
     if (userRole() === "owner") return pmsOwnerPortal();
+    if (pmsBrokerWaiting()) {
+      return '<div class="hero"><div><h1>Property Management</h1><p>Your own rentals, owners and tenants.</p></div></div>' +
+        '<div class="card card-pad empty">' + icon("home", 46) + '<h3>Coming soon for brokers</h3><p>Property Management for brokers starts after SEA ESTATES finishes a database update. Your records will be yours only: no other broker or agent can see them.</p></div>';
+    }
     const tab = state.pmsTab || "properties";
     const canManage = pmsCan("manage");
     const props = pmsActiveProperties(), units = pmsActiveUnits(), owners = pmsActiveOwners(),
@@ -9071,8 +9172,10 @@ premise: "Fee Simple / As Improved",
     const occupied = units.filter(u => pmsUnitTenantCount(u.id) > 0).length;
     const nb = PMS_NEW[tab];
     // Phones see four figures, what needs doing, then the records (PMS analysis P1).
-    let html = '<div class="hero"><div><h1>Property Management</h1><p class="pms-hero-sub">Manage properties, units, owners, tenants, leases, and finances.</p></div>' +
+    const sub = userRole() === "broker" && pmsBooks ? "Your own rentals, owners and tenants. Only you can see them." : "Manage properties, units, owners, tenants, leases, and finances.";
+    let html = '<div class="hero"><div><h1>Property Management</h1><p class="pms-hero-sub">' + sub + '</p></div>' +
       (canManage && nb ? '<div class="actions"><button class="btn btn-primary" data-pms-new="' + nb[0] + '">' + icon("plus", 15) + " New " + nb[1] + "</button></div>" : "") + '</div>';
+    html += pmsBookBar();
     html += '<div class="grid grid-4 mb-16 pms-kpis">' +
       kpi("Occupied", occupied + " / " + units.length, units.length === 1 ? "unit with a tenant today" : "units with a tenant today", "cyan", "check") +
       kpi("Active Leases", activeLeases.length, "of " + leases.length + " leases", "green", "doc") +
@@ -9092,6 +9195,18 @@ premise: "Fee Simple / As Improved",
       (counts[t[0]] ? ' <span class="pms-tab-n' + ((t[0] === "payments" || t[0] === "maintenance") ? " hot" : "") + '">' + counts[t[0]] + "</span>" : "") + '</button>').join("") + '</div>';
     html += renderPMSList();
     return html;
+  }
+
+  // Super-admins: which book is on screen. Broker books are view only.
+  function pmsBookBar() {
+    if (!pmsBooks || userRole() !== "super-admin" || pmsBookList.length < 2 && !pmsViewBook) return "";
+    const company = window.ESPMSCLOUD.COMPANY_BOOK, cur = pmsViewBook || company;
+    const label = b => b.company ? "Company (yours to manage)" : (b.name || "Broker") + (b.status && b.status !== "approved" ? " (" + b.status + ")" : "") + " \u00B7 " + (b.properties || 0) + (Number(b.properties) === 1 ? " property" : " properties");
+    const viewing = pmsBookList.find(b => b.book_id === pmsViewBook);
+    return '<div class="pms-book-bar mb-16"><label class="pms-book-pick"><span>Records of</span><select class="input" id="pms-book">' +
+      pmsBookList.map(b => '<option value="' + esc(b.book_id) + '"' + (b.book_id === cur ? " selected" : "") + '>' + esc(label(b)) + '</option>').join("") + '</select></label>' +
+      (pmsViewBook ? '<div class="pms-viewonly" role="status">' + icon("eye", 15) + ' <span>You are viewing <b>' + esc(viewing ? viewing.name : "a broker") + '</b>\'s records. View only: the broker makes changes.</span><button type="button" class="btn btn-ghost btn-sm" data-pms-book="' + esc(company) + '">Back to company</button><button type="button" class="btn btn-ghost btn-sm" data-pms-transfer>' + icon("arrow", 13) + ' Move all records</button></div>' : "") +
+      '</div>';
   }
 
   function renderPMSList() {
@@ -9262,7 +9377,9 @@ premise: "Fee Simple / As Improved",
     if (q) list = list.filter(l => pmsLeaseLabel(l).toLowerCase().indexOf(q) !== -1);
     if (!list.length) return pmsEmpty("No leases match", "Adjust your filters or add a new lease.");
     const canManage = pmsCan("manage");
-    let h = '<div class="table-wrap"><table class="data"><tr><th>Property / Unit</th><th>Tenant</th><th class="num">Rent</th><th class="num">Deposit</th><th class="num">Due Date</th><th>Term</th><th>Status</th>' + (canManage ? "<th>Actions</th>" : "") + '</tr>';
+    // Looking at a broker's book: payments and the statement, nothing that changes records.
+    const viewOnly = !canManage && !!pmsViewBook;
+    let h = '<div class="table-wrap"><table class="data"><tr><th>Property / Unit</th><th>Tenant</th><th class="num">Rent</th><th class="num">Deposit</th><th class="num">Due Date</th><th>Term</th><th>Status</th>' + (canManage || viewOnly ? "<th>Actions</th>" : "") + '</tr>';
     list.forEach(l => {
       const sc = LEASE_STATUSES.find(x => x.value === pmsAutoStatus(l));
       const due = (pmsLeaseLive(l) || pmsLeaseArrears(l) > 0) ? pmsLeaseDueInfo(l) : null;
@@ -9279,7 +9396,10 @@ premise: "Fee Simple / As Improved",
         '<td class="num">' + (due && due.nextDue ? '<b>' + esc(pmsDispDate(due.nextDue)) + '</b>' + (dueNote ? '<div class="dim tiny">' + esc(dueNote) + '</div>' : "") : "—") + '</td>' +
         '<td><span style="white-space:nowrap">' + (l.start ? esc(String(l.start).slice(0, 10)) : "—") + '</span><div class="dim tiny" style="white-space:nowrap">to ' + (l.end ? esc(String(l.end).slice(0, 10)) : "—") + '</div></td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (l.status || "—")) + dueBadge + '</td>' +
-        (canManage ? '<td>' + pmsRowActions("lease", l.id, '<button class="btn btn-ghost btn-sm" data-pms-paylink="' + esc(l.id) + '">' + icon("dollar", 13) + ' Payments</button><button class="btn btn-ghost btn-sm" data-pms-print="lease:' + esc(l.id) + '">' + icon("print", 13) + ' Statement</button>') + '</td>' : "") +
+        (canManage || viewOnly ? '<td>' + (function () {
+          const look = '<button class="btn btn-ghost btn-sm" data-pms-paylink="' + esc(l.id) + '">' + icon("dollar", 13) + ' Payments</button><button class="btn btn-ghost btn-sm" data-pms-print="lease:' + esc(l.id) + '">' + icon("print", 13) + ' Statement</button>';
+          return canManage ? pmsRowActions("lease", l.id, look) : '<div class="row pms-row-actions wide" style="gap:6px">' + look + '</div>';
+        })() + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
@@ -9589,10 +9709,14 @@ premise: "Fee Simple / As Improved",
   function pmsTenantPortal() {
     const em = currentUser ? String(currentUser.email || "").toLowerCase() : "";
     // Linked by login id; email only for records made before logins were stored.
-    const tenant = pmsActiveTenants().find(t => currentUser && t.authUserId === currentUser.id) || pmsActiveTenants().find(t => String(t.email || "").toLowerCase() === em);
+    // One login can be a tenant in several books (the company's and a broker's): use every record linked to it.
+    let mine = pmsActiveTenants().filter(t => currentUser && t.authUserId === currentUser.id);
+    if (!mine.length) mine = pmsActiveTenants().filter(t => String(t.email || "").toLowerCase() === em).slice(0, 1);
+    const tenant = mine[0];
+    const tenantIds = mine.map(t => t.id);
     let html = '<div class="hero"><div><h1>Tenant Portal</h1><p>Your rent, your lease and your payments.</p></div></div>';
     if (!tenant) return html + pmsPortalUnlinked("tenant");
-    const leases = pmsActiveLeases().filter(l => l.tenant_id === tenant.id);
+    const leases = pmsActiveLeases().filter(l => tenantIds.indexOf(l.tenant_id) !== -1);
     const payIds = leases.map(l => l.id);
     const payments = pmsActivePayments().filter(p => payIds.indexOf(p.lease_id) !== -1);
     const current = leases.filter(l => { const s = pmsAutoStatus(l); return (s !== "expired" && s !== "terminated") || pmsLeaseArrears(l) > 0; });
@@ -9600,7 +9724,7 @@ premise: "Fee Simple / As Improved",
     if (!leases.length) html += '<div class="card card-pad mb-16"><p class="dim">No leases on file for your account yet.</p></div>';
     current.forEach(l => {
       const st = pmsAutoStatus(l), sc = LEASE_STATUSES.find(x => x.value === st);
-      const ow = pms().owners.find(o => o.id === (pms().properties.find(p => p.id === l.property_id) || {}).owner_id) || pms().owners.find(o => o.id === tenant.owner_id);
+      const ow = pms().owners.find(o => o.id === (pms().properties.find(p => p.id === l.property_id) || {}).owner_id) || pms().owners.find(o => o.id === l.owner_id);
       const line = pmsRentLine(l);
       const owed = pmsUnpaidMonths(l);
       html += '<section class="card card-pad mb-16 pms-rent-card">' +
@@ -9618,10 +9742,14 @@ premise: "Fee Simple / As Improved",
 
   function pmsOwnerPortal() {
     const em = currentUser ? String(currentUser.email || "").toLowerCase() : "";
-    const owner = pmsActiveOwners().find(o => currentUser && o.authUserId === currentUser.id) || pmsActiveOwners().find(o => String(o.email || "").toLowerCase() === em);
+    // One login can own properties in several books: use every owner record linked to it.
+    let mine = pmsActiveOwners().filter(o => currentUser && o.authUserId === currentUser.id);
+    if (!mine.length) mine = pmsActiveOwners().filter(o => String(o.email || "").toLowerCase() === em).slice(0, 1);
+    const owner = mine[0];
+    const ownerIds = mine.map(o => o.id);
     let html = '<div class="hero"><div><h1>Owner Portal</h1><p>Your properties, tenants, rent and spending.</p></div></div>';
     if (!owner) return html + pmsPortalUnlinked("owner");
-    const myProps = pmsActiveProperties().filter(p => p.owner_id === owner.id);
+    const myProps = pmsActiveProperties().filter(p => ownerIds.indexOf(p.owner_id) !== -1);
     const propIds = myProps.map(p => p.id);
     const units = pmsActiveUnits().filter(u => propIds.indexOf(u.property_id) !== -1);
     const leases = pmsActiveLeases().filter(l => propIds.indexOf(l.property_id) !== -1);
@@ -9641,8 +9769,9 @@ premise: "Fee Simple / As Improved",
       kpi("Collected", C.money(monthPaid), "this month · " + C.money(money.collected) + " all time", "green", "dollar") +
       kpi("Overdue", C.money(due), owing.length ? owing.length + (owing.length === 1 ? " lease behind" : " leases behind") : "nobody is behind", due > 0 ? "red" : "green", "trending") +
       kpi("Net", C.money(money.net), "after " + C.money(money.spent) + " spending", money.net >= 0 ? "green" : "red", "chart") + '</div>';
-    const acct = String(owner.account_number || "");
-    html += '<p class="dim pms-owner-line">' + esc(owner.name || "") + (owner.bank ? ' · Payouts to ' + esc(owner.bank) + (acct ? " •••• " + esc(acct.slice(-4)) : "") : "") + '</p>';
+    const banked = mine.find(o => o.bank) || owner;
+    const acct = String(banked.account_number || "");
+    html += '<p class="dim pms-owner-line">' + esc(owner.name || "") + (banked.bank ? ' · Payouts to ' + esc(banked.bank) + (acct ? " •••• " + esc(acct.slice(-4)) : "") : "") + '</p>';
 
     const leaseRows = leases.length ? leases.slice().sort((a, b) => pmsLeaseArrears(b) - pmsLeaseArrears(a)).map(l => {
       const st = pmsAutoStatus(l), sc = LEASE_STATUSES.find(x => x.value === st), line = pmsRentLine(l);
@@ -10029,14 +10158,15 @@ premise: "Fee Simple / As Improved",
   let pmsReceiptsOk = null; // false once the bucket is found missing this session
   let pmsReceiptsMoving = false;
   function pmsHasProof(p) { return !!(p && (p.proofPath || safePaymentProofUrl(p.proof))); }
-  function pmsReceiptsCloud() { return pmsStore === "tables" && pmsCloudAccounts() && currentUser.role === "super-admin" && pmsReceiptsOk !== false; }
+  function pmsReceiptsCloud() { return pmsStore === "tables" && pmsCloudAccounts() && pmsCanWrite() && pmsReceiptsOk !== false; }
   function pmsProofCell(p) {
     if (!pmsHasProof(p)) return '<span class="dim">—</span>';
     return '<button type="button" class="btn btn-ghost btn-sm" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View receipt") + '">' + icon("camera", 13) + ' Receipt</button>';
   }
   async function pmsUploadReceipt(paymentId, dataUrl) {
     const blob = dataUrlToBlob(dataUrl);
-    const path = "payments/" + paymentId + "/" + Date.now().toString(36) + ".jpg";
+    // With books, each manager's files sit in their own folder: <book>/<payment>/<file>.
+    const path = (pmsBooks ? pmsMyBook() : "payments") + "/" + paymentId + "/" + Date.now().toString(36) + ".jpg";
     const up = await SB.storage.from(PMS_RECEIPTS).upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false });
     if (up.error) {
       if (/bucket not found/i.test(String(up.error.message || up.error.error || ""))) pmsReceiptsOk = false;
@@ -10195,7 +10325,7 @@ premise: "Fee Simple / As Improved",
     const canShare = !!(navigator.share);
     const ok = await confirmModal({
       title: "Account created",
-      message: "Give these details to " + (name || "the person") + " privately. The account needs your approval in Users & Access before it works.\n\nEmail: " + email + "\nTemporary password: " + password,
+      message: "Give these details to " + (name || "the person") + " privately. " + (pmsCreatedStatus === "approved" ? "They can sign in now." : "The account needs your approval in Users & Access before it works.") + "\n\nEmail: " + email + "\nTemporary password: " + password,
       confirmLabel: canShare ? "Share" : "Copy", cancelLabel: "Done"
     });
     if (!ok) return;
@@ -10203,6 +10333,29 @@ premise: "Fee Simple / As Improved",
       if (canShare) await navigator.share({ title: "SEA ESTATES sign-in", text: text });
       else { await navigator.clipboard.writeText(text); toast("Copied"); }
     } catch (e) { if (!(e && e.name === "AbortError")) toast("Could not share. Write the password down before closing.", "err"); }
+  }
+  function pmsDuplicateEmail(err) {
+    const low = String((err && err.message) || err || "").toLowerCase();
+    return low.indexOf("already registered") >= 0 || low.indexOf("already been registered") >= 0 || low.indexOf("duplicate") >= 0;
+  }
+  // An email that already has a login: link it if it is the right kind. A
+  // super-admin checks the user list; a broker asks pms_find_login, which only
+  // answers for owner and tenant logins.
+  async function pmsFindExistingLogin(email, role) {
+    email = String(email || "").trim().toLowerCase();
+    if (canManageUsers()) {
+      remoteProfilesLoaded = false;
+      await loadCloudProfiles(true);
+      const prof = (remoteProfiles || []).find(p => String(p.email || "").trim().toLowerCase() === email);
+      if (!prof) return null;
+      if (prof.role !== role) throw new Error("This email belongs to a " + roleLabel(prof.role) + " account, so it can't be used for a " + role + " login.");
+      return { id: String(prof.id), status: prof.registration_status || "pending" };
+    }
+    const r = await SB.rpc("pms_find_login", { p_email: email, p_role: role });
+    if (r.error) throw r.error;
+    if (!r.data) return null;
+    if (r.data.other_role) throw new Error("This email already belongs to another kind of account, so it can't be used for a " + role + " login.");
+    return { id: String(r.data.id), status: r.data.status || "pending" };
   }
   async function createPmsOwnerAccount(owner) {
     const email = String(owner.email || "").trim().toLowerCase();
@@ -10216,16 +10369,27 @@ premise: "Fee Simple / As Improved",
     }
     if (SB && currentUser && currentUser.id) {
       const password = temporaryPassword();
-      const id = await adminCreateAccount({
-        email: email,
-        password: password,
-        full_name: owner.name,
-        role: "owner",
-        prc: null,
-        resa: null,
-        agency: owner.company || null,
-        broker: null
-      });
+      let id;
+      try {
+        id = await adminCreateAccount({
+          email: email,
+          password: password,
+          full_name: owner.name,
+          role: "owner",
+          prc: null,
+          resa: null,
+          agency: owner.company || null,
+          broker: null
+        });
+      } catch (err) {
+        if (!pmsDuplicateEmail(err)) throw err;
+        // Already has an owner login (perhaps under another broker): link it.
+        const found = await pmsFindExistingLogin(email, "owner");
+        if (!found) throw err;
+        pmsCreatedPassword = "";
+        pmsCreatedStatus = found.status;
+        return found.id;
+      }
       pmsCreatedPassword = password;
       remoteProfilesLoaded = false;
       return id;
@@ -10284,8 +10448,11 @@ premise: "Fee Simple / As Improved",
 
   function syncPmsOwnersFromProfiles() {
     let changed = false;
+    if (pmsViewBook) return false;
     (remoteProfiles || []).forEach(profile => {
       if (profile.role !== "owner" || profile.registration_status === "rejected") return;
+      // A login a broker made belongs to that broker's records, not the company's.
+      if (profile.added_by_role === "broker" && !(pms().owners || []).some(o => String(o.authUserId || "") === String(profile.id))) return;
       const authId = String(profile.id || "");
       const email = String(profile.email || "").trim().toLowerCase();
       if (!authId || !email) return;
@@ -10345,8 +10512,9 @@ premise: "Fee Simple / As Improved",
         const saveButton = $('[data-pms-save="owner"]');
         if (saveButton) { saveButton.disabled = true; saveButton.textContent = "Creating account..."; }
         try {
+          pmsCreatedStatus = "";
           ownerRec.authUserId = await createPmsOwnerAccount(ownerRec);
-          ownerRec.accountStatus = "pending";
+          ownerRec.accountStatus = pmsCreatedStatus || "pending";
         } catch (err) {
           if (saveButton) { saveButton.disabled = false; saveButton.innerHTML = icon("check", 15) + " Save"; }
           toast("Could not create owner account: " + esc(friendlyErr(err.message || err)), "err");
@@ -10361,7 +10529,8 @@ premise: "Fee Simple / As Improved",
     save(); closePmsModal();
     if (!id && email) {
       state.usersTab = "pending";
-      toast("Owner saved — approve the account in Users & Access");
+      const linked = !pmsCreatedPassword && pmsCloudAccounts();
+      toast(linked ? "Owner saved \u2014 linked to their existing login" : ownerRec.accountStatus === "approved" ? "Owner saved \u2014 they can sign in now" : "Owner saved \u2014 approve the account in Users & Access");
       pmsShowNewLogin(ownerRec.name, email);
       if (!currentUser.demo) loadCloudProfiles(true);
     } else toast("Owner saved");
@@ -10495,15 +10664,13 @@ premise: "Fee Simple / As Improved",
           broker: null
         });
       } catch (err) {
-        const low = String((err && err.message) || err || "").toLowerCase();
-        if (low.indexOf("already registered") >= 0 || low.indexOf("already been registered") >= 0 || low.indexOf("duplicate") >= 0) {
-          remoteProfilesLoaded = false;
-          await loadCloudProfiles(true);
-          const prof = (remoteProfiles || []).find(p => String(p.email || "").trim().toLowerCase() === email);
-          if (prof) {
-            tenant.authUserId = String(prof.id);
-            tenant.accountStatus = prof.registration_status || "pending";
-            return { id: String(prof.id), created: false };
+        if (pmsDuplicateEmail(err)) {
+          // Already has a tenant login (perhaps renting from someone else too): link it.
+          const found = await pmsFindExistingLogin(email, "tenant");
+          if (found) {
+            tenant.authUserId = found.id;
+            tenant.accountStatus = found.status;
+            return { id: found.id, created: false };
           }
           throw new Error("Tenant already has an account (" + email + ")");
         }
@@ -10517,7 +10684,7 @@ premise: "Fee Simple / As Improved",
       id = "pms-tenant-" + tenant.id;
     }
     tenant.authUserId = id;
-    tenant.accountStatus = "pending";
+    tenant.accountStatus = pmsCreatedStatus === "approved" && pmsCloudAccounts() ? "approved" : "pending";
     return { id: id, created: true };
   }
 
@@ -10540,8 +10707,10 @@ premise: "Fee Simple / As Improved",
 
   function syncPmsTenantsFromProfiles() {
     let changed = false;
+    if (pmsViewBook) return false;
     (remoteProfiles || []).forEach(profile => {
       if (profile.role !== "tenant" || profile.registration_status === "rejected") return;
+      if (profile.added_by_role === "broker" && !(pms().tenants || []).some(t => String(t.authUserId || "") === String(profile.id))) return;
       const authId = String(profile.id || "");
       const email = String(profile.email || "").trim().toLowerCase();
       if (!authId || !email) return;
@@ -10594,7 +10763,8 @@ premise: "Fee Simple / As Improved",
       String(user.email || "").trim().toLowerCase() === em &&
       (!current || (String(user.id || "") !== String(current.authUserId || "") && user.pmsTenantId !== current.id))
     );
-    if (registered || localRegistered) {
+    // The same tenant login can be in several books, so only another kind of account blocks it.
+    if ((registered && registered.role !== "tenant") || localRegistered) {
       if (saveButton) { saveButton.disabled = false; saveButton.innerHTML = icon("check", 15) + " Save"; }
       toast("Email already registered in Users & Access: " + esc(email), "err");
       return;
@@ -10923,12 +11093,16 @@ premise: "Fee Simple / As Improved",
       toast("This lease is still running and has payments. Set it to Terminated first; its payments stay on record.", "err"); return;
     }
     const label = kind === "lease" ? pmsLeaseLabel(rec) : (rec.title || rec.name || rec.unit_number || (rec.amount ? C.money(rec.amount) : kind));
-    const msg = kind === "owner"
+    // Brokers never delete logins: removing an owner only takes them off the broker's records.
+    const unlinkOnly = kind === "owner" && !canManageUsers();
+    const msg = unlinkOnly
+      ? 'Remove "' + label + '" from your records? Their login stays; they just won\'t see your properties any more.'
+      : kind === "owner"
       ? 'Delete "' + label + '"? It will be hidden from PMS lists and its account removed from Users & Access.'
       : 'Archive "' + label + '"? It will be hidden from lists but kept in the records.' +
         (kind === "lease" && pmsLeaseArrears(rec) > 0 ? " It still owes " + C.money(pmsLeaseArrears(rec)) + ", which will no longer show as due." : "");
-    if (!(await confirmModal({ title: kind === "owner" ? "Delete owner" : "Archive record", message: msg, danger: kind === "owner", confirmLabel: kind === "owner" ? "Delete" : "Archive" }))) return;
-    if (kind === "owner" && rec.authUserId) {
+    if (!(await confirmModal({ title: unlinkOnly ? "Remove owner" : kind === "owner" ? "Delete owner" : "Archive record", message: msg, danger: kind === "owner", confirmLabel: unlinkOnly ? "Remove" : kind === "owner" ? "Delete" : "Archive" }))) return;
+    if (kind === "owner" && rec.authUserId && !unlinkOnly) {
       try {
         if (currentUser && currentUser.demo) {
           remoteProfiles = remoteProfiles.filter(p => String(p.id) !== String(rec.authUserId));
@@ -10945,7 +11119,7 @@ premise: "Fee Simple / As Improved",
       }
     }
     rec.archived = true;
-    rec.accountStatus = kind === "owner" ? "deleted" : rec.accountStatus;
+    rec.accountStatus = kind === "owner" ? (unlinkOnly ? "removed" : "deleted") : rec.accountStatus;
     rec.updatedAt = Date.now();
     if (kind === "lease") syncUnitFromLeases();
     if (kind === "owner") {
@@ -10960,7 +11134,7 @@ premise: "Fee Simple / As Improved",
         localStorage.setItem("esrealty_users", JSON.stringify(auth));
       }
     }
-    save(); toastHtml((kind === "owner" ? "Deleted" : "Archived") + " <b>" + esc(label) + "</b>", "err"); render();
+    save(); toastHtml((unlinkOnly ? "Removed" : kind === "owner" ? "Deleted" : "Archived") + " <b>" + esc(label) + "</b>", "err"); render();
   }
 
   /* ================= MARKET SCAN ================= */
@@ -12453,6 +12627,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         if (list && list.scrollIntoView) list.scrollIntoView({ block: "start" });
         return;
       }
+      const bk = e.target.closest("[data-pms-book]");
+      if (bk) { pmsSwitchBook(bk.getAttribute("data-pms-book")); return; }
+      if (e.target.closest("[data-pms-transfer]")) { pmsTransferDialog(); return; }
       const ftog = e.target.closest("[data-pms-filters]");
       if (ftog) {
         filtersOpen.pms = !filtersOpen.pms;
@@ -12509,6 +12686,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     document.addEventListener("change", e => {
       const t = e.target;
       if (t && t.id === "pms-section") { pmsGoTab(t.value); return; }
+      if (t && t.id === "pms-book") { pmsSwitchBook(t.value); return; }
       // A filter change redraws the screen so the Filters count and chips match.
       if (t && t.id === "pms-filter-status") { state.pmsStatusFilter = t.value; render(); }
       if (t && t.id === "pms-filter-property") { state.pmsPropertyFilter = t.value; render(); }
@@ -15897,7 +16075,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   function roleIs() { const r = userRole(); return Array.prototype.slice.call(arguments).indexOf(r) >= 0; }
   const ROLE_CAPABILITIES = {
     "super-admin": ["*"],
-    broker: ["dashboard.view", "presell.view", "appraisal.view", "market.view", "leads.view", "leads.manage", "listings.view", "listings.manage", "transactions.view", "transactions.manage", "financing.view", "financing.manage", "assistant.view", "brokerage.view", "commission.manage", "payout.approve", "inventory.view", "agents.supervise", "settings.view"],
+    // Brokers manage Property Management records of their own (pms_v3_books.sql); agents don't.
+    broker: ["dashboard.view", "presell.view", "appraisal.view", "market.view", "leads.view", "leads.manage", "listings.view", "listings.manage", "transactions.view", "transactions.manage", "financing.view", "financing.manage", "assistant.view", "brokerage.view", "commission.manage", "payout.approve", "inventory.view", "agents.supervise", "pms.view", "pms.manage", "settings.view"],
     agent: ["dashboard.view", "presell.view", "leads.view", "leads.manage", "listings.view", "listings.manage", "transactions.view", "transactions.manage", "financing.view", "financing.manage", "assistant.view", "settings.view"],
     buyer: ["presell.view", "buyer.portal.view", "listings.view", "financing.view", "assistant.view", "reports.view", "settings.view"],
     seller: ["dashboard.view", "presell.view", "listings.view", "financing.view", "assistant.view", "reports.view", "settings.view"],
@@ -16194,6 +16373,9 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     if (pmsTenant) extra.push('<span class="chip">PMS tenant: ' + esc(pmsTenant.name || pmsTenant.email) + "</span>");
     const brokerName = u.broker ? (remoteProfiles.find(p => p.id === u.broker) || {}).full_name || "" : "";
     if (brokerName) extra.push('<span class="chip">Under ' + esc(brokerName) + "</span>");
+    // Owner and tenant logins a broker made for their own Property Management records.
+    const addedBy = u.added_by_role === "broker" && u.added_by ? (remoteProfiles.find(p => p.id === u.added_by) || {}) : null;
+    if (addedBy) extra.push('<span class="chip">Added by ' + esc(addedBy.full_name || addedBy.email || "a broker") + "</span>");
     const brokers = remoteProfiles.filter(p => p.role === "broker" && p.registration_status === "approved");
     const opts = '<option value="">No broker</option>' + brokers.map(b => '<option value="' + esc(b.id) + '"' + (u.broker === b.id ? " selected" : "") + ">" + esc(b.full_name || b.email) + (b.prc ? " · PRC " + esc(b.prc) : "") + "</option>").join("");
     const brokerField = '<div class="field cloud-broker-field"' + (u.role === "agent" ? "" : ' style="display:none"') + '><label>Supervising broker (agents)</label><select class="input" data-cloud-broker="' + esc(u.id) + '">' + opts + '</select></div>';
@@ -16275,6 +16457,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       throw new Error(data.error || ("Request failed (" + response.status + ")"));
     }
     if (!data.id) throw new Error("Account was created without a user id");
+    pmsCreatedStatus = data.status === "approved" ? "approved" : "pending";
     return String(data.id);
   }
   function cloudUserSaveForm() {

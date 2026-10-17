@@ -43,4 +43,10 @@ const out = PC.changed([a, b, c, { id: "" }], synced);
 ok("only edited and new records are sent", out.length === 2 && out[0] === b && out[1] === c);
 ok("a failed save (fp cleared) is sent again", PC.changed([a], { a: { fp: null } }).length === 1);
 
+// Books (supabase/pms_v3_books.sql): the row names its book once that script has run.
+ok("a row names its book when one is given", PC.toRow("units", { id: "u1", property_id: "p1" }, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").book_id === "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+ok("without books the row has no book column", !("book_id" in PC.toRow("units", { id: "u1" })));
+ok("the book is a column, not part of the saved record", !("book_id" in PC.toRow("units", { id: "u1" }, PC.COMPANY_BOOK).data));
+ok("the company book is the all-zero id", PC.COMPANY_BOOK === "00000000-0000-0000-0000-000000000000");
+
 console.log("\npms_cloud_node: " + passed + " checks passed");
