@@ -3,7 +3,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { parseCsv, build } = require("./db/build_baseline.js");
+const { parseCsv, build, splitMaintain } = require("./db/build_baseline.js");
 let passed = 0;
 const ok = (name, cond, detail) => { assert.ok(cond, name + (detail ? " — " + detail : "")); passed++; console.log("[PASS] " + name); };
 
@@ -24,6 +24,10 @@ ok("every statement ends with a semicolon", /\$\$;\n/.test(sql) && /\(id text\);
 ok("function bodies are not checked before their tables exist", /set check_function_bodies = off;/.test(sql));
 ok("a missing extension doesn't stop the build", /do \$\$ begin execute 'create extension if not exists pgcrypto with schema extensions'; exception when others/.test(sql));
 ok("Windows line endings inside a function body become plain ones", build('ord,name,ddl\n3,g(),"CREATE FUNCTION g()\r\n AS $$ select 1 $$"\n', "x").indexOf("\r") < 0);
+ok("Postgres 17's MAINTAIN right goes in a step older versions skip",
+  splitMaintain("grant DELETE, INSERT, MAINTAIN, SELECT on public.t to authenticated") === "grant DELETE, INSERT, SELECT on public.t to authenticated;\ndo $$ begin execute 'grant MAINTAIN on public.t to authenticated'; exception when others then null; end $$"
+  && splitMaintain("grant MAINTAIN on public.t to anon") === "do $$ begin execute 'grant MAINTAIN on public.t to anon'; exception when others then null; end $$"
+  && /in schema public grant INSERT on tables to anon;\ndo \$\$ begin execute 'alter default privileges for role postgres in schema public grant MAINTAIN on tables to anon'/.test(splitMaintain("alter default privileges for role postgres in schema public grant INSERT, MAINTAIN on tables to anon")));
 assert.throws(() => build("a,b\n1,2", "x"), /ord, name, ddl/); passed++; console.log("[PASS] a wrong file is refused with a clear message");
 
 const base = fs.readFileSync(path.join(__dirname, "..", "supabase/migrations/0000_baseline.sql"), "utf8");

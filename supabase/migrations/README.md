@@ -21,8 +21,20 @@ the Supabase SQL editor, download the result as CSV, and regenerate:
 node tests/db/build_baseline.js export.csv > supabase/migrations/0000_baseline.sql
 ```
 
-Then delete the numbered files the new baseline already contains, and check that
-`bash tests/db/run.sh` still passes.
+Then check that `bash tests/db/run.sh` still passes. Numbered files the new
+baseline already contains can stay: they are safe to run twice, and the tests
+run them on top of the baseline.
+
+In the Supabase SQL editor, the export can trigger a "Potential issue detected:
+creates a table without Row Level Security" box. The query creates nothing (it
+only writes `create table ...` as text): choose **Run without RLS**. "Run and
+enable RLS" adds a statement that fails with `relation "public" does not exist`.
+
+Supabase runs Postgres 17 and CI runs 16: the builder puts Postgres 17's
+`MAINTAIN` right in a separate step that 16 skips.
+
+Current baseline: live schema exported 2026-10-18, after `0001` and `0002` were
+applied (both are included in it).
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses

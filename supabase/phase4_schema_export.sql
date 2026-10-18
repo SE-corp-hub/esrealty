@@ -1,10 +1,12 @@
 -- SEA ESTATES · Phase 4 schema export (read-only, changes nothing)
 --
 -- Run in the Supabase SQL editor AFTER every step of the current update is
--- done. Then use the result's "Export" / "Download CSV" button and attach the
--- file to the chat. Claude turns it into supabase/migrations/0000_baseline.sql:
--- one file that rebuilds this database from scratch, so the access rules can be
--- tested on GitHub for every change.
+-- done. If it shows "Potential issue detected ... Row Level Security", choose
+-- "Run without RLS" (this query creates nothing). Then use the result's
+-- "Export" / "Download CSV" button and attach the file to the chat. Claude
+-- turns it into supabase/migrations/0000_baseline.sql: one file that rebuilds
+-- this database from scratch, so the access rules can be tested on GitHub for
+-- every change.
 --
 -- One row per statement, in the order they must run:
 --   ord 1 extensions · 2 enums · 3 functions · 4 sequences · 5 tables
@@ -127,13 +129,12 @@ with
   ),
   fgrants as (
     select 16, p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
-           -- the keyword and role names go in as values, so the SQL editor doesn't take the role list for a table name
-           format('revoke all on function public.%I(%s) %s %s', p.proname, pg_get_function_identity_arguments(p.oid), 'from', 'public, anon, authenticated')
+           format('revoke all on function public.%I(%s) from public, anon, authenticated', p.proname, pg_get_function_identity_arguments(p.oid))
            || coalesce((select '; ' || string_agg(format('grant execute on function public.%I(%s) to %s', p.proname, pg_get_function_identity_arguments(p.oid), quote_ident(a.grantee::regrole::text)), '; ')
                         from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
                         where a.privilege_type = 'EXECUTE' and a.grantee <> 0 and a.grantee::regrole::text in ('anon', 'authenticated', 'service_role')), '')
            || case when exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0)
-                   then format('; grant execute on function public.%I(%s) to %s', p.proname, pg_get_function_identity_arguments(p.oid), 'public') else '' end
+                   then format('; grant execute on function public.%I(%s) to public', p.proname, pg_get_function_identity_arguments(p.oid)) else '' end
     from pg_proc p
     where p.pronamespace = (select oid from pub) and p.prokind in ('f', 'p')
       and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
