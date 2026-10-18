@@ -171,6 +171,10 @@ jobs:
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test pms_statement_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test pms_statement_e2e
       - name: e2e pms_statement_e2e (mobile)
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test pms_statement_e2e -Mobile || pwsh -NoProfile -File tests/run_all.ps1 -Test pms_statement_e2e -Mobile
+      - name: e2e roles_screens_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test roles_screens_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test roles_screens_e2e
+      - name: e2e roles_screens_e2e (mobile)
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test roles_screens_e2e -Mobile || pwsh -NoProfile -File tests/run_all.ps1 -Test roles_screens_e2e -Mobile
       - name: e2e home_quick_estimate_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test home_quick_estimate_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test home_quick_estimate_e2e
       - name: e2e home_quick_estimate_e2e (mobile)
