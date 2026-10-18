@@ -60,6 +60,24 @@
     return { path: path, params: new URLSearchParams(split.slice(1).join("?")) };
   }
 
+  /* A new page starts at the top. Without this, choosing a service from the
+   * menu while scrolled to the bottom of the home page opened that page at its
+   * bottom too. Links that aim at a spot (?section=..., ?go=form) and in-page
+   * anchors (#sf-...) keep their own scrolling; search filter changes don't
+   * count as a new page. */
+  var lastPageKey = "";
+  function pageKey(r) {
+    if (r.path === "property-value") return r.path + "?" + (r.params.get("service") || "");
+    return r.path;
+  }
+  function scrollTopOnNewPage() {
+    if (!/^#\//.test(location.hash) && location.hash !== "") return;
+    var r = route(), key = pageKey(r);
+    var aimed = r.params.get("section") || r.params.get("go");
+    if (key !== lastPageKey && !aimed) { try { window.scrollTo(0, 0); } catch (e) {} }
+    lastPageKey = key;
+  }
+
   function go(path) {
     location.hash = path.charAt(0) === "/" ? "#" + path : "#/" + path;
   }
@@ -1396,7 +1414,8 @@
       if (filterMedia.addEventListener) filterMedia.addEventListener("change", updateFilters);
       else if (filterMedia.addListener) filterMedia.addListener(updateFilters);
     }
-    window.addEventListener("hashchange", function () { if (active) { toggleMenu(false); closeDrops(null); loadCurrent(); } });
+    lastPageKey = pageKey(route());
+    window.addEventListener("hashchange", function () { if (active) { toggleMenu(false); closeDrops(null); scrollTopOnNewPage(); loadCurrent(); } });
     /* Dropdown hygiene: only one panel open at a time, close on outside click,
      * and close on Escape. <details> gives us keyboard opening for free but no
      * dismissal behaviour, so that part is ours.
