@@ -1,0 +1,38 @@
+name: Rent reminders - daily
+
+# Every morning: tenants get a notification in the app (the bell) 3 days
+# before rent or a charge is due, on the day, the day after, then weekly while
+# it is unpaid; managers get one summary. Sending is OFF until the repository
+# variable RENT_REMINDERS is set to "on" (Settings -> Secrets and variables ->
+# Actions -> Variables). Until then each run only works it out and logs counts.
+# The log never shows names or amounts (this repository is public).
+
+on:
+  schedule:
+    - cron: "7 0 * * *"   # 08:07 Philippine time
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rent-reminders
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: mrngaqtbaseewzcsogqi
+      SENDING: ${{ vars.RENT_REMINDERS }}
+      TZ: Asia/Manila
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Remind
+        run: |
+          if [ "$SENDING" = "on" ]; then node tools/rent_reminders.js --send; else node tools/rent_reminders.js; fi
