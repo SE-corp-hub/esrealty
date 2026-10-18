@@ -21,7 +21,7 @@
  * Deploy note: bump VERSION when you ship. The activate handler deletes every
  * cache not named here, so a bump evicts the previous generation.
  */
-const VERSION = "esrealty-pages-v49";
+const VERSION = "esrealty-pages-v50";
 const SHELL_CACHE = VERSION + "-shell";
 const ASSET_CACHE = VERSION + "-asset";
 const VENDOR_CACHE = VERSION + "-vendor";
@@ -175,3 +175,37 @@ self.addEventListener("fetch", (event) => {
   }
   // Everything else falls through to the browser's normal HTTP cache.
 });
+
+/* Phone alerts (web push). The payload comes from tools/send_push.js:
+ * { title, body, url, tag }. Tapping the alert opens (or focuses) the app at
+ * that screen. */
+self.addEventListener("push", (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch (e) { d = { body: event.data ? event.data.text() : "" }; }
+  const title = String(d.title || "SEA ESTATES").slice(0, 120);
+  event.waitUntil(self.registration.showNotification(title, {
+    body: String(d.body || "").slice(0, 300),
+    tag: d.tag || undefined,
+    icon: "assets/favicon.svg",
+    badge: "assets/favicon.svg",
+    data: { url: d.url || "./index.html" },
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || "./index.html", self.registration.scope);
+  // Only ever open this site.
+  const url = target.origin === self.location.origin ? target.href : self.registration.scope;
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const w of wins) {
+      if (w.url.indexOf(self.registration.scope) === 0 && "focus" in w) {
+        try { await w.navigate(url); } catch (e) { /* older browsers: just focus */ }
+        return w.focus();
+      }
+    }
+    return self.clients.openWindow(url);
+  })());
+});
+

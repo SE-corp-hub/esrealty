@@ -37,7 +37,8 @@ Supabase runs Postgres 17 and CI runs 16: the builder puts Postgres 17's
 `MAINTAIN` right in a separate step that 16 skips.
 
 Current baseline: live schema exported 2026-10-18, after `0001` and `0002` were
-applied (both are included in it).
+applied (both are included in it). `0003_phone_alerts.sql` (phone alerts and lead
+alerts) came after it and is applied with the workflow above.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses

@@ -800,7 +800,12 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     return views.find(navAllowed) || "listings";
   }
   function applyPostLoginView() {
+    // A phone alert opens the app at the screen it is about (index.html?open=leads).
+    let open = "";
+    try { open = new URLSearchParams(window.location.search || "").get("open") || ""; } catch (e) {}
+    if (open) { try { history.replaceState(null, "", window.location.pathname + window.location.hash); } catch (e) {} }
     if (currentUser && currentUser.mustChangePassword && navAllowed("settings")) state.view = "settings";
+    else if (open && /^[a-z-]{2,30}$/.test(open) && navAllowed(open)) state.view = open;
     else if (!navAllowed(state.view)) state.view = firstAllowedView();
   }
   async function completePostAuthIntent() {
@@ -1622,7 +1627,8 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
   function renderNotifPanel() {
     const pnl = document.getElementById("notif-panel");
     if (!pnl) return;
-    if (!notifItems.length) { pnl.innerHTML = '<div class="ntf-empty">No notifications yet.</div>'; return; }
+    const phoneLink = navAllowed("settings") ? '<div class="ntf-foot"><button type="button" class="link-btn" id="ntf-phone">' + icon("bell", 13) + " Get these on your phone</button></div>" : "";
+    if (!notifItems.length) { pnl.innerHTML = '<div class="ntf-empty">No notifications yet.</div>' + phoneLink; return; }
     const items = notifItems.map(n => {
       const meta = JSON.stringify({ id: n.id, link: n.link_view || "" });
       return '<button type="button" class="ntf-item' + (n.read_at ? "" : " unread") + '" data-ntf="' + esc(meta) + '">' +
@@ -1631,7 +1637,7 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
         (n.body ? '<span class="ntf-body">' + esc(n.body) + "</span>" : "") +
         '<span class="ntf-time">' + esc(timeAgo(n.created_at)) + "</span></span></button>";
     }).join("");
-    pnl.innerHTML = '<div class="ntf-head"><b>Notifications</b><button type="button" class="link-btn" id="ntf-markall">Mark all read</button></div>' + items;
+    pnl.innerHTML = '<div class="ntf-head"><b>Notifications</b><button type="button" class="link-btn" id="ntf-markall">Mark all read</button></div>' + items + phoneLink;
   }
   async function notifMarkRead(id) {
     const local = notifItems.find(n => n.id === id);
@@ -1664,6 +1670,7 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     pnl.addEventListener("click", async ev => {
       const markAll = ev.target.closest("#ntf-markall");
       if (markAll) { ev.stopPropagation(); await notifMarkAllRead(); return; }
+      if (ev.target.closest("#ntf-phone")) { pnl.classList.add("hidden"); navigate("settings"); setTimeout(() => { const c = document.getElementById("st-push"); if (c) c.scrollIntoView({ block: "start" }); }, 300); return; }
       const item = ev.target.closest("[data-ntf]");
       if (!item) return;
       let info = {};
@@ -19153,6 +19160,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       '<div class="field"><label>Confirm new password</label><input class="input" id="st-pass-conf" type="password" autocomplete="new-password"></div>' +
       "</div>" +
       '<div class="row mt-16" style="gap:8px"><button class="btn btn-primary" data-settings-pass>' + icon("key", 15) + " Change Password</button></div></div>";
+    html += pushCardHtml();
     if (roleIs("super-admin")) {
       html += '<div class="card card-pad mt-16"><h3>' + icon("archive", 15) + ' Database backup</h3>' +
         '<p class="dim mt-4">Download a portable snapshot of your workspace plus your cloud records — CRM leads, user profiles, listings — as a JSON file. Runs entirely in your browser and costs nothing.</p>' +
@@ -19166,6 +19174,98 @@ const ccBtn = e.target.closest("[data-cc-calc]");
         '<div class="dim tiny mt-8">The JSON backup also records a <b>storage manifest</b> listing every file in your <b>listing-photos</b> and <b>private-documents</b> buckets (file name, path, size, type, last-modified). Stored files are included as references, not bytes — use the manifest with Supabase Storage → Download to pull the actual files.</div></div>';
     }
     return html;
+  }
+  /* ================= PHONE ALERTS (web push) =================
+   * A person turns alerts on in Settings; the phone's subscription is stored
+   * with push_subscribe() (supabase/migrations/0003) and the GitHub workflow
+   * push-alerts.yml passes new notifications on to it. The public key is in
+   * push_config, made by a super-admin here; the private key is only a GitHub
+   * secret (VAPID_PRIVATE_KEY). */
+  const U = window.ESREALTY_UTIL || {};
+  const pushState = { supported: false, key: "", subscribed: false };
+  function pushSupported() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && !!U.b64urlBytes; }
+  function pushCloud() { return !!(SB && currentUser && currentUser.id && !currentUser.demo); }
+  async function refreshPushState() {
+    pushState.supported = pushSupported();
+    if (pushCloud()) {
+      try { const r = await SB.from("push_config").select("public_key").eq("id", 1).maybeSingle(); pushState.key = (r && r.data && r.data.public_key) || ""; } catch (e) { pushState.key = ""; }
+    } else pushState.key = "";
+    pushState.subscribed = false;
+    if (pushState.supported) {
+      try { const reg = await navigator.serviceWorker.getRegistration(); const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null; pushState.subscribed = !!sub; } catch (e) {}
+    }
+  }
+  function pushCardHtml(extra) {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent || "");
+    const installed = !!(window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+    let status, action = "";
+    if (!pushCloud()) status = "Phone alerts work with a live account, not in the demo.";
+    else if (!pushState.supported) status = ios && !installed ? "On iPhone: tap Share, then Add to Home Screen. Open SEA ESTATES from the home screen and turn alerts on here." : "This browser can't show phone alerts. Use Chrome on Android, or the app added to your home screen.";
+    else if (!pushState.key) status = roleIs("super-admin") ? "Not set up yet: make the keys below first." : "Not set up yet. Ask a super-admin to set up phone alerts.";
+    else if (pushState.subscribed) { status = "On for this phone: new leads, leads assigned to you, rent reminders and tenant requests show up even when the app is closed."; action = '<button class="btn btn-ghost" data-push-off>' + icon("x", 14) + " Turn off on this phone</button>"; }
+    else { status = "Get new leads, leads assigned to you, rent reminders and tenant requests on this phone, even when the app is closed."; action = '<button class="btn btn-primary" data-push-on>' + icon("bell", 15) + " Turn on phone alerts</button>"; }
+    let h = '<div class="card card-pad mt-16" id="st-push"><h3>' + icon("bell", 15) + ' Phone alerts</h3><p class="dim mt-4">' + esc(status) + "</p>" +
+      (action ? '<div class="row mt-12" style="gap:8px;flex-wrap:wrap">' + action + "</div>" : "");
+    if (roleIs("super-admin") && pushCloud()) {
+      h += '<details class="mt-16"' + (pushState.key && !extra ? "" : " open") + '><summary><b>Set up (super-admin)</b></summary>' +
+        '<p class="dim mt-8">' + (pushState.key ? "Keys are set. Making new keys turns alerts off on every phone until each person turns them on again." : "Make the alert keys once, here in your browser. The private key is shown once for you to store in GitHub; it isn't saved anywhere else.") + "</p>" +
+        '<div class="row mt-8"><button class="btn btn-ghost" data-push-keys>' + icon("key", 14) + (pushState.key ? " Make new keys" : " Make keys") + "</button></div>" +
+        '<div id="st-push-keys">' + (extra || "") + "</div></details>";
+    }
+    return h + "</div>";
+  }
+  function redrawPushCard(extra) {
+    const card = document.getElementById("st-push");
+    if (card) card.outerHTML = pushCardHtml(extra);
+  }
+  async function pushAction(btn, fn, okMsg) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    try { await fn(); toast(okMsg); }
+    catch (e) { toast(friendlyErr(String((e && e.message) || e)), "err"); }
+    redrawPushCard();
+  }
+  async function pushTurnOn() {
+    if (!pushState.key) throw new Error("Phone alerts aren't set up yet.");
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") throw new Error("Notifications are blocked for this site. Allow them in the browser's site settings, then try again.");
+    const reg = await navigator.serviceWorker.ready;
+    const old = await reg.pushManager.getSubscription();
+    if (old) { try { await old.unsubscribe(); } catch (e) {} } // one made with an old key won't work
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: U.b64urlBytes(pushState.key) });
+    const j = sub.toJSON();
+    const res = await SB.rpc("push_subscribe", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth, p_ua: String(navigator.userAgent || "").slice(0, 200) });
+    if (res.error) { try { await sub.unsubscribe(); } catch (e) {} throw res.error; }
+    pushState.subscribed = true;
+  }
+  async function pushTurnOff() {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+    if (sub) {
+      try { await SB.from("push_subscriptions").delete().eq("endpoint", sub.endpoint); } catch (e) {}
+      try { await sub.unsubscribe(); } catch (e) {}
+    }
+    pushState.subscribed = false;
+  }
+  async function pushMakeKeys(btn) {
+    if (btn.disabled) return;
+    if (pushState.key && !window.confirm("Make new keys? Phone alerts stop on every phone until each person turns them on again.")) return;
+    btn.disabled = true;
+    try {
+      const k = await U.makePushKeys();
+      const res = await SB.rpc("push_set_public_key", { p_key: k.publicKey });
+      if (res.error) throw res.error;
+      pushState.key = k.publicKey; pushState.subscribed = false;
+      redrawPushCard('<div class="pms-sent-note mt-12"><b>Keys made. Two steps in GitHub (repository tradersgag6/esrealty):</b>' +
+        '<ol class="mt-8"><li>Settings &gt; Secrets and variables &gt; Actions &gt; <b>New repository secret</b>. Name: <code>VAPID_PRIVATE_KEY</code>. Secret: the private key below.</li>' +
+        '<li>Same page, <b>Variables</b> tab &gt; <b>New repository variable</b>. Name: <code>PUSH_ALERTS</code>. Value: <code>on</code>.</li>' +
+        '<li>Then turn on phone alerts above, on each phone.</li></ol>' +
+        '<label for="st-push-private">Private key (shown once; keep it secret)</label><div class="row mt-8" style="gap:8px"><input class="input grow" id="st-push-private" readonly value="' + esc(k.privateKey) + '"><button type="button" class="btn btn-ghost" data-push-copy>' + icon("copy", 14) + " Copy</button></div></div>");
+      toast("Phone alert keys made");
+    } catch (e) {
+      btn.disabled = false;
+      toast(friendlyErr(String((e && e.message) || e)), "err");
+    }
   }
   function settingsChangePassword() {
     const $v = id => { const el = document.getElementById(id); return el ? el.value : ""; };
@@ -19416,6 +19516,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   }
   let settingsHooked = false;
   function bindSettings() {
+    refreshPushState().then(() => redrawPushCard());
     if (!settingsHooked) {
       settingsHooked = true;
       document.addEventListener("click", e => {
@@ -19431,6 +19532,14 @@ const ccBtn = e.target.closest("[data-cc-calc]");
         if (bl) { settingsBackupCsv("leads", bl); return; }
         const li = e.target.closest("[data-backup-listings-csv]");
         if (li) { settingsBackupCsv("listings", li); return; }
+        const pOn = e.target.closest("[data-push-on]");
+        if (pOn) { pushAction(pOn, pushTurnOn, "Phone alerts are on for this phone."); return; }
+        const pOff = e.target.closest("[data-push-off]");
+        if (pOff) { pushAction(pOff, pushTurnOff, "Phone alerts are off for this phone."); return; }
+        const pKeys = e.target.closest("[data-push-keys]");
+        if (pKeys) { pushMakeKeys(pKeys); return; }
+        const pCopy = e.target.closest("[data-push-copy]");
+        if (pCopy) { const el = document.getElementById("st-push-private"); if (el) { el.select(); try { navigator.clipboard.writeText(el.value).then(() => toast("Private key copied")); } catch (err) { document.execCommand("copy"); toast("Private key copied"); } } return; }
       });
       document.addEventListener("change", e => {
         const fi = e.target && e.target.closest ? e.target.closest("#st-restore-file") : null;

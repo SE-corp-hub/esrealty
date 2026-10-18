@@ -36,6 +36,27 @@
   util.thumbUrl = function (url) {
     return String(url == null ? "" : url).replace(/-full\.(?:jpe?g|png|webp|gif|avif)(?=$|[?#])/i, "-thumb.jpg");
   };
+  /* Phone alerts (web push). base64url <-> bytes, and a new key pair made in
+   * this browser: the public half goes to the app's settings, the private
+   * half is shown once for the person to store as a GitHub secret. */
+  util.b64url = function (bytes) {
+    var s = ""; bytes = new Uint8Array(bytes);
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  };
+  util.b64urlBytes = function (text) {
+    var b = String(text || "").replace(/-/g, "+").replace(/_/g, "/");
+    while (b.length % 4) b += "=";
+    var raw = atob(b), out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  };
+  util.makePushKeys = function () {
+    var subtle = crypto.subtle;
+    return subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]).then(function (kp) {
+      return Promise.all([subtle.exportKey("raw", kp.publicKey), subtle.exportKey("jwk", kp.privateKey)]);
+    }).then(function (r) { return { publicKey: util.b64url(r[0]), privateKey: r[1].d }; });
+  };
   /* src (plus a fallback to the full photo if the small copy is missing) for an
    * <img>. onFail runs if the full photo fails too. */
   util.thumbAttrs = function (url, onFail) {

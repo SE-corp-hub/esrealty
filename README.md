@@ -185,6 +185,18 @@ where id = (select id from auth.users where email = 'your-email@example.com');
 The older one-off scripts are kept in `supabase/archive/` for reference only (see its
 README); everything in them that is still used is in the baseline.
 
+### Scheduled jobs (GitHub Actions)
+
+| Workflow | When | What |
+|---|---|---|
+| Rent reminders - daily | 08:07 PH time | Tenants get an in-app notification 3 days before rent or a charge is due, on the day, the day after, then weekly while unpaid; managers get one summary a day. **Off until** the repository variable `RENT_REMINDERS` is `on`; until then it only counts. |
+| Phone alerts | every 10 minutes | Passes new notifications (leads, assignments, rent reminders, tenant requests) to phones that turned alerts on (Settings > Phone alerts). Needs migration `0003`, keys made in Settings by a super-admin, the `VAPID_PRIVATE_KEY` secret and the variable `PUSH_ALERTS` = `on`. |
+| Market scan - nightly check | 03:23 PH time | Two real scans; a problem opens one issue, a healthy night closes it. |
+| Apply database migration | by hand | Applies a file from `supabase/migrations/` (test first, then apply). |
+
+All of them use the `SUPABASE_ACCESS_TOKEN` secret the function deploys already
+use, and log counts only (the repository is public).
+
 ### SEO and PWA
 
 **Search visibility** — deploy the meta/JSON-LD endpoint once:
