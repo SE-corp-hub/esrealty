@@ -140,7 +140,18 @@ const REST_TABLES = [
   { table: "sales_playbooks", note: "sales playbooks" },
   { table: "saved_listings", note: "saved listings" },
   { table: "agent_tasks", note: "agent follow-up tasks" },
-  { table: "pms_workspaces", note: "property management" },
+  { table: "pms_workspaces", note: "old property management record (kept for rollback)", anonDenied: true },
+  // Property Management v2 (supabase/pms_v2_tables.sql): visitors have no rights at all.
+  { table: "pms_owners", note: "PMS owners", anonDenied: true },
+  { table: "pms_tenants", note: "PMS tenants", anonDenied: true },
+  { table: "pms_properties", note: "PMS properties", anonDenied: true },
+  { table: "pms_units", note: "PMS units", anonDenied: true },
+  { table: "pms_leases", note: "PMS leases", anonDenied: true },
+  { table: "pms_payments", note: "PMS payments", anonDenied: true },
+  { table: "pms_maintenance", note: "PMS work orders", anonDenied: true },
+  { table: "pms_expenses", note: "PMS expenses", anonDenied: true },
+  { table: "pms_documents", note: "PMS documents", anonDenied: true },
+  { table: "pms_receipt_counters", note: "receipt numbers (migrations/0001)", anonDenied: true },
 ];
 
 // Columns other code depends on. A missing column answers 400 (42703).
@@ -153,13 +164,52 @@ async function probeTable(entry) {
   try {
     const res = await fetch(url, { headers: REST.headers });
     const got = res.status;
-    const ok = got === 200 || got === 401 || got === 403;
+    // anonDenied tables must refuse visitors outright: a 200 means their rights came back.
+    const ok = entry.anonDenied ? (got === 401 || got === 403) : (got === 200 || got === 401 || got === 403);
     let extra = "";
     if (got === 404) extra = "  <-- MISSING — run the matching supabase/*.sql";
     if (got === 401 || got === 403) extra = "  [present; no anonymous privilege]";
+    if (entry.anonDenied && got === 200) extra = "  <-- VISITORS CAN QUERY THIS TABLE — run supabase/pms_v2_tables.sql / phase1_security_rest.sql again";
     return { table: entry.table, note: entry.note, got, ok, extra };
   } catch (e) {
     return { table: entry.table, note: entry.note, got: "ERR", ok: false, extra: " [not reachable: " + (e && e.message || e) + "]" };
+  }
+}
+
+// Database functions the app calls. Visitors must be refused (401/403); 404
+// means the function is missing (run the SQL named in the note).
+const REST_RPCS = [
+  { fn: "pms_books", note: "super-admin list of books (pms_v3_books.sql)" },
+  { fn: "pms_find_login", note: "brokers link owner/tenant logins (pms_v3_books.sql)", body: { p_email: "x@x.ph", p_role: "owner" } },
+  { fn: "pms_tenant_send_payment", note: "tenant payment proof (migrations/0001)", body: { p_lease: "x", p_amount: 1, p_date: "2026-01-01", p_month: null, p_method: "Cash", p_reference: "", p_note: "" } },
+  { fn: "pms_tenant_request_repair", note: "tenant repair request (migrations/0001)", body: { p_lease: "x", p_title: "x", p_details: "", p_category: "Other" } },
+  { fn: "pms_my_repair_requests", note: "tenant's own requests (migrations/0001)" },
+];
+async function probeRpc(entry) {
+  try {
+    const res = await fetch(`${REST.base}/rpc/${entry.fn}`, { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, REST.headers), body: JSON.stringify(entry.body || {}) });
+    const got = res.status;
+    const ok = got === 401 || got === 403;
+    const extra = got === 404 ? "  <-- MISSING — run the SQL in the note" : ok ? "  [present; visitors refused]" : "  <-- VISITORS CAN CALL THIS FUNCTION";
+    return { table: "rpc " + entry.fn, note: entry.note, got, ok, extra };
+  } catch (e) {
+    return { table: "rpc " + entry.fn, note: entry.note, got: "ERR", ok: false, extra: " [not reachable: " + (e && e.message || e) + "]" };
+  }
+}
+// Vercel (market-scan): both endpoints must refuse a caller without the
+// scheduler's secret or a staff sign-in. Not reachable = informational only.
+const VERCEL = "https://esrealty-market-scan.vercel.app";
+const VERCEL_PROBES = [
+  { path: "/api/agent-dispatch", note: "only Vercel's schedule may start a dispatch (CRON_SECRET)" },
+  { path: "/api/ad-perf", note: "approved staff only" },
+];
+async function probeVercel(p) {
+  try {
+    const res = await fetch(VERCEL + p.path, { method: "GET" });
+    const got = res.status;
+    return { path: p.path, note: p.note, got, ok: got === 401 || got === 403, reachable: true };
+  } catch (e) {
+    return { path: p.path, note: p.note, got: "ERR", ok: false, reachable: false, extra: " [not reachable: " + (e && e.message || e) + "]" };
   }
 }
 
@@ -290,6 +340,23 @@ async function probe(base, p, fnName, optional) {
     console.log("  " + (r.ok ? "OK " : "FAIL") + "  " + r.table + "  (" + r.note + ")  ->  got " + r.got + r.extra);
     if (!r.ok) ok = false;
   }
+  for (const entry of REST_RPCS) {
+    const r = await probeRpc(entry);
+    tableResults.push(r);
+    console.log("  " + (r.ok ? "OK " : "FAIL") + "  " + r.table + "  (" + r.note + ")  ->  got " + r.got + r.extra);
+    if (!r.ok) ok = false;
+  }
+  console.log("");
+
+  console.log("=== VERCEL (market-scan) ===\n");
+  const vercelResults = [];
+  for (const p of VERCEL_PROBES) {
+    const r = await probeVercel(p);
+    vercelResults.push(r);
+    console.log("  " + (r.ok ? "OK " : r.reachable ? "FAIL" : "INFO") + "  GET " + p.path + "  (" + p.note + ")  ->  got " + r.got + (r.extra || (r.reachable && !r.ok ? "  <-- ANSWERS WITHOUT A SECRET OR SIGN-IN" : "")));
+  }
+  const vercelOpen = vercelResults.filter(r => r.reachable && !r.ok);
+  if (vercelOpen.length) console.log("  FIX: set CRON_SECRET in Vercel (market-scan) and redeploy; make sure the latest market-scan code is deployed.");
   console.log("");
 
   // 5) Status summary
@@ -341,5 +408,5 @@ async function probe(base, p, fnName, optional) {
   console.log("  - '404' = function not deployed; '401' on a public route = deploy with --no-verify-jwt.");
   console.log("  - Tables answering 200 with no rows are fine: row security hides them from an anonymous check.");
   console.log("  - 'ERR' (no HTTP status) usually means the function is NOT deployed at BASE.");
-  if (failed.some(r => !r.optional) || missingTables.length) { process.exit(1); }
+  if (failed.some(r => !r.optional) || missingTables.length || vercelOpen.length) { process.exit(1); }
 })();
