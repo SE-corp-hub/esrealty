@@ -1,0 +1,52 @@
+name: Market scan - nightly check
+
+# Every night: run two real scans on the hosted Market Scan (Vercel) and check
+# that listings still come back, source by source. A problem opens (or adds a
+# comment to) one issue; the next healthy night closes it. Never runs on push,
+# so it can't block an update.
+
+on:
+  schedule:
+    - cron: "23 19 * * *"   # 03:23 Philippine time
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: market-scan-nightly
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Check the market scan
+        id: check
+        run: |
+          if node tools/market_scan_check.js --report /tmp/ms.json --markdown /tmp/ms.md; then echo "ok=1" >> "$GITHUB_OUTPUT"; else echo "ok=0" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OK: ${{ steps.check.outputs.ok }}
+        run: |
+          title="Market scan nightly check needs attention"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          printf '\n\nRun: %s\n' "$RUN_URL" >> /tmp/ms.md
+          if [ "$OK" = "1" ]; then
+            if [ -n "$num" ]; then gh issue close "$num" --comment "Healthy again on $(date -u +%Y-%m-%d). $RUN_URL"; fi
+            exit 0
+          fi
+          if [ -n "$num" ]; then gh issue comment "$num" --body-file /tmp/ms.md
+          else gh issue create --title "$title" --body-file /tmp/ms.md; fi
+        shell: bash
