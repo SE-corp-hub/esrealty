@@ -1105,11 +1105,12 @@
     out += '<div class="sf-est-step-head"><div><h3>Tell us about your property</h3><p class="sf-est-step-subtitle">Location and lot area match the right BIR reference.</p></div></div>';
     out += '<div class="sf-est-fields">';
 
-    /* 2026-10-15 simplification: the visible questions are the five that set
-       the value - type, town, barangay, street, lot area. Purpose, sale stage,
-       classification (default Residential), expected price and corner lot sit
-       under "More options". Answers carried from the home quick estimate show as
-       one summary line with a Change button instead of being asked again. */
+    /* 2026-10-15 simplification: the visible questions are the ones that set
+       the value - type, town, barangay, street, classification (default
+       Residential; moved out of "More options" on 2026-10-18), lot area.
+       Purpose, sale stage, expected price and corner lot sit under "More
+       options". Answers carried from the home quick estimate show as one
+       summary line with a Change button instead of being asked again. */
     var carried = est.fromQuick && !est.quickEdit && est.municipality && est.area > 0;
     if (carried) {
       out += '<div class="sf-est-carried sf-est-span2" data-est-carried><span><b>' + esc(titleCase(est.municipality)) + '</b> · ' + (est.type === "house_lot" ? "House &amp; lot" : "Vacant lot") + ' · ' + esc(fmt(est.area)) + ' sqm</span>' +
@@ -1131,13 +1132,19 @@
       (est.allOther ? '<span class="sf-est-street-selected"><i aria-hidden="true">✓</i>Using all-other-streets rate</span>' : '') + '</div>' +
       '<div id="sf-est-street-options" class="sf-est-street-list" data-est-street-list role="listbox" aria-label="BIR streets"></div></div>';
     out += '<button type="button" class="sf-est-street-fallback sf-est-span2" data-est-street-fallback' + (!est.barangay ? " disabled" : "") + '>My street is not listed — use the best available BIR reference</button>';
+    /* Classification sits with the location (2026-10-18): it sets the BIR rate
+       as much as the street does, so a commercial or agricultural lot no longer
+       looks "too high" or "too low" because the answer was hidden. */
+    out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">Classification</span><span>Residential is the default. Commercial, agricultural and industrial land have their own BIR rates, so the value changes with it.</span>' +
+      '<select data-est-class aria-label="BIR classification">' + simpleClassOptions() + "</select></label>";
+    out += '<details class="sf-est-help sf-est-span2"><summary>What does BIR classification mean?</summary><p>The BIR schedule groups land by use: residential, commercial, agricultural or industrial. Choose the one that matches the property. If you are unsure, confirm the classification with the relevant Revenue District Office before relying on the guide.</p></details>';
     if (!carried) {
       out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">Lot area (sqm)</span>' +
         '<input data-est-area type="number" min="20" max="100000" step="1" inputmode="decimal" placeholder="e.g. 200" value="' + esc(est.area != null ? est.area : "") + '"></label>';
     }
 
-    var moreSummary = [est.purpose, est.classification && est.classification !== "RR" ? classificationLabelShort() : "", est.corner ? "Corner lot" : "", est.salePrice ? "Price entered" : ""].filter(Boolean).join(" · ");
-    out += '<details class="sf-est-more sf-est-span2"' + panelOpenAttr("more") + '><summary><span class="sf-est-more-title">More options</span><span class="sf-est-more-sub">' + esc(moreSummary || "Purpose, classification, price, corner lot") + '</span></summary><div class="sf-est-fields">';
+    var moreSummary = [est.purpose, est.corner ? "Corner lot" : "", est.salePrice ? "Price entered" : ""].filter(Boolean).join(" · ");
+    out += '<details class="sf-est-more sf-est-span2"' + panelOpenAttr("more") + '><summary><span class="sf-est-more-title">More options</span><span class="sf-est-more-sub">' + esc(moreSummary || "Purpose, price, corner lot") + '</span></summary><div class="sf-est-fields">';
     out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">What do you need this valuation for?</span>' +
       chipRow((DATA.config.purposes || []).map(function (p) {
         return { label: p, value: p, active: est.purpose === p };
@@ -1154,9 +1161,6 @@
           { label: "I already have a buyer", value: "have_a_buyer", active: est.stage === "have_a_buyer" }
         ], "stage") + "</label>";
     }
-    out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">Classification</span><span>Residential is the default</span>' +
-      '<select data-est-class aria-label="BIR classification">' + simpleClassOptions() + "</select></label>";
-    out += '<details class="sf-est-help sf-est-span2"><summary>What does BIR classification mean?</summary><p>The BIR schedule groups land by use: residential, commercial, agricultural or industrial. Choose the one that matches the property. If you are unsure, confirm the classification with the relevant Revenue District Office before relying on the guide.</p></details>';
     out += '<label class="sf-est-field sf-est-span2"><span class="sf-est-label">' + (est.purpose === "Buying" ? "Asking price or your offer" : est.purpose === "I received an offer" ? "Offer received" : "Expected selling price") + '</span><span>Optional — affects costs, not the estimate</span>' +
       '<input data-est-sale-price type="number" min="0" max="1000000000" step="1000" inputmode="decimal" placeholder="e.g. 5000000" value="' + esc(est.salePrice != null ? est.salePrice : "") + '"></label>';
     /* With the lot questions, not stranded under the technical panels. */

@@ -88,7 +88,7 @@ const figure = () => (q("[data-quick-figure]") || {}).textContent || "";
     q("[data-est-quick-edit]").click();
     await wait(300);
     check("Change brings the fields back with the carried values", q("[data-est-muni]") && q("[data-est-muni]").value === "LIPA CITY" && q("[data-est-area]").value === "200" && !q("[data-est-carried]"));
-    check("step 1 keeps only the essentials visible", !!q(".sf-est-more") && !q(".sf-est-more").open && !!q(".sf-est-more [data-est-class]") && !!q(".sf-est-more [data-est-corner]"));
+    check("step 1 keeps only the essentials visible (classification with them, corner lot under More options)", !!q(".sf-est-more") && !q(".sf-est-more").open && !!q("[data-est-class]") && !q(".sf-est-more [data-est-class]") && !!q(".sf-est-more [data-est-corner]"));
 
     /* 6) example report and one summary section */
     await until(() => !/—/.test((q('[data-sample="value"]') || {}).textContent || "—"));

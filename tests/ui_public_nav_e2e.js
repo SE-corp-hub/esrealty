@@ -127,7 +127,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     chk("pv-form-name-field-matches-handler", !!form.querySelector("[name=name]"), "property-value form has no input[name=name]");
     chk("pv-form-no-stray-full_name-input", !form.querySelector("[name=full_name]"), "input[name=full_name] would post null");
     const homeBand = await go("#/home", 1700).then(() => document.querySelector("#sf-contact"));
-    chk("home-band-links-to-request-form", !!(homeBand && homeBand.querySelector('a[href="#/property-value"]')) && !homeBand.querySelector("[data-sf-consult]"), "home band should link, not repeat the form");
+    chk("home-band-links-to-request-form", !!(homeBand && homeBand.querySelector('a[href="#/property-value?go=form"]')) && !homeBand.querySelector("[data-sf-consult]"), "home band should link straight to the form, not repeat it");
     await go("#/property-value", 1500);
     chk("pv-no-obligation-note", /no obligation/i.test(document.querySelector(".sf-pv").textContent), "missing no-obligation note");
     chk("pv-no-false-claims", !/\d+\s*(properties sold|clients|homes sold|happy families)/i.test(document.querySelector(".sf-pv").textContent), "fabricated stat found");

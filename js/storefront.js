@@ -193,7 +193,7 @@
   function privacyPage() {
     return shell('<section class="sf-section sf-privacy-page"><div class="sf-section-head"><div><p class="sf-eyebrow">YOUR INFORMATION</p><h1>Privacy notice</h1></div><p>How SEA ESTATES handles information submitted through this website.</p></div>' +
       '<div class="sf-privacy-content">' +
-      '<p><b>Who is responsible?</b> SEA ESTATES operates this website and handles the inquiries submitted through it. For a privacy-related request, <a href="#/property-value">contact our team</a> and write “Privacy request” in your message.</p>' +
+      '<p><b>Who is responsible?</b> SEA ESTATES operates this website and handles the inquiries submitted through it. For a privacy-related request, <a href="#/property-value?go=form">contact our team</a> and write “Privacy request” in your message.</p>' +
       '<h2>Information used by the property guide</h2><p>The guide uses property details you enter, such as municipality, barangay, street, BIR classification, lot area, property type, and optional house, ownership, and selling details. The estimate is calculated in your browser. To look for available listing context, the selected municipality and property type may be queried through the Vercel-hosted market-search service; your name and contact details are not needed for that search.</p>' +
       '<h2>When you send an inquiry or request a report</h2><p>We receive the contact details and message you submit, together with the property details and estimate snapshot needed to respond. Requests are recorded in SEA ESTATES CRM and inquiry records hosted by Supabase. Where report delivery is configured, your report and email address are sent through Resend so the report can be delivered.</p>' +
       '<h2>How we use and share information</h2><p>We use submitted information to respond to your request, prepare or deliver a requested report, coordinate a property inquiry with the relevant broker or agent, maintain service records, and protect the service from abuse. Technical request information may also be processed to prevent abuse. We do not sell personal information; Supabase, Vercel, Resend, and any relevant listing agent may process information only to provide the requested service.</p>' +
@@ -965,7 +965,7 @@
       /* A short closing band instead of a second long form: the full request
          form lives on the Talk to our team page. */
       '<section class="sf-cta sf-cta-short" id="sf-contact"><div class="sf-cta-band"><div><h2>Questions? Talk to our team.</h2><p>Buying, selling, renting or reviewing a property? Send the location and your plans, and a specialist replies within one business day.</p><div class="sf-contact-details">' + contactDetails() + '</div></div>' +
-      '<a class="sf-hero-btn sf-cta-go" href="#/property-value">Message our team</a></div></section>'
+      '<a class="sf-hero-btn sf-cta-go" href="#/property-value?go=form">Message our team</a></div></section>'
     );
   }
 
@@ -983,7 +983,7 @@
     }
     return '<div class="sf-empty"><div class="sf-empty-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg></div><h3>No properties published yet</h3>' +
       '<p>There are no live listings on the site at the moment. Tell us what you are looking for and we will come back to you, or check your own property with the free Value Guide.</p>' +
-      '<div class="sf-empty-actions"><a class="sf-primary-btn" href="#/property-value?service=broker">Tell us what you need</a>' +
+      '<div class="sf-empty-actions"><a class="sf-primary-btn" href="#/property-value?service=broker&go=form">Tell us what you need</a>' +
       '<a class="sf-outline-btn" href="#/home" data-est-services>Start my Value Guide</a></div></div>';
   }
 
@@ -1196,6 +1196,17 @@
     if (current.path === "search" && viewState.mode === "map") setTimeout(sfInitMap, 60);
     bindHomeMotion();
     bindPvJourney();
+    /* "Message our team" and the other contact links (?go=form) land on the
+     * request form itself, not on the page's introduction above it. */
+    if (current.path === "property-value" && current.params.get("go") === "form") {
+      setTimeout(function () { scrollToSectionWhenSettled("pv-form", 8); }, 60);
+      setTimeout(function () {
+        var nameField = document.querySelector("#sf-pv-form input[name='name']");
+        // Keyboard-and-mouse screens get the cursor in the first box; phones
+        // just see the form, without the keyboard jumping up uninvited.
+        if (nameField && window.matchMedia && window.matchMedia("(pointer: fine)").matches) { try { nameField.focus({ preventScroll: true }); } catch (e) {} }
+      }, 450);
+    }
     if (current.path === "home" || current.path === "") {
       /* #/home?section=services needs a second pass: the target does not exist
        * until home() has been written into the host above. */
