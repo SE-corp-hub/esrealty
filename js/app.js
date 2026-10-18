@@ -400,6 +400,39 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
     return /failed to fetch|networkerror|network request failed|load failed|timeout|fetch failed/i.test(String((err && (err.message || err.details || err)) || ""));
   }
+  /* Uploads on a weak signal: photos and files are too big to wait in memory,
+   * so a dropped upload is tried once more, after a short pause or (offline)
+   * when the phone is back online, up to 20 seconds. */
+  function waitForSignal(maxMs) {
+    return new Promise(resolve => {
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+      let t = null;
+      const done = () => { clearTimeout(t); window.removeEventListener("online", back); resolve(); };
+      const back = () => { clearTimeout(t); t = setTimeout(done, 800); };
+      t = setTimeout(done, offline ? maxMs : 1500);
+      if (offline) window.addEventListener("online", back);
+    });
+  }
+  // fn returns a Supabase-style { data, error } (or throws). A network error
+  // gets one more try; any other error is returned as it is.
+  async function retryOnNetwork(fn, onRetry) {
+    const once = async () => { try { return (await fn()) || {}; } catch (e) { return { error: e }; } };
+    const first = await once();
+    if (!first.error || !isNetworkError(first.error)) return first;
+    if (typeof onRetry === "function") { try { onRetry(); } catch (e) {} }
+    await waitForSignal(20000);
+    const second = await once();
+    second.retried = true;
+    return second;
+  }
+  // If the first try reached the server before the signal dropped, the second
+  // try of a no-overwrite upload is told the file already exists: it is there.
+  async function storageUpload(bucket, path, body, opts, onRetry) {
+    const res = await retryOnNetwork(() => SB.storage.from(bucket).upload(path, body, opts), onRetry);
+    const msg = res.error ? String(res.error.message || res.error.error || res.error) : "";
+    if (res.retried && res.error && !(opts && opts.upsert) && /already exists|duplicate/i.test(msg)) return { data: { path }, error: null, retried: true };
+    return res;
+  }
   function cloudWaitingCount() { return Object.keys(cloudWaiting.leads).length + Object.keys(cloudWaiting.transactions).length + Object.keys(pmsWaiting).length; }
   async function sendWaiting() {
     const leads = Object.values(cloudWaiting.leads), txs = Object.values(cloudWaiting.transactions);
@@ -6124,7 +6157,7 @@ html+='</div></div>';
         try {
           const blob = dataUrlToBlob(pr.dataUrl);
           const path = currentUser.id + "/portfolio/" + entryId + "/" + pr.id;
-          const up = await SB.storage.from(VAULT_BUCKET).upload(path, blob, { contentType: blob.type || pr.mimetype || "application/octet-stream", upsert: true });
+          const up = await storageUpload(VAULT_BUCKET, path, blob, { contentType: blob.type || pr.mimetype || "application/octet-stream", upsert: true });
           if(up.error) throw up.error;
           pr.mode = "supabase"; pr.storagePath = path;
           save();
@@ -9947,9 +9980,10 @@ premise: "Fee Simple / As Improved",
         try {
           const blob = dataUrlToBlob(photo);
           const path = res.data.book_id + "/" + res.data.id + "/" + Date.now().toString(36) + ".jpg";
-          const up = await SB.storage.from(PMS_RECEIPTS).upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false });
+          const sending = () => { btn.innerHTML = icon("upload", 15) + " Signal dropped, trying again…"; };
+          const up = await storageUpload(PMS_RECEIPTS, path, blob, { contentType: blob.type || "image/jpeg", upsert: false }, sending);
           if (up.error) throw up.error;
-          const at = await SB.rpc("pms_tenant_attach_proof", { p_payment: res.data.id, p_path: path, p_name: file.name });
+          const at = await retryOnNetwork(() => SB.rpc("pms_tenant_attach_proof", { p_payment: res.data.id, p_path: path, p_name: file.name }), sending);
           if (at.error) throw at.error;
         } catch (e) { photoOk = false; }
       }
@@ -10656,11 +10690,11 @@ premise: "Fee Simple / As Improved",
     if (!pmsHasProof(p)) return '<span class="dim">—</span>';
     return '<button type="button" class="btn btn-ghost btn-sm" data-pms-proof="' + esc(p.id) + '" title="' + esc(p.proofName || "View the photo of the payment") + '">' + icon("camera", 13) + ' Photo</button>';
   }
-  async function pmsUploadReceipt(paymentId, dataUrl) {
+  async function pmsUploadReceipt(paymentId, dataUrl, onRetry) {
     const blob = dataUrlToBlob(dataUrl);
     // With books, each manager's files sit in their own folder: <book>/<payment>/<file>.
     const path = (pmsBooks ? pmsMyBook() : "payments") + "/" + paymentId + "/" + Date.now().toString(36) + ".jpg";
-    const up = await SB.storage.from(PMS_RECEIPTS).upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false });
+    const up = await storageUpload(PMS_RECEIPTS, path, blob, { contentType: blob.type || "image/jpeg", upsert: false }, onRetry);
     if (up.error) {
       if (/bucket not found/i.test(String(up.error.message || up.error.error || ""))) pmsReceiptsOk = false;
       throw up.error;
@@ -11511,7 +11545,7 @@ premise: "Fee Simple / As Improved",
         if (pmsReceiptsCloud()) {
           if (saveBtn) saveBtn.innerHTML = icon("upload", 15) + " Uploading…";
           try {
-            data.proofPath = await pmsUploadReceipt(payId, proof);
+            data.proofPath = await pmsUploadReceipt(payId, proof, () => { if (saveBtn) saveBtn.innerHTML = icon("upload", 15) + " Signal dropped, trying again\u2026"; });
           } catch (e) {
             data.proof = proof; // kept in the record; it moves to storage on a later sign-in
           }
@@ -13655,7 +13689,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (optimized.blob.size > OUT_LIMIT) { toast(esc(file.name) + " is larger than 2 MB", "err"); done += 1; continue; }
       const path = currentUser.id + "/" + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.floor(Math.random() * 1e9)) + "." + optimized.ext;
       try {
-        const { error } = await SB.storage.from("listing-photos").upload(path, optimized.blob, { contentType: optimized.contentType, upsert: false, cacheControl: "31536000" });
+        const { error } = await storageUpload("listing-photos", path, optimized.blob, { contentType: optimized.contentType, upsert: false, cacheControl: "31536000" },
+          () => { if (status) status.textContent = "Signal dropped, trying " + file.name + " again…"; });
         if (error) throw error;
         const { data } = SB.storage.from("listing-photos").getPublicUrl(path);
         const url = data && data.publicUrl ? data.publicUrl : "";
@@ -17673,7 +17708,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         try {
           const blob = dataUrlToBlob(d.dataUrl);
           const vpath = vaultPath(d.ownerType, d.ownerId, d.id, d.name);
-          const up = await SB.storage.from(VAULT_BUCKET).upload(vpath, blob, { contentType: blob.type || "application/octet-stream", upsert: true });
+          const up = await storageUpload(VAULT_BUCKET, vpath, blob, { contentType: blob.type || "application/octet-stream", upsert: true });
           if (up.error) throw up.error;
           d.storagePath = vpath;
           delete d.dataUrl;
@@ -17771,7 +17806,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         const baseRec = { id: "doc-" + Date.now() + "-" + Math.floor(Math.random() * 999), name: file.name, category: catEl ? catEl.value : "Other", size: (file.size / 1024).toFixed(0) + " KB", ownerType: ov ? ov.getAttribute("data-owner-type") : "", ownerId: ov ? ov.getAttribute("data-owner-id") : "", uploadedAt: new Date().toISOString() };
         if (SB && currentUser && currentUser.id && !currentUser.demo) {
           const vpath = vaultPath(baseRec.ownerType, baseRec.ownerId, baseRec.id, file.name);
-          const up = await SB.storage.from(VAULT_BUCKET).upload(vpath, file, { contentType: file.type || "application/octet-stream" });
+          const up = await storageUpload(VAULT_BUCKET, vpath, file, { contentType: file.type || "application/octet-stream" },
+            () => { if (saveButton) saveButton.innerHTML = icon("upload", 15) + " Signal dropped, trying again…"; });
           if (up.error) throw new Error(up.error.message || "Upload failed");
           baseRec.storagePath = vpath;
           finishUpload(baseRec);

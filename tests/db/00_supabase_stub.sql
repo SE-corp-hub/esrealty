@@ -46,6 +46,8 @@ create table if not exists storage.objects (
   owner uuid,
   metadata jsonb
 );
+-- as in Supabase: one file per name in a bucket
+create unique index if not exists bucketid_objname on storage.objects (bucket_id, name);
 alter table storage.objects enable row level security;
 create or replace function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name, '/') $$;
 grant execute on all functions in schema storage to anon, authenticated, service_role;
