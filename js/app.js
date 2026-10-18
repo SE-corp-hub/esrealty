@@ -376,10 +376,50 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     clearTimeout(remoteSaveTimer);
     remoteSaveTimer = setTimeout(async () => {
       if (!currentUser || currentUser.id !== ownerId) return;
+      // Most taps change nothing in the settings record: don't send the same data again.
+      const body = JSON.stringify(payload);
+      if (body === appStateSent[ownerId]) { appStatePending = false; return; }
       const { error } = await SB.from("app_state").upsert({ owner_id: ownerId, payload: payload }, { onConflict: "owner_id" });
-      if (error) toast("Cloud save failed: " + esc(error.message), "err");
+      if (error) {
+        appStatePending = true;
+        if (!isNetworkError(error)) toast("Cloud save failed: " + esc(error.message), "err");
+        return;
+      }
+      appStateSent[ownerId] = body;
+      appStatePending = false;
     }, 500);
     schedulePmsCloudSave();
+  }
+  /* Weak signal (Phase 5): what couldn't be sent waits in this phone's memory
+   * and goes out when the connection is back. It is not kept if the app is
+   * closed while offline. */
+  const appStateSent = {};
+  let appStatePending = false;
+  const cloudWaiting = { leads: {}, transactions: {} };
+  function isNetworkError(err) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+    return /failed to fetch|networkerror|network request failed|load failed|timeout|fetch failed/i.test(String((err && (err.message || err.details || err)) || ""));
+  }
+  function cloudWaitingCount() { return Object.keys(cloudWaiting.leads).length + Object.keys(cloudWaiting.transactions).length + Object.keys(pmsWaiting).length; }
+  async function sendWaiting() {
+    const leads = Object.values(cloudWaiting.leads), txs = Object.values(cloudWaiting.transactions);
+    const before = cloudWaitingCount();
+    cloudWaiting.leads = {}; cloudWaiting.transactions = {};
+    for (const rec of leads) await persistLeadToCloud(rec);
+    for (const rec of txs) await persistTransactionToCloud(rec);
+    if (appStatePending) save();
+    if (typeof schedulePmsCloudSave === "function") schedulePmsCloudSave();
+    const left = cloudWaitingCount();
+    if (before && !left) toast("Sent " + before + (before === 1 ? " change" : " changes") + " made while the signal was weak.", "ok");
+    showNetState();
+  }
+  function showNetState() {
+    const banner = $("#offline-banner");
+    if (!banner) return;
+    const n = cloudWaitingCount(), off = typeof navigator !== "undefined" && navigator.onLine === false;
+    banner.classList.toggle("hidden", !off && !n);
+    const txt = banner.querySelector("[data-net-text]") || banner;
+    if (off || n) txt.textContent = off ? "You are offline." + (n ? " " + n + (n === 1 ? " change is" : " changes are") + " waiting to be sent." : " Changes will be sent when you're back online.") : n + (n === 1 ? " change is" : " changes are") + " waiting to be sent.";
   }
 
   function paginateRows(arr, view) {
@@ -450,6 +490,7 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
   function pmsIsManager() { return !!currentUser && (currentUser.role === "super-admin" || (currentUser.role === "broker" && pmsBooks)); }
   function pmsCanWrite() { return pmsIsManager() && !pmsViewBook; }
   const pmsSynced = {};
+  const pmsWaiting = {};
   let pmsQueue = Promise.resolve();
   const PMS_KIND_LABEL = { owners: "owner", tenants: "tenant", properties: "property", units: "unit", leases: "lease", payments: "payment", maintenance: "work order", expenses: "expense", documents: "document" };
   async function detectPmsStore() {
@@ -484,7 +525,11 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
         const fp = PC.fingerprint(rec);
         // Marked now so the next save does not queue it twice; a failed write clears it.
         synced[rec.id] = Object.assign({}, synced[rec.id], { fp: fp });
-        pmsQueue = pmsQueue.then(() => pmsWriteRecord(kind, snapshot, fp)).catch(() => {});
+        pmsQueue = pmsQueue.then(() => pmsWriteRecord(kind, snapshot, fp)).catch(err => {
+          // A dropped connection can throw instead of answering: mark it unsent so the next save retries.
+          if (synced[snapshot.id]) synced[snapshot.id].fp = null;
+          if (isNetworkError(err)) { pmsWaiting[kind + ":" + snapshot.id] = true; showNetState(); }
+        });
       });
     });
     return pmsQueue;
@@ -525,9 +570,12 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     }
     if (res.error) {
       if (synced[rec.id]) synced[rec.id].fp = null;
+      // No signal: it stays unsent and goes out on the next save or when the connection is back.
+      if (isNetworkError(res.error)) { pmsWaiting[kind + ":" + rec.id] = true; showNetState(); return; }
       toast("Property Management save failed: " + esc(friendlyErr(res.error.message)), "err");
       return;
     }
+    if (pmsWaiting[kind + ":" + rec.id]) { delete pmsWaiting[kind + ":" + rec.id]; showNetState(); }
     let nextFp = synced[rec.id] && synced[rec.id].fp !== fp && synced[rec.id].fp !== null ? synced[rec.id].fp : fp;
     const saved = res.data && res.data[0] && res.data[0].data;
     if (saved && saved.receipt_no) {
@@ -3113,11 +3161,9 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     });
 
     /* Phase 6: say plainly when the phone has no connection */
-    const banner = $("#offline-banner");
-    const showNet = () => { if (banner) banner.classList.toggle("hidden", navigator.onLine !== false); };
-    window.addEventListener("offline", () => { showNet(); toast("You are offline. Changes may not be saved until your connection is back.", "err"); });
-    window.addEventListener("online", () => { showNet(); toast("Back online.", "ok"); });
-    showNet();
+    window.addEventListener("offline", () => { showNetState(); toast("You are offline. Changes made now are sent when your connection is back, as long as the app stays open.", "err"); });
+    window.addEventListener("online", () => { showNetState(); toast("Back online.", "ok"); sendWaiting(); });
+    showNetState();
   }
 
   /* ================= PHONE SHELL, PHASE 6 (2026-10-16) =================
@@ -14317,6 +14363,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       const res = await guardedSave("crm_leads", row, mergeLeadPayload);
       const error = res.error;
       if (res.merged) applyMerged(state.leads, rec.id, res.merged, ["activity"]);
+      if (error && isNetworkError(error)) { cloudWaiting.leads[rec.id] = rec; showNetState(); return; }
       if (error) {
         if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.crm_leads"/i)) {
           toast("Leads sync needs the crm_leads table — run supabase/crm_leads.sql in the SQL Editor.", "err");
@@ -14324,7 +14371,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
           toast("Could not sync lead: " + esc(friendlyErr(error.message)), "err");
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      if (isNetworkError(e)) { cloudWaiting.leads[rec.id] = rec; showNetState(); }
+    }
   }
   async function deleteLeadFromCloud(id) {
     if (!SB || !currentUser || !currentUser.id) return;
@@ -14426,13 +14475,17 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       }, mergeTransactionPayload);
       const error = res.error;
       if (res.merged) applyMerged(state.transactions, rec.id, res.merged, ["documents", "activity"]);
+      if (error && isNetworkError(error)) { cloudWaiting.transactions[rec.id] = rec; showNetState(); return false; }
       if (error) {
         if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.broker_transactions"/i)) toast("Transaction sharing needs the broker_transactions table — run supabase/broker_transactions.sql in the SQL Editor.", "err");
         else toast("Could not sync transaction: " + esc(friendlyErr(error.message)), "err");
         return false;
       }
       return true;
-    } catch (e) { return false; }
+    } catch (e) {
+      if (isNetworkError(e)) { cloudWaiting.transactions[rec.id] = rec; showNetState(); }
+      return false;
+    }
   }
   async function deleteTransactionFromCloud(id) {
     if (!SB || !currentUser || !currentUser.id) return;
