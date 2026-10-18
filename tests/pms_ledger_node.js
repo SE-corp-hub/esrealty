@@ -166,4 +166,19 @@ eq("statement: another owner's property stays out", st.rows.length, 1);
 eq("statement: label and last day", [st.label, st.end], ["October 2026", "2026-10-31"]);
 eq("last day of February", L.lastDayOf("2028-02"), "2028-02-29");
 
+// utilities and other charges
+const withCharges = lease({ charges: [{ id: "c1", type: "Water", amount: 800, due: "2026-10-10", period: "2026-10" }, { id: "c2", type: "Electricity", amount: 2500, due: "2026-10-25", period: "2026-10" }, { id: "c3", type: "Other", label: "Parking", amount: 500, due: "2026-09-10", archived: true }] });
+const cpays = [pay({ month: "2026-06", date: "2026-06-05" }), pay({ charge_id: "c1", amount: 300, date: "2026-10-11" }), pay({ charge_id: "c2", amount: 2500, date: "2026-10-12" }), pay({ charge_id: "c1", amount: 100, status: "submitted" })];
+const cs = L.chargeStatus(withCharges, cpays, TODAY);
+eq("charges: archived ones are left out", cs.map(c => c.id), ["c1", "c2"]);
+eq("charges: part paid, overdue amount left", [cs[0].status, cs[0].paid, cs[0].balance], ["partial", 300, 500]);
+eq("charges: fully paid", cs[1].status, "paid");
+eq("charges: label names the month", cs[0].label, "Water \u00B7 October 2026");
+eq("charges: an unpaid charge past its date is overdue", L.chargeStatus(lease({ charges: [{ id: "x", amount: 100, due: "2026-10-01" }] }), [], TODAY)[0].status, "overdue");
+eq("charge payments don't pay rent", L.ledger(withCharges, cpays, TODAY).paidTotal, 10000);
+const stC = L.monthStatement({ leases: [Object.assign({}, withCharges, { property_id: "p1" })], payments: cpays, expenses: [{ property_id: "p1", amount: 2500, date: "2026-10-03", category: "Utilities" }], maintenance: [] }, ["p1"], "2026-10");
+eq("statement: charges collected apart from rent", [stC.total.collected, stC.total.charges], [0, 2800]);
+eq("statement: net counts charges collected against the bill", stC.total.net, 300);
+eq("statement: unpaid at month end includes unpaid charges", stC.total.unpaid, 40000 + 500);
+
 console.log("\npms_ledger_node: " + passed + " checks passed");

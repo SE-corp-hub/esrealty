@@ -46,7 +46,7 @@ const num = s => Number(String(s || "").replace(/[^0-9.-]/g, ""));
     const want = L.monthStatement({ leases: S.pms.leases, payments: S.pms.payments, expenses: S.pms.expenses, maintenance: S.pms.maintenance }, S.pms.properties.filter(p => !p.archived && p.owner_id === owner.id).map(p => p.id), L.today().slice(0, 7));
     const totalRow = root ? Array.from(root.querySelectorAll(".print-sched tr")).pop() : null;
     const cells = totalRow ? Array.from(totalRow.cells).map(c => num(c.textContent)) : [];
-    check("totals match the ledger: received, spending, net, unpaid, deposits", cells.length === 6 && cells[1] === want.total.collected && cells[2] === want.total.expenses + want.total.repairs && cells[3] === want.total.net && cells[4] === want.total.unpaid && cells[5] === want.total.deposits, JSON.stringify({ cells, want: want.total }));
+    check("totals match the ledger: rent, charges, spending, net, unpaid, deposits", cells.length === 7 && cells[1] === want.total.collected && cells[2] === want.total.charges && cells[3] === want.total.expenses + want.total.repairs && cells[4] === want.total.net && cells[5] === want.total.unpaid && cells[6] === want.total.deposits, JSON.stringify({ cells, want: want.total }));
     check("it says deposits are not income", /Deposits are held for the tenants and are not income/.test(root.textContent));
     const prevKey = q("#pms-st-month option:nth-child(2)").value;
     setVal("#pms-st-month", prevKey); await wait(400);

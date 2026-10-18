@@ -88,10 +88,33 @@
     return out;
   }
 
+  // Rent received: paid payments of the lease, except those for a charge
+  // (water, electricity, dues...), which are kept apart (chargeStatus).
   function received(lease, payments) {
     return (payments || []).filter(function (p) {
-      return p && !p.archived && p.lease_id === lease.id && p.status === "paid" && num(p.amount) > 0;
+      return p && !p.archived && p.lease_id === lease.id && p.status === "paid" && num(p.amount) > 0 && !p.charge_id;
     });
+  }
+
+  /* Utilities and other charges, kept on the lease (lease.charges): each has an
+   * amount and a due date and is paid by payments that name it (charge_id). */
+  function chargeStatus(lease, payments, asOf) {
+    asOf = asOf || today();
+    var paidBy = {};
+    (payments || []).forEach(function (p) {
+      if (!p || p.archived || p.status !== "paid" || !p.charge_id || (lease && p.lease_id !== lease.id)) return;
+      paidBy[p.charge_id] = (paidBy[p.charge_id] || 0) + num(p.amount);
+    });
+    return ((lease && lease.charges) || []).filter(function (c) { return c && !c.archived; }).map(function (c) {
+      var amount = num(c.amount), paid = Math.min(amount, paidBy[c.id] || 0), balance = Math.max(0, amount - paid);
+      var due = dateOnly(c.due);
+      var status = balance <= 0 ? "paid" : paid > 0 ? "partial" : due && due < asOf ? "overdue" : "due";
+      return { id: c.id, type: c.type || "Other", label: chargeLabel(c), amount: amount, paid: paid, balance: balance, due: due, period: monthKey(c.period), status: status, note: c.note || "" };
+    }).sort(function (a, b) { return String(a.due).localeCompare(String(b.due)); });
+  }
+  function chargeLabel(c) {
+    var k = monthKey(c && c.period);
+    return ((c && (c.label || c.type)) || "Charge") + (k ? " \u00B7 " + monthLabel(k) : "");
   }
 
   function ledger(lease, payments, asOf) {
@@ -247,11 +270,13 @@
     var propOf = function (p) { return leaseProp[p.lease_id] || p.property_id; };
     var inMonth = function (d) { return dateOnly(d).slice(0, 7) === key; };
     var rows = {};
-    var row = function (id) { return rows[id] || (rows[id] = { property_id: id, collected: 0, expenses: 0, repairs: 0, unpaid: 0, deposits: 0, payments: [], spending: [] }); };
+    var row = function (id) { return rows[id] || (rows[id] = { property_id: id, collected: 0, charges: 0, expenses: 0, repairs: 0, unpaid: 0, deposits: 0, payments: [], spending: [] }); };
     (propIds || []).forEach(row);
     (data.payments || []).forEach(function (p) {
       if (!p || p.archived || p.status !== "paid" || !ids[propOf(p)] || !inMonth(p.date)) return;
-      var r = row(propOf(p)); r.collected += num(p.amount); r.payments.push(p);
+      var r = row(propOf(p));
+      if (p.charge_id) r.charges += num(p.amount); else r.collected += num(p.amount);
+      r.payments.push(p);
     });
     (data.expenses || []).forEach(function (e) {
       if (!e || e.archived || !ids[e.property_id] || !inMonth(e.date)) return;
@@ -265,13 +290,15 @@
     leases.forEach(function (l) {
       var r = row(l.property_id);
       r.unpaid += ledger(l, paidBy, end).dueToDate;
+      chargeStatus(l, paidBy, end).forEach(function (c) { if (c.due && c.due <= end) r.unpaid += c.balance; });
       r.deposits += depositHeld(l, end);
     });
-    var list = Object.keys(rows).map(function (id) { var r = rows[id]; r.net = r.collected - r.expenses - r.repairs; return r; });
+    // Net counts charges collected too: the matching bill is usually an expense.
+    var list = Object.keys(rows).map(function (id) { var r = rows[id]; r.net = r.collected + r.charges - r.expenses - r.repairs; return r; });
     var total = list.reduce(function (t, r) {
-      ["collected", "expenses", "repairs", "net", "unpaid", "deposits"].forEach(function (k) { t[k] += r[k]; });
+      ["collected", "charges", "expenses", "repairs", "net", "unpaid", "deposits"].forEach(function (k) { t[k] += r[k]; });
       return t;
-    }, { collected: 0, expenses: 0, repairs: 0, net: 0, unpaid: 0, deposits: 0 });
+    }, { collected: 0, charges: 0, expenses: 0, repairs: 0, net: 0, unpaid: 0, deposits: 0 });
     return { month: key, label: monthLabel(key), end: end, rows: list, total: total };
   }
 
@@ -284,6 +311,7 @@
     ledger: ledger, leaseStatus: leaseStatus, coversDate: coversDate, leaseMonthKeys: leaseMonthKeys,
     endLimit: endLimit, daysBetween: daysBetween, dueDateFor: dueDateFor, daysLate: daysLate,
     receiptNo: receiptNo, nextReceiptNo: nextReceiptNo, amountInWords: amountInWords,
-    depositHeld: depositHeld, depositNote: depositNote, monthStatement: monthStatement, lastDayOf: lastDayOf
+    depositHeld: depositHeld, depositNote: depositNote, monthStatement: monthStatement, lastDayOf: lastDayOf,
+    chargeStatus: chargeStatus, chargeLabel: chargeLabel
   };
 });

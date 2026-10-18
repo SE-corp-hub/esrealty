@@ -9166,6 +9166,19 @@ premise: "Fee Simple / As Improved",
     return { curDue: due, nextDue: due, label: c.month ? PL().monthLabel(c.month) : "", paid: c.state === "paid", state: c.state };
   }
   // Months owed so far (and this month's rent), oldest first.
+  // Utilities and other charges of a lease, with what is paid and still owed.
+  function pmsLeaseCharges(l) { return PL().chargeStatus(l, pmsActivePayments(), pmsToday()); }
+  function pmsChargesOwed(l) { return pmsLeaseCharges(l).filter(c => c.balance > 0); }
+  const PMS_CHARGE_TYPES = ["Water", "Electricity", "Association dues", "Internet", "Parking", "Other"];
+  // What a payment was for: a charge's name, or the rent month.
+  function pmsPaymentFor(p) {
+    if (p && p.charge_id) {
+      const l = pms().leases.find(x => x.id === p.lease_id);
+      const c = l && (l.charges || []).find(x => x.id === p.charge_id);
+      return c ? PL().chargeLabel(c) : (p.charge_label || "Charge");
+    }
+    return p && p.month ? pmsMonthText(p.month) : "";
+  }
   function pmsUnpaidMonths(l) {
     const thisMonth = pmsToday().slice(0, 7);
     return pmsLeaseLedger(l).months
@@ -9475,9 +9488,13 @@ premise: "Fee Simple / As Improved",
         '<td class="num">' + (C.num(l.deposit, 0) > 0 ? C.money(l.deposit) + '<div class="dim tiny">' + esc(pmsDepositState(l)) + '</div>' : "—") + '</td>' +
         '<td class="num">' + (due && due.nextDue ? '<b>' + esc(pmsDispDate(due.nextDue)) + '</b>' + (dueNote ? '<div class="dim tiny">' + esc(dueNote) + '</div>' : "") : "—") + '</td>' +
         '<td><span style="white-space:nowrap">' + (l.start ? esc(String(l.start).slice(0, 10)) : "—") + '</span><div class="dim tiny" style="white-space:nowrap">to ' + (l.end ? esc(String(l.end).slice(0, 10)) : "—") + '</div></td>' +
-        '<td>' + pmsStatusBadge(sc, sc ? sc.label : (l.status || "—")) + dueBadge + '</td>' +
+        '<td>' + pmsStatusBadge(sc, sc ? sc.label : (l.status || "—")) + dueBadge + (function () {
+          const open = pmsChargesOwed(l), amt = open.reduce((t, c) => t + c.balance, 0);
+          return open.length ? '<div class="mt-8">' + pmsStatusBadge({ color: open.some(c => c.status === "overdue") ? "red" : "gold" }, "Charges " + C.money(amt)) + '</div>' : "";
+        })() + '</td>' +
         (canManage || viewOnly ? '<td>' + (function () {
-          const look = '<button class="btn btn-ghost btn-sm" data-pms-paylink="' + esc(l.id) + '">' + icon("dollar", 13) + ' Payments</button><button class="btn btn-ghost btn-sm" data-pms-print="lease:' + esc(l.id) + '">' + icon("print", 13) + ' Statement</button>';
+          const look = '<button class="btn btn-ghost btn-sm" data-pms-paylink="' + esc(l.id) + '">' + icon("dollar", 13) + ' Payments</button><button class="btn btn-ghost btn-sm" data-pms-print="lease:' + esc(l.id) + '">' + icon("print", 13) + ' Statement</button>' +
+            (canManage ? '<button class="btn btn-ghost btn-sm" data-pms-charges="' + esc(l.id) + '">' + icon("plus", 13) + ' Charges</button>' : "");
           return canManage ? pmsRowActions("lease", l.id, look) : '<div class="row pms-row-actions wide" style="gap:6px">' + look + '</div>';
         })() + '</td>' : "") +
         '</tr>';
@@ -9515,12 +9532,20 @@ premise: "Fee Simple / As Improved",
         });
       });
     });
+    // Utilities and other charges still owed, as rows of their own.
+    pmsActiveLeases().forEach(l => {
+      pmsChargesOwed(l).forEach(c => {
+        list.push({ id: "chg-" + l.id + "-" + c.id, lease_id: l.id, property_id: l.property_id, unit_id: l.unit_id, tenant_id: l.tenant_id,
+          amount: c.balance, date: c.due, month: c.period, charge_id: c.id, method: "", status: c.due && c.due < today ? "overdue" : "due",
+          notes: "", synthetic: true, createdAt: 0, archived: false });
+      });
+    });
     list.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
     if (sf === "owed") list = list.filter(p => p.synthetic);
     else if (sf) list = list.filter(p => p.status === sf);
     if (pf) list = list.filter(p => p.property_id === pf);
     if (lf) list = list.filter(p => p.lease_id === lf);
-    if (q) list = list.filter(p => (pmsLeaseLabel(pms().leases.find(l => l.id === p.lease_id)) + " " + pmsMonthText(p.month) + " " + p.method + " " + p.amount + " " + (p.receipt_no || "") + " " + (p.reference || "")).toLowerCase().indexOf(q) !== -1);
+    if (q) list = list.filter(p => (pmsLeaseLabel(pms().leases.find(l => l.id === p.lease_id)) + " " + pmsPaymentFor(p) + " " + p.method + " " + p.amount + " " + (p.receipt_no || "") + " " + (p.reference || "")).toLowerCase().indexOf(q) !== -1);
     if (!list.length) return pmsEmpty("No payments match", "Adjust your filters or record a payment.");
     const canManage = pmsCan("manage");
     const sum = st => list.filter(p => p.status === st).reduce((s, p) => s + C.num(p.amount, 0), 0);
@@ -9535,7 +9560,7 @@ premise: "Fee Simple / As Improved",
       const lease = pms().leases.find(l => l.id === p.lease_id);
       h += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td>' +
         '<td>' + esc(pmsLeaseLabel(lease)) + '</td>' +
-        '<td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td>' +
+        '<td>' + esc(pmsPaymentFor(p) || "—") + '</td>' +
         '<td class="num">' + C.money(p.amount) + (p.synthetic ? '<div class="dim tiny">' + (p.status === "overdue" ? pmsOverdueText(p.date) : "still owed") + '</div>' : "") + '</td>' +
         '<td>' + esc(p.method || "—") + (p.reference ? '<div class="dim tiny">Ref ' + esc(p.reference) + '</div>' : "") + '</td>' +
         '<td>' + pmsPaymentStatusCell(p, lease) + '</td>' +
@@ -9574,7 +9599,7 @@ premise: "Fee Simple / As Improved",
   }
   function pmsPaymentActions(p) {
     if (p.synthetic) {
-      return '<button class="btn btn-primary btn-sm" data-pms-markpaid="' + esc(p.lease_id) + '|' + esc(p.month) + '|' + esc(String(p.amount || 0)) + '">' + icon("check", 13) + ' Mark paid</button>' + pmsReminderLinks(p) + pmsEmailButton(p);
+      return '<button class="btn btn-primary btn-sm" data-pms-markpaid="' + esc(p.lease_id) + '|' + esc(p.month || "") + '|' + esc(String(p.amount || 0)) + '|' + esc(p.charge_id || "") + '">' + icon("check", 13) + ' Mark paid</button>' + pmsReminderLinks(p) + pmsEmailButton(p);
     }
     if (p.status === "submitted") {
       return '<button class="btn btn-primary btn-sm" data-pms-confirm="' + esc(p.id) + '">' + icon("check", 13) + ' Confirm</button>' +
@@ -9758,7 +9783,7 @@ premise: "Fee Simple / As Improved",
       rows = [["Date", "Period", "Property", "Unit", "Tenant", "Amount", "Method", "Status", "Notes", "Receipt No", "Reference"]];
       pmsActivePayments().slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))).forEach(p => {
         const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
-        rows.push([String(p.date || "").slice(0, 10), pmsMonthText(p.month), pmsPropertyTitle(p.property_id), pmsUnitName(p.unit_id), pmsTenantName(p.tenant_id), C.num(p.amount, 0), p.method || "", sc ? sc.label : (p.status || ""), p.notes || "", p.receipt_no || "", p.reference || ""]);
+        rows.push([String(p.date || "").slice(0, 10), pmsPaymentFor(p), pmsPropertyTitle(p.property_id), pmsUnitName(p.unit_id), pmsTenantName(p.tenant_id), C.num(p.amount, 0), p.method || "", sc ? sc.label : (p.status || ""), p.notes || "", p.receipt_no || "", p.reference || ""]);
       });
     } else {
       rows = [["Property", "Monthly Rent", "Collected", "Arrears", "Expenses", "Finished repairs", "Net"]];
@@ -9820,7 +9845,7 @@ premise: "Fee Simple / As Improved",
         const note = p.status === "rejected" && p.reject_reason ? '<div class="dim tiny">' + esc(p.reject_reason) + "</div>" : p.status === "paid" && p.receipt_no ? '<div class="dim tiny pms-ar-no">' + esc(p.receipt_no) + "</div>" : "";
         const ar = p.status === "paid" && p.receipt_no ? '<button type="button" class="btn btn-ghost btn-sm" data-pms-print="receipt:' + esc(p.id) + '">' + icon("print", 13) + " Receipt</button>" : "";
         const proof = pmsHasProof(p) ? pmsProofCell(p) : "";
-        return '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(p.month ? pmsMonthText(p.month) : "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, label) + note + '</td><td>' + (ar || proof ? '<div class="row" style="gap:6px;flex-wrap:wrap">' + ar + proof + "</div>" : '<span class="dim">—</span>') + '</td></tr>';
+        return '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(pmsPaymentFor(p) || "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, label) + note + '</td><td>' + (ar || proof ? '<div class="row" style="gap:6px;flex-wrap:wrap">' + ar + proof + "</div>" : '<span class="dim">—</span>') + '</td></tr>';
       }).join("") + "</table></div>";
   }
   /* Tenant self-service: send proof of a payment, ask for a repair. "local" in
@@ -9992,7 +10017,8 @@ premise: "Fee Simple / As Improved",
       html += '<section class="card card-pad mb-16 pms-rent-card">' +
         '<div class="row spread" style="flex-wrap:wrap;gap:8px;align-items:flex-start"><div><h2 class="pms-rent-place">' + esc(pmsPropertyTitle(l.property_id)) + '</h2><div class="dim">' + esc(pmsUnitName(l.unit_id)) + (ow ? " · Landlord: " + esc(ow.name) : "") + '</div></div>' + pmsStatusBadge(sc, sc ? sc.label : st) + '</div>' +
         '<div class="pms-rent-status ' + line.cls + '"><b>' + esc(line.text) + '</b>' + (line.sub ? '<span>' + esc(line.sub) + '</span>' : "") + '</div>' +
-        (owed.length ? '<div class="pms-owed"><div class="pms-owed-head">What you owe</div>' + owed.map(m => '<div class="pms-owed-row"><span>' + esc(l.rent_type === "lease" ? "Lease total" : m.label) + '<small class="dim"> · due ' + esc(pmsDispDate(m.date)) + '</small></span><b>' + C.money(m.balance) + '</b></div>').join("") + '</div>' : "") +
+        (owed.length || pmsChargesOwed(l).length ? '<div class="pms-owed"><div class="pms-owed-head">What you owe</div>' + owed.map(m => '<div class="pms-owed-row"><span>' + esc(l.rent_type === "lease" ? "Lease total" : m.label) + '<small class="dim"> · due ' + esc(pmsDispDate(m.date)) + '</small></span><b>' + C.money(m.balance) + '</b></div>').join("") +
+          pmsChargesOwed(l).map(c => '<div class="pms-owed-row pms-owed-charge"><span>' + esc(c.label) + '<small class="dim"> · due ' + esc(c.due ? pmsDispDate(pmsDateObj(c.due)) : "") + '</small></span><b>' + C.money(c.balance) + '</b></div>').join("") + '</div>' : "") +
         (sent.length ? '<div class="pms-sent-line">' + icon("info", 14) + " You sent " + C.money(sentTotal) + (sent.length > 1 ? " in " + sent.length + " payments" : "") + ". SEA ESTATES will check it and confirm; it counts once confirmed.</div>" : "") +
         '<div class="pms-rent-meta dim">' + C.money(l.rent) + (l.rent_type === "lease" ? " for the whole lease" : " a month, due on day " + PL().dueDay(l)) + ' · ' + esc(String(l.start || "—").slice(0, 10)) + ' → ' + esc(String(l.end || "—").slice(0, 10)) + '</div>' +
         '<div class="row mt-8 pms-self" style="gap:8px;flex-wrap:wrap">' +
@@ -10135,7 +10161,7 @@ premise: "Fee Simple / As Improved",
     const pays = pmsActivePayments().filter(x => x.lease_id === l.id).slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
     const payRows = pays.map(pay => {
       const sc = PAYMENT_STATUSES.find(x => x.value === pay.status);
-      return '<tr><td class="num">' + esc(String(pay.date || "—").slice(0, 10)) + '</td><td>' + esc(pay.month ? pmsMonthText(pay.month) : "—") + '</td><td class="num">' + C.money(pay.amount) + '</td><td>' + esc(pay.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (pay.status || "—")) + '</td><td>' + esc(pay.notes || "—") + '</td></tr>';
+      return '<tr><td class="num">' + esc(String(pay.date || "—").slice(0, 10)) + '</td><td>' + esc(pmsPaymentFor(pay) || "—") + '</td><td class="num">' + C.money(pay.amount) + '</td><td>' + esc(pay.method || "—") + '</td><td>' + pmsStatusBadge(sc, sc ? sc.label : (pay.status || "—")) + '</td><td>' + esc(pay.notes || "—") + '</td></tr>';
     }).join("");
     const body = '<div class="print-root" id="pms-print-root">' +
       '<div class="print-brand"><h1>Tenant Payable Statement</h1><div class="dim tiny">Generated ' + esc(pmsDispDate(new Date())) + '</div></div>' +
@@ -10147,6 +10173,13 @@ premise: "Fee Simple / As Improved",
       '</div>' +
       '<h3>Payment Schedule</h3>' +
       '<table class="print-sched"><tr><th>Period</th><th>Due Date</th><th class="num">Amount</th><th>Status</th></tr>' + rows + '</table>' +
+      (function () {
+        const cs = pmsLeaseCharges(l);
+        if (!cs.length) return "";
+        const sname = { paid: "Paid", partial: "Part paid", overdue: "Overdue", due: "Due" };
+        return '<h3>Charges</h3><table class="print-sched"><tr><th>Charge</th><th>Due Date</th><th class="num">Amount</th><th class="num">Paid</th><th>Status</th></tr>' +
+          cs.map(c => '<tr><td>' + esc(c.label) + '</td><td class="num">' + esc(c.due ? pmsDispDate(pmsDateObj(c.due)) : "\u2014") + '</td><td class="num">' + C.money(c.amount) + '</td><td class="num">' + C.money(c.paid) + '</td><td>' + sname[c.status] + '</td></tr>').join("") + '</table>';
+      })() +
       '<h3>Payments Recorded</h3>' +
       '<table class="print-pays"><tr><th>Date</th><th>Period</th><th class="num">Amount</th><th>Method</th><th>Status</th><th>Notes</th></tr>' + (payRows || '<tr><td colspan="6">No payments recorded</td></tr>') + '</table>' +
       // Owed to date and the rest of the term are separate: an up-to-date
@@ -10159,6 +10192,59 @@ premise: "Fee Simple / As Improved",
     pmsPrintModal("Tenant Payable — " + pmsTenantName(l.tenant_id), body);
   }
 
+  /* Utilities and other charges on a lease: water, electricity, dues... Each
+   * has an amount and a due date; it is paid with a payment "For" that charge,
+   * which stays out of the rent ledger. */
+  function pmsChargesDialog(leaseId) {
+    const l = pms().leases.find(x => x.id === leaseId);
+    if (!l || !pmsCan("manage")) return;
+    const list = pmsLeaseCharges(l);
+    const scol = { paid: "green", partial: "gold", overdue: "red", due: "gold" };
+    const sname = { paid: "Paid", partial: "Part paid", overdue: "Overdue", due: "Due" };
+    // A list rather than a table: it reads on a phone without sideways swiping.
+    const rows = list.length ? '<div class="col-full pms-chg-list">' + list.map(c =>
+      '<div class="pms-chg-row"><div class="row spread" style="gap:8px;flex-wrap:wrap;align-items:flex-start"><b>' + esc(c.label) + '</b>' + pmsStatusBadge({ color: scol[c.status] }, sname[c.status]) + '</div>' +
+        '<div class="dim tiny">' + C.money(c.amount) + (c.paid > 0 && c.balance > 0 ? ' \u00B7 ' + C.money(c.balance) + ' left' : "") + (c.due ? ' \u00B7 due ' + esc(pmsDispDate(pmsDateObj(c.due))) : "") + (c.note ? ' \u00B7 ' + esc(c.note) : "") + '</div>' +
+        '<div class="row mt-8" style="gap:6px;flex-wrap:wrap">' +
+        (c.balance > 0 ? '<button type="button" class="btn btn-primary btn-sm" data-pms-markpaid="' + esc(l.id) + '|' + esc(c.period || "") + '|' + esc(String(c.balance)) + '|' + esc(c.id) + '">' + icon("check", 13) + ' Mark paid</button>' : "") +
+        (c.paid > 0 ? "" : '<button type="button" class="btn btn-ghost btn-sm" data-pms-chargedel="' + esc(l.id) + '|' + esc(c.id) + '">Remove</button>') + '</div></div>').join("") + '</div>'
+      : '<p class="dim col-full">No charges on this lease yet.</p>';
+    const body = '<p class="col-full dim">' + esc(pmsLeaseLabel(l)) + '</p>' + rows +
+      '<h4 class="col-full" style="margin:8px 0 0">Add a charge</h4>' +
+      pmsField("Type", pmsSel("pms-chg-type", PMS_CHARGE_TYPES.map(t => [t, t]), "Water")) +
+      pmsField("Name (optional)", pmsTxt("pms-chg-label", "", "e.g. Parking slot 12")) +
+      pmsField("Amount (\u20B1) *", pmsNum("pms-chg-amount", "")) +
+      pmsField("Due date *", pmsDate("pms-chg-due", pmsToday())) +
+      pmsField("For month", pmsSel("pms-chg-period", [["", "\u2014"]].concat(pmsStatementMonths().slice(0, 3).reverse().concat([[PL().monthKey(new Date(Date.now() + 31 * 86400000)), PL().monthLabel(PL().monthKey(new Date(Date.now() + 31 * 86400000)))]])), pmsToday().slice(0, 7))) +
+      pmsField("Note", pmsTxt("pms-chg-note", "", "e.g. meter 1234 \u2192 1262"), "", true);
+    pmsModal("Charges", body, "charge", l.id);
+    const sv = $('[data-pms-save="charge"]'); if (sv) sv.innerHTML = icon("plus", 15) + " Add charge";
+  }
+  function saveChargeForm() {
+    const leaseId = $("#pms-modal").getAttribute("data-edit-id");
+    const l = pms().leases.find(x => x.id === leaseId);
+    if (!l) { closePmsModal(); return; }
+    const amount = C.num($("#pms-chg-amount").value, 0);
+    const due = $("#pms-chg-due").value;
+    if (amount <= 0) { toast("Enter the amount of the charge", "err"); return; }
+    if (!due) { toast("Enter when the charge is due", "err"); return; }
+    l.charges = (l.charges || []).concat([{ id: pmsNewId("c"), type: $("#pms-chg-type").value, label: $("#pms-chg-label").value.trim(), amount: amount, due: due, period: $("#pms-chg-period").value, note: $("#pms-chg-note").value.trim(), createdAt: Date.now() }]);
+    l.updatedAt = Date.now();
+    save(); render();
+    toast("Charge added");
+    pmsChargesDialog(l.id);
+  }
+  function pmsRemoveCharge(spec) {
+    const parts = String(spec || "").split("|");
+    const l = pms().leases.find(x => x.id === parts[0]);
+    const c = l && (l.charges || []).find(x => x.id === parts[1]);
+    if (!c) return;
+    if (pmsActivePayments().some(p => p.charge_id === c.id && p.status === "paid")) { toast("This charge has payments; it can't be removed", "err"); return; }
+    c.archived = true; l.updatedAt = Date.now();
+    save(); render();
+    toast("Charge removed");
+    pmsChargesDialog(l.id);
+  }
   function pmsDepositState(l) {
     if (l.deposit_settled_on) {
       return "settled " + String(l.deposit_settled_on).slice(0, 10) + ": " + C.money(C.num(l.deposit_refund, 0)) + " returned" + (C.num(l.deposit_kept, 0) > 0 ? ", " + C.money(C.num(l.deposit_kept, 0)) + " kept" : "");
@@ -10183,21 +10269,21 @@ premise: "Fee Simple / As Improved",
     const props = pmsActiveProperties().filter(p => ownerIds.indexOf(p.owner_id) !== -1);
     const st = PL().monthStatement({ leases: pms().leases, payments: pms().payments, expenses: pms().expenses, maintenance: pms().maintenance }, props.map(p => p.id), key);
     const money = v => C.money(v);
-    const rows = st.rows.map(r => '<tr><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td class="num">' + money(r.collected) + '</td><td class="num">' + money(r.expenses + r.repairs) + '</td><td class="num"><b>' + money(r.net) + '</b></td><td class="num">' + money(r.unpaid) + '</td><td class="num">' + money(r.deposits) + '</td></tr>').join("");
+    const rows = st.rows.map(r => '<tr><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td class="num">' + money(r.collected) + '</td><td class="num">' + money(r.charges) + '</td><td class="num">' + money(r.expenses + r.repairs) + '</td><td class="num"><b>' + money(r.net) + '</b></td><td class="num">' + money(r.unpaid) + '</td><td class="num">' + money(r.deposits) + '</td></tr>').join("");
     const pays = [], spend = [];
     st.rows.forEach(r => {
-      r.payments.forEach(p => pays.push('<tr><td class="num">' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td>' + esc(pmsTenantName(p.tenant_id)) + '</td><td>' + esc(p.month ? pmsMonthText(p.month) : "\u2014") + '</td><td class="num">' + money(C.num(p.amount, 0)) + '</td><td>' + esc(p.receipt_no || "") + '</td></tr>'));
+      r.payments.forEach(p => pays.push('<tr><td class="num">' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td>' + esc(pmsTenantName(p.tenant_id)) + '</td><td>' + esc(pmsPaymentFor(p) || "\u2014") + '</td><td class="num">' + money(C.num(p.amount, 0)) + '</td><td>' + esc(p.receipt_no || "") + '</td></tr>'));
       r.spending.forEach(x => spend.push('<tr><td class="num">' + esc(x.date) + '</td><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td>' + esc(x.what) + '</td><td>' + esc(x.note) + '</td><td class="num">' + money(x.amount) + '</td></tr>'));
     });
     const body = '<div class="pms-st-pick no-print"><label for="pms-st-month">Month</label><select class="input" id="pms-st-month">' + months.map(o => '<option value="' + o[0] + '"' + (o[0] === st.month ? " selected" : "") + '>' + esc(o[1]) + '</option>').join("") + '</select></div>' +
       '<div class="print-root pms-st" id="pms-print-root">' +
       '<div class="print-brand"><h1>Owner Statement</h1><div class="dim tiny">' + esc(st.label) + '</div></div>' +
       '<div class="print-meta"><div><b>Owner:</b> ' + esc(owners.map(o => o.name).join(", ")) + '</div><div><b>Period:</b> ' + esc(st.label) + ' (to ' + esc(pmsDispDate(pmsDateObj(st.end))) + ')</div></div>' +
-      '<table class="print-sched"><tr><th>Property</th><th class="num">Rent received</th><th class="num">Expenses &amp; repairs</th><th class="num">Net</th><th class="num">Unpaid at month end</th><th class="num">Deposits held</th></tr>' + rows +
-      '<tr><td><b>Total</b></td><td class="num"><b>' + money(st.total.collected) + '</b></td><td class="num"><b>' + money(st.total.expenses + st.total.repairs) + '</b></td><td class="num"><b>' + money(st.total.net) + '</b></td><td class="num"><b>' + money(st.total.unpaid) + '</b></td><td class="num"><b>' + money(st.total.deposits) + '</b></td></tr></table>' +
-      '<h3>Rent received</h3>' + (pays.length ? '<table class="print-pays"><tr><th>Date</th><th>Property</th><th>Tenant</th><th>For</th><th class="num">Amount</th><th>Receipt</th></tr>' + pays.join("") + '</table>' : '<p class="dim">No rent received this month.</p>') +
+      '<table class="print-sched"><tr><th>Property</th><th class="num">Rent received</th><th class="num">Charges collected</th><th class="num">Expenses &amp; repairs</th><th class="num">Net</th><th class="num">Unpaid at month end</th><th class="num">Deposits held</th></tr>' + rows +
+      '<tr><td><b>Total</b></td><td class="num"><b>' + money(st.total.collected) + '</b></td><td class="num"><b>' + money(st.total.charges) + '</b></td><td class="num"><b>' + money(st.total.expenses + st.total.repairs) + '</b></td><td class="num"><b>' + money(st.total.net) + '</b></td><td class="num"><b>' + money(st.total.unpaid) + '</b></td><td class="num"><b>' + money(st.total.deposits) + '</b></td></tr></table>' +
+      '<h3>Rent and charges received</h3>' + (pays.length ? '<table class="print-pays"><tr><th>Date</th><th>Property</th><th>Tenant</th><th>For</th><th class="num">Amount</th><th>Receipt</th></tr>' + pays.join("") + '</table>' : '<p class="dim">No rent received this month.</p>') +
       '<h3>Expenses and finished repairs</h3>' + (spend.length ? '<table class="print-pays"><tr><th>Date</th><th>Property</th><th>Type</th><th>Details</th><th class="num">Amount</th></tr>' + spend.join("") + '</table>' : '<p class="dim">None this month.</p>') +
-      '<div class="print-foot"><span>Net is rent received minus expenses and repairs finished in the month. Deposits are held for the tenants and are not income. Prepared by SEA ESTATES \u00B7 Property Management System</span></div>' +
+      '<div class="print-foot"><span>Net is rent and charges received minus expenses and repairs finished in the month (a utility bill paid for the tenant is usually an expense, and the tenant\u2019s payment for it a charge). Deposits are held for the tenants and are not income. Prepared by SEA ESTATES \u00B7 Property Management System</span></div>' +
       '</div>';
     pmsPrintModal("Owner Statement \u2014 " + owners[0].name, body);
     const sel = $("#pms-st-month");
@@ -10209,7 +10295,7 @@ premise: "Fee Simple / As Improved",
     if (!p || p.status !== "paid" || !p.receipt_no) { toast("This payment has no receipt number yet", "err"); return; }
     const lease = pms().leases.find(x => x.id === p.lease_id);
     const place = lease ? pmsPropertyTitle(lease.property_id) + (lease.unit_id ? " \u00B7 " + pmsUnitName(lease.unit_id) : "") : pmsPropertyTitle(p.property_id);
-    const forWhat = (lease && lease.rent_type === "lease" ? "Lease payment" : "Rent" + (p.month ? " for " + pmsMonthText(p.month) : "")) + (place ? " \u2014 " + place : "");
+    const forWhat = (p.charge_id ? pmsPaymentFor(p) : lease && lease.rent_type === "lease" ? "Lease payment" : "Rent" + (p.month ? " for " + pmsMonthText(p.month) : "")) + (place ? " \u2014 " + place : "");
     const day = d => d ? pmsDispDate(pmsDateObj(String(d).slice(0, 10))) : "\u2014";
     const body = '<div class="print-root pms-ar" id="pms-print-root">' +
       '<div class="print-brand"><h1>Acknowledgement Receipt</h1><div class="pms-ar-num">No. <b>' + esc(p.receipt_no) + '</b></div></div>' +
@@ -10272,7 +10358,7 @@ premise: "Fee Simple / As Improved",
 
     const payRows = pays.map(pay => {
       const psc2 = PAYMENT_STATUSES.find(x => x.value === pay.status);
-      return '<tr><td class="num">' + esc(String(pay.date || "—").slice(0, 10)) + '</td><td>' + esc(pay.month ? pmsMonthText(pay.month) : "—") + '</td><td>' + esc(pmsTenantName(pay.tenant_id)) + '</td><td class="num">' + C.money(pay.amount) + '</td><td>' + esc(pay.method || "—") + '</td><td>' + pmsStatusBadge(psc2, psc2 ? psc2.label : (pay.status || "—")) + '</td><td>' + esc(pay.notes || "—") + '</td></tr>';
+      return '<tr><td class="num">' + esc(String(pay.date || "—").slice(0, 10)) + '</td><td>' + esc(pmsPaymentFor(pay) || "—") + '</td><td>' + esc(pmsTenantName(pay.tenant_id)) + '</td><td class="num">' + C.money(pay.amount) + '</td><td>' + esc(pay.method || "—") + '</td><td>' + pmsStatusBadge(psc2, psc2 ? psc2.label : (pay.status || "—")) + '</td><td>' + esc(pay.notes || "—") + '</td></tr>';
     }).join("");
 
     const loc = [p.address, p.barangay, p.city, p.province].filter(Boolean).join(", ");
@@ -10437,7 +10523,7 @@ premise: "Fee Simple / As Improved",
   function openPaymentEditor(id) {
     const pre = !id && pmsPayPrefill ? pmsPayPrefill : null;
     pmsPayPrefill = null;
-    const d = id ? pms().payments.find(x => x.id === id) || {} : (pre ? { lease_id: pre.lease_id, month: pre.month, amount: pre.amount, status: "paid" } : {});
+    const d = id ? pms().payments.find(x => x.id === id) || {} : (pre ? { lease_id: pre.lease_id, month: pre.month, amount: pre.amount, charge_id: pre.charge_id || "", status: "paid" } : {});
     // "Confirm" on a payment a tenant sent: the same form, set to Paid.
     const confirming = !!(id && pmsConfirmId === id && d.status === "submitted");
     pmsConfirmId = null;
@@ -10454,6 +10540,7 @@ premise: "Fee Simple / As Improved",
     let body = pmsField("Lease *", pmsSel("pms-pay-lease", leases.map(l => [l.id, pmsLeaseLabel(l)]), leaseId), "", true) +
       pmsField("Amount (\u20B1)", pmsNum("pms-pay-amount", d.amount != null ? d.amount : (firstOwed ? firstOwed.balance : lease.rent))) +
       pmsField("Payment Date", pmsDate("pms-pay-date", d.date || pmsToday())) +
+      pmsField("For", '<select class="input" id="pms-pay-for">' + pmsPayForOptions(lease, d.charge_id) + '</select>', "Rent, or one of the lease's charges (water, electricity, dues\u2026).") +
       pmsField("Period (month)", pmsSel("pms-pay-month", pmsMonthOptions(monthSel, lease), monthSel), "A payment bigger than one month pays the next unpaid months too.") +
       pmsField("Method", pmsSel("pms-pay-method", PAYMENT_METHODS.map(m => [m, m]), d.method || "Cash")) +
       pmsField("Status", pmsSel("pms-pay-status", statusOpts, statusNow), "Only Paid counts as money received. Use Not cleared yet for a check that hasn't cleared." + (d.receipt_no ? " Receipt " + esc(d.receipt_no) + "." : " A paid payment gets the next acknowledgement receipt number.")) +
@@ -10480,20 +10567,34 @@ premise: "Fee Simple / As Improved",
       if (monthEl) monthEl.innerHTML = pmsMonthOptions(key, l).map(o => '<option value="' + esc(o[0]) + '"' + (o[0] === key ? " selected" : "") + ">" + esc(o[1]) + "</option>").join("");
       const amountEl = $("#pms-pay-amount");
       if (amountEl) amountEl.value = C.fmtNum(owed ? owed.balance : C.num(l.rent, 0));
+      const forEl = $("#pms-pay-for");
+      if (forEl) forEl.innerHTML = pmsPayForOptions(l, "");
+    });
+    // Choosing a charge suggests what is left of it.
+    const forEl = $("#pms-pay-for");
+    if (forEl) forEl.addEventListener("change", () => {
+      const l = pms().leases.find(x => x.id === ($("#pms-pay-lease") || {}).value);
+      const c = l && pmsLeaseCharges(l).find(x => x.id === forEl.value);
+      const amountEl = $("#pms-pay-amount");
+      if (c && amountEl && c.balance > 0) amountEl.value = C.fmtNum(c.balance);
     });
   }
   let pmsPayPrefill = null;
+  function pmsPayForOptions(lease, current) {
+    const open = lease ? pmsLeaseCharges(lease).filter(c => c.balance > 0 || c.id === current) : [];
+    return '<option value="">Rent</option>' + open.map(c => '<option value="' + esc(c.id) + '"' + (c.id === current ? " selected" : "") + '>' + esc(c.label + (c.balance > 0 ? " \u2014 " + C.money(c.balance) + " left" : "")) + '</option>').join("");
+  }
   let pmsConfirmId = null;
   // "Mark paid" on a due row: the payment form, filled in for that month.
   function pmsMarkPaid(spec) {
     const parts = String(spec || "").split("|");
-    pmsPayPrefill = { lease_id: parts[0], month: parts[1], amount: C.num(parts[2], 0) };
+    pmsPayPrefill = { lease_id: parts[0], month: parts[1], amount: C.num(parts[2], 0), charge_id: parts[3] || "" };
     openPaymentEditor(null);
   }
   // Rent reminder by text message or Viber, written out and ready to send (P9).
   function pmsReminderText(p, tenant, lease) {
     const overdue = p.date && String(p.date).slice(0, 10) < pmsToday();
-    return "Hi " + (tenant.name || "") + ", this is a reminder from SEA ESTATES that your rent of " + C.money(p.amount) + " for " + pmsMonthText(p.month) + " (" + pmsPropertyTitle(lease.property_id) + ") " +
+    return "Hi " + (tenant.name || "") + ", this is a reminder from SEA ESTATES that your " + (p.charge_id ? pmsPaymentFor(p) + " bill of " + C.money(p.amount) : "rent of " + C.money(p.amount) + " for " + pmsMonthText(p.month)) + " (" + pmsPropertyTitle(lease.property_id) + ") " +
       (overdue ? "was due on " + pmsDispDate(pmsDateObj(String(p.date).slice(0, 10))) + " and is still unpaid" : "is due" + (p.date ? " on " + pmsDispDate(pmsDateObj(String(p.date).slice(0, 10))) : "")) +
       ". If you have already paid, you can send the proof in your tenant portal. Thank you!";
   }
@@ -10653,6 +10754,7 @@ premise: "Fee Simple / As Improved",
     if (kind === "lease") return saveLeaseForm();
     if (kind === "payment") return savePaymentForm();
     if (kind === "reject") return savePaymentReject();
+    if (kind === "charge") return saveChargeForm();
     if (kind === "maintenance") return saveMaintForm();
     if (kind === "expense") return saveExpenseForm();
     if (kind === "document") return saveDocumentForm();
@@ -11363,6 +11465,13 @@ premise: "Fee Simple / As Improved",
       reference: ($("#pms-pay-ref") ? $("#pms-pay-ref").value.trim() : existing.reference || ""),
       notes: $("#pms-pay-notes").value.trim()
     };
+    // Paying a charge (water, electricity...) instead of rent: it stays out of the rent ledger.
+    const forEl = $("#pms-pay-for");
+    data.charge_id = forEl ? forEl.value : (existing.charge_id || "");
+    if (data.charge_id) {
+      const ch = lease && (lease.charges || []).find(x => x.id === data.charge_id);
+      if (ch && ch.period) data.month = PL().monthKey(ch.period);
+    }
     if (data.status === "paid" && existing.status === "submitted") data.confirmed_at = new Date().toISOString();
     // Who the receipt says received the money: the company, or the broker for their own rentals.
     if (data.status === "paid" && !existing.received_by) data.received_by = userRole() === "broker" ? (currentUser.name || currentUser.email || "Broker") : "SEA ESTATES";
@@ -13086,6 +13195,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (ed) { const parts = ed.getAttribute("data-pms-edit").split(":"); openPmsEditor(parts[0], parts[1]); return; }
       const ppr = e.target.closest("[data-pms-print]");
       if (ppr) { const parts = ppr.getAttribute("data-pms-print").split(":"); if (parts[0] === "lease") pmsPrintPayable(parts[1]); else if (parts[0] === "receipt") pmsPrintReceipt(parts[1]); return; }
+      const chg = e.target.closest("[data-pms-charges]");
+      if (chg) { pmsChargesDialog(chg.getAttribute("data-pms-charges")); return; }
+      const chd = e.target.closest("[data-pms-chargedel]");
+      if (chd) { pmsRemoveCharge(chd.getAttribute("data-pms-chargedel")); return; }
       const os = e.target.closest("[data-pms-ownerstmt]");
       if (os) { pmsOwnerStatement(os.getAttribute("data-pms-ownerstmt") === "mine" ? pmsMyOwnerIds() : [os.getAttribute("data-pms-ownerstmt")]); return; }
       const cf = e.target.closest("[data-pms-confirm]");
