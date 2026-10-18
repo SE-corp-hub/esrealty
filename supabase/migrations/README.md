@@ -11,7 +11,10 @@ tables, functions, row rules, rights, storage rules and buckets. No data.
 3. Run the database tests locally or let GitHub run them:
    `bash tests/db/run.sh` (needs a Postgres you can create roles on; set `PGHOST`,
    `PGPORT`, `PGUSER`, `PGPASSWORD`).
-4. After the code is live, run the file in the Supabase SQL editor.
+4. After the code is live, apply it: GitHub > Actions > **Apply database migration**
+   > Run workflow, type the file name, choose **test** first (runs it and rolls it
+   back, nothing changes), then **apply**. (Pasting it into the Supabase SQL editor
+   works too.)
 
 ## Refreshing the baseline
 After changes have been applied live, run `supabase/phase4_schema_export.sql` in

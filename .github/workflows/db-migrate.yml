@@ -1,0 +1,48 @@
+name: Apply database migration
+
+# Run by hand: Actions -> Apply database migration -> Run workflow.
+# Applies one numbered file from supabase/migrations/ to the live database,
+# after the code that needs it is live. Choose "test" first to run it and roll
+# it back (nothing changes), then "apply". The files are safe to run twice.
+# Uses the SUPABASE_ACCESS_TOKEN secret the function deploys already use.
+
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: "File in supabase/migrations, e.g. 0003_short_name.sql"
+        required: true
+      mode:
+        description: "test = run and roll back; apply = change the live database"
+        required: true
+        default: test
+        type: choice
+        options: [test, apply]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: mrngaqtbaseewzcsogqi
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Run the file
+        env:
+          FILE: ${{ inputs.file }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$MODE" = "apply" ]; then node tools/apply_migration.js "$FILE"; else node tools/apply_migration.js "$FILE" --test; fi
+      - name: Health check
+        if: inputs.mode == 'apply'
+        run: node supabase/check-backend.js || true
