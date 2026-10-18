@@ -6,14 +6,14 @@
 > restored. Wording and values are unchanged.
 >
 > Executed and superseded. Retained as the record of the Phase 0-1 build; the
-> shipped artifacts are `supabase/compliance_registry.sql`,
-> `supabase/ad_posts.sql`, `js/compliance_due.js`, `js/attribution.js`,
+> shipped artifacts are `supabase/archive/compliance_registry.sql`,
+> `supabase/archive/ad_posts.sql`, `js/compliance_due.js`, `js/attribution.js`,
 > `tests/compliance_registry_e2e.js`, `tests/ads_repo_e2e.js` and
 > `tests/source_attribution_node.js`.
 
 # Phase 0–1 Build Spec — Compliance Foundation + Lead-Gen Automation
 
-**Target stack:** the existing ES Realty CRM (static JS `js/app.js`), Supabase (RLS), mirroring `supabase/crm_leads.sql`, the CRM Autopilot engine (`agent_tasks` + `agent_dispatch`), and the market-scan backend. This is the build spec `ph-realtor` executes; follow the same discipline as `docs/specs/agent-autopilot.md` (no fabrication, evidence ledger, Approve/Reject suggestions, gates at the end).
+**Target stack:** the existing ES Realty CRM (static JS `js/app.js`), Supabase (RLS), mirroring `supabase/archive/crm_leads.sql`, the CRM Autopilot engine (`agent_tasks` + `agent_dispatch`), and the market-scan backend. This is the build spec `ph-realtor` executes; follow the same discipline as `docs/specs/agent-autopilot.md` (no fabrication, evidence ledger, Approve/Reject suggestions, gates at the end).
 
 ---
 
@@ -23,7 +23,7 @@ Objective: every license, permit, bond, and accreditation has a single tracked r
 
 ### 0.1 Compliance registry (new CRM tab "Compliance")
 
-**Supabase** — new table `compliance_registry` (create via new SQL file `supabase/compliance_registry.sql`):
+**Supabase** — new table `compliance_registry` (create via new SQL file `supabase/archive/compliance_registry.sql`):
 
 ```sql
 id            uuid pk
@@ -121,7 +121,7 @@ perfViews, perfInquiries   -- filled in when a channel API/sync is available
 
 ## Walkthrough checklist (1-hour quick start to do TODAY)
 
-1. Add `supabase/compliance_registry.sql`; run it; add `compliance_*` view + modal.
+1. Add `supabase/archive/compliance_registry.sql`; run it; add `compliance_*` view + modal.
 
 2. Wire the Autopilot `compliance` kind into `agentClassify` + the edge ladder.
 

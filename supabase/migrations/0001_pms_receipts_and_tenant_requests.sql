@@ -1,7 +1,7 @@
 -- PMS: numbered acknowledgement receipts, and tenants sending payment proof and
 -- repair requests (2026-10-17).
 --
--- Run AFTER supabase/pms_v3_books.sql, in the Supabase SQL editor. Safe to run
+-- Run AFTER supabase/archive/pms_v3_books.sql, in the Supabase SQL editor. Safe to run
 -- more than once.
 --
 -- 1. Acknowledgement receipts. Every payment marked "paid" gets the next number

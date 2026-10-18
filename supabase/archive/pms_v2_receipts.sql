@@ -1,6 +1,6 @@
 -- PMS receipt photos in private storage (2026-10-17)
 --
--- Run AFTER supabase/pms_v2_tables.sql, in the Supabase SQL editor.
+-- Run AFTER supabase/archive/pms_v2_tables.sql, in the Supabase SQL editor.
 -- Safe to run more than once.
 --
 -- Receipt photos used to sit inside each payment record as a picture encoded

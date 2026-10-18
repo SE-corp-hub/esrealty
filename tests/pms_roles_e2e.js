@@ -2,7 +2,7 @@
 /* Who gets Property Management (owner's decision, 2026-10-17): super-admins and
    brokers manage it; owners and tenants get their portals; agents, buyers and
    sellers get nothing. On the live site each broker manages a book of their
-   own (supabase/pms_v3_books.sql, tested against the database separately);
+   own (supabase/archive/pms_v3_books.sql, tested against the database separately);
    this checks the menus and screens in the offline demo. */
 window.__msChecks = [];
 window.__msDone = false;

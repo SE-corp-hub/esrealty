@@ -333,8 +333,8 @@ where broker_id in (
 -- Ads are client-side only (localStorage state.ads) until the ad_posts table is
 -- shipped, so there is nothing to clean for Ads here.
 -- GUARDED: every block checks to_regclass first, so this section is a no-op
--- (NOTICES only) until you deploy supabase/compliance_registry.sql and
--- supabase/agent_tasks.sql. It can never abort with "relation does not exist".
+-- (NOTICES only) until you deploy supabase/archive/compliance_registry.sql and
+-- supabase/archive/agent_tasks.sql. It can never abort with "relation does not exist".
 
 -- PREVIEW (guarded):
 do $$

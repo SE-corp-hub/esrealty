@@ -499,13 +499,13 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     return pool.filter(u => (!q || [u.full_name, u.email, u.agency].join(" ").toLowerCase().indexOf(q) >= 0) && (!role || u.role === role)).length;
   }
   /* ---- Property Management cloud store ----
-   * "tables": one table per record type (supabase/pms_v2_tables.sql). Each save
+   * "tables": one table per record type (supabase/archive/pms_v2_tables.sql). Each save
    * sends only the records that changed, one at a time, and names the version
    * it replaces, so a stale phone cannot overwrite newer data. Owners and
    * tenants read only their own rows (row rules on the server).
    * "legacy": the old single JSON record (pms_workspaces), used until that SQL
    * has been run.
-   * Books (supabase/pms_v3_books.sql): each approved broker manages a book of
+   * Books (supabase/archive/pms_v3_books.sql): each approved broker manages a book of
    * their own; super-admins share the company book and can look at broker
    * books read-only. Until that script has run there is one shared PMS and only
    * super-admins manage it. */
@@ -6101,7 +6101,7 @@ html+='</div></div>';
   function pfGuard(what){ if(!pfCanWrite()){ toast("Admin only — "+(what||"this action")+".","err"); return false; } return true; }
   // ---- Supabase cloud persistence for the normalized Portfolio tables ----
   // Mirrors the pre-selling cloud pattern (psCloud/psLoadFromCloud). Portfolio
-  // rows live in their own tables (supabase/portfolio_a_investor.sql) and are
+  // rows live in their own tables (supabase/archive/portfolio_a_investor.sql) and are
   // loaded into state on login; every portfolio writer also upserts the same
   // row to its table when a signed-in (non-demo, approved) user is active.
   // If the tables have not been created yet, the app silently falls back to
@@ -10675,7 +10675,7 @@ premise: "Fee Simple / As Improved",
     }).catch(() => fail("The receipt could not be opened. Check your connection and try again."));
   }
 
-  /* Receipt photos (PMS analysis S6). Once supabase/pms_v2_receipts.sql has
+  /* Receipt photos (PMS analysis S6). Once supabase/archive/pms_v2_receipts.sql has
    * run, each photo is a private file at payments/<payment id>/<file> in the
    * pms-receipts bucket, and only people who can read the payment can open it.
    * Until then (and in the offline demo) the photo stays inside the record. */
@@ -14514,7 +14514,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (error && isNetworkError(error)) { cloudWaiting.leads[rec.id] = rec; showNetState(); return; }
       if (error) {
         if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.crm_leads"/i)) {
-          toast("Leads sync needs the crm_leads table — run supabase/crm_leads.sql in the SQL Editor.", "err");
+          toast("Leads sync needs the crm_leads table — run supabase/archive/crm_leads.sql in the SQL Editor.", "err");
         } else {
           toast("Could not sync lead: " + esc(friendlyErr(error.message)), "err");
         }
@@ -14568,7 +14568,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       const { error } = await SB.from("ad_posts").upsert(row, { onConflict: "id" });
       if (error) {
         if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.ad_posts"/i)) {
-          toast("Ads sync needs the ad_posts table — run supabase/ad_posts.sql in the SQL Editor.", "err");
+          toast("Ads sync needs the ad_posts table — run supabase/archive/ad_posts.sql in the SQL Editor.", "err");
         } else {
           toast("Could not sync ad: " + esc(friendlyErr(error.message)), "err");
         }
@@ -14625,7 +14625,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (res.merged) applyMerged(state.transactions, rec.id, res.merged, ["documents", "activity"]);
       if (error && isNetworkError(error)) { cloudWaiting.transactions[rec.id] = rec; showNetState(); return false; }
       if (error) {
-        if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.broker_transactions"/i)) toast("Transaction sharing needs the broker_transactions table — run supabase/broker_transactions.sql in the SQL Editor.", "err");
+        if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.broker_transactions"/i)) toast("Transaction sharing needs the broker_transactions table — run supabase/archive/broker_transactions.sql in the SQL Editor.", "err");
         else toast("Could not sync transaction: " + esc(friendlyErr(error.message)), "err");
         return false;
       }
@@ -14917,7 +14917,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const members = brokerTeamMembers();
     let body = "";
     if (brokerTeamStatus === "loading") body = '<div class="dim">Loading linked agents...</div>';
-    else if (brokerTeamStatus === "error") body = '<div class="notice-banner err">' + icon("alert", 14) + '<span>Could not load linked agents. Run <b>supabase/crm_leads.sql</b> in the Supabase SQL Editor.</span></div>';
+    else if (brokerTeamStatus === "error") body = '<div class="notice-banner err">' + icon("alert", 14) + '<span>Could not load linked agents. Run <b>supabase/archive/crm_leads.sql</b> in the Supabase SQL Editor.</span></div>';
     else if (!members.length) body = '<div class="empty"><div class="dim">No agents are linked to this broker account.</div></div>';
     const leads = state.leads || [];
     const rows = members.map(m => {
@@ -16443,7 +16443,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (btn) btn.disabled = false;
       const msg = String(error.message || error || "");
       if (/23514|check constraint/i.test(msg)) {
-        toast("Your database still has legacy playbook rules. Run supabase/fix_playbook_constraints.sql once in the Supabase SQL Editor, then click Load starter playbooks again.", "err");
+        toast("Your database still has legacy playbook rules. Run supabase/archive/fix_playbook_constraints.sql once in the Supabase SQL Editor, then click Load starter playbooks again.", "err");
       } else {
         toast("Could not load starter playbooks: " + esc(friendlyErr(error.message)), "err");
       }
@@ -16572,7 +16572,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const active = all.filter(x => x.status === "active").length;
     const draft = all.filter(x => x.status === "draft").length;
     const archived = all.filter(x => x.status === "archived").length;
-    const migration = cloudPlaybooksReady === "missing" ? '<div class="notice-banner pb-migration">' + icon("shield", 15) + '<span><b>Database setup required.</b> Run <code>supabase/sales_playbooks.sql</code> in the Supabase SQL Editor before creating cloud playbooks.</span></div>' : "";
+    const migration = cloudPlaybooksReady === "missing" ? '<div class="notice-banner pb-migration">' + icon("shield", 15) + '<span><b>Database setup required.</b> Run <code>supabase/archive/sales_playbooks.sql</code> in the Supabase SQL Editor before creating cloud playbooks.</span></div>' : "";
     const loadError = cloudPlaybooksReady === "error" ? '<div class="notice-banner">Could not load Sales Playbooks. Refresh and try again.</div>' : "";
     const cards = filtered.length ? filtered.map((rec, index) => {
       const objective = rec.sections.objective || rec.summary || "No objective added yet.";
@@ -16584,7 +16584,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   }
   function playbookEditor(id) {
     if (!playbookAllowed()) { toast("Super Admin access required", "err"); return; }
-    if (!playbookWritable()) { toast(cloudPlaybooksReady === "missing" ? "Run supabase/sales_playbooks.sql first" : "Playbooks are unavailable until the cloud data loads successfully", "err"); return; }
+    if (!playbookWritable()) { toast(cloudPlaybooksReady === "missing" ? "Run supabase/archive/sales_playbooks.sql first" : "Playbooks are unavailable until the cloud data loads successfully", "err"); return; }
     let rec = id ? (state.salesPlaybooks || []).map(normalizePlaybook).find(x => x.id === id) : null;
     if (!rec) {
       rec = normalizePlaybook({ status: "draft", sortOrder: (state.salesPlaybooks || []).length });
@@ -16645,7 +16645,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       sessionStorage.removeItem("esrealty_playbook_new_draft");
       closePlaybookModal(); render(); toast(isNew ? "Sales playbook created" : "Sales playbook updated");
     } catch (error) {
-      if (playbookMissingSchema(error)) { cloudPlaybooksReady = "missing"; toast("Run supabase/sales_playbooks.sql before saving", "err"); }
+      if (playbookMissingSchema(error)) { cloudPlaybooksReady = "missing"; toast("Run supabase/archive/sales_playbooks.sql before saving", "err"); }
       else if (playbookPermissionError(error)) { toast("The server rejected this save: your session does not pass the Super Admin check. Sign out, sign back in, and confirm this account is an approved Super Admin in Users & Access.", "err"); }
       else toast("Could not save playbook: " + esc(friendlyErr(error.message)), "err");
       if (button) button.disabled = false;
@@ -17198,7 +17198,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       if (remoteProfilesError) {
         const low = String(remoteProfilesError).toLowerCase();
         const cacheHint = (low.indexOf("could not find the function") >= 0 || low.indexOf("schema cache") >= 0 || low.indexOf("column") >= 0 || low.indexOf("structure of query does not match") >= 0 || low.indexOf("return type") >= 0)
-          ? '<p class="dim mt-8">This usually means a database migration has not been run yet. In the Supabase SQL Editor, run <b>supabase/fix_users_access_complete.sql</b> (whole file), then <b>notify pgrst, \'reload schema\';</b> and retry.</p>'
+          ? '<p class="dim mt-8">This usually means a database migration has not been run yet. In the Supabase SQL Editor, run <b>supabase/archive/fix_users_access_complete.sql</b> (whole file), then <b>notify pgrst, \'reload schema\';</b> and retry.</p>'
           : "";
         gridHtml = '<div class="card card-pad empty"><h3>Could not load registrations</h3><p class="dim">' + esc(remoteProfilesError) + '</p>' + cacheHint + '<button class="btn btn-primary mt-8" data-cloud-retry>' + icon("refresh", 14) + ' Retry</button></div>';
       } else if (!remoteProfilesLoaded) {

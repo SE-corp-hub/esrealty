@@ -10,7 +10,7 @@
 -- version it last saw, and otherwise merges the two (its own fields win, and
 -- nobody's notes, activity or documents are lost).
 --
--- ad_posts only exists where supabase/ad_posts.sql has been run; it is skipped
+-- ad_posts only exists where supabase/archive/ad_posts.sql has been run; it is skipped
 -- otherwise.
 
 do $$

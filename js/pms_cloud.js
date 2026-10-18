@@ -4,7 +4,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  /* Property Management cloud store (supabase/pms_v2_tables.sql): one table
+  /* Property Management cloud store (supabase/archive/pms_v2_tables.sql): one table
    * per record type. Each row holds the app's full record in `data`, plus the
    * link columns the row rules need (who owns a property, which tenant a lease
    * belongs to, which login a person has). Pure and dependency-free so it can
@@ -29,7 +29,7 @@
   var COMPANY_BOOK = "00000000-0000-0000-0000-000000000000";
   var ORDER = ["owners", "tenants", "properties", "units", "leases", "payments", "maintenance", "expenses", "documents"];
 
-  // book: the manager's book id (supabase/pms_v3_books.sql). Left out until
+  // book: the manager's book id (supabase/archive/pms_v3_books.sql). Left out until
   // that script has run, so the row fits the tables either way.
   function toRow(kind, rec, book) {
     var k = KINDS[kind];

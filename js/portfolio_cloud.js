@@ -5,7 +5,7 @@
   "use strict";
 
   // Pure mapping layer between the normalized Supabase Portfolio tables
-  // (supabase/portfolio_a_investor.sql) and the app's in-memory state
+  // (supabase/archive/portfolio_a_investor.sql) and the app's in-memory state
   // shapes used by the Portfolio UI. Dependency-free, browser/Node
   // compatible, fully round-trippable.
 

@@ -1,6 +1,6 @@
 -- PMS books: brokers and super-admins each manage their own records (2026-10-17)
 --
--- Run AFTER supabase/pms_v2_tables.sql and supabase/pms_v2_receipts.sql, in the
+-- Run AFTER supabase/archive/pms_v2_tables.sql and supabase/archive/pms_v2_receipts.sql, in the
 -- Supabase SQL editor. Safe to run more than once.
 --
 -- Decided by the owner (claude/pms-broker-books-2026-10-17.md):

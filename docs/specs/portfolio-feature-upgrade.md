@@ -20,7 +20,7 @@ Existing Portfolio work includes:
   construction summary, preselling rollup, and reconciliation rules.
 - Local/demo state has `portfolioAccounts`, `cashEntries`,
   `constructionProjects`, `constructionPhases`, and `portfolioTab`.
-- `supabase/portfolio_a_investor.sql` defines Portfolio accounts, cash entries,
+- `supabase/archive/portfolio_a_investor.sql` defines Portfolio accounts, cash entries,
   construction projects, and construction phases with RLS and indexes.
 - Construction project and phase modals exist and are responsive.
 - Cash Ledger has modal entry/account forms, direction-aware purpose fields,

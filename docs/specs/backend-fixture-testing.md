@@ -20,7 +20,7 @@ Verify the repository before changing it. The current architecture includes:
 - `market-scan/vercel/api/store_chains.js` as the shared Store Locator engine.
 - `market-scan/vercel/api/market-scan/stores.js` as the Vercel Store Locator
   mirror.
-- `supabase/broker_transactions.sql`, `preselling.sql`, PMS SQL, and related
+- `supabase/archive/broker_transactions.sql`, `preselling.sql`, PMS SQL, and related
   patches as normalized/shared backend capabilities.
 - Supabase Storage for private document-vault files and listing photos.
 - Browser fallback behavior: local/demo mode, cloud Supabase mode, local worker

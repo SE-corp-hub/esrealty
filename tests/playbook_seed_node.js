@@ -1,6 +1,6 @@
 /* Guards the generated starter-playbook seed against the canonical domains the
  * app and DB enforce (PLAYBOOK_STAGES/CATEGORIES/TYPES in js/app.js and the
- * CHECK constraints in supabase/sales_playbooks.sql). Without this, "Load
+ * CHECK constraints in supabase/archive/sales_playbooks.sql). Without this, "Load
  * starter playbooks" silently failed on 4 of 10 rows because the seed carried
  * retired stages (Qualification/Presentation/Closing/Follow-up). */
 const fs = require("fs");
@@ -41,7 +41,7 @@ function run() {
   const unknownKeys = seed.filter(p => Object.keys(p.sections || {}).every(k => SECTION_KEYS.indexOf(k) < 0)).map(p => p.title);
   c("every seed section uses a recognised key", unknownKeys.length === 0, unknownKeys.join(", ") || "ok");
 
-  const sql = fs.readFileSync(path.join(__dirname, "..", "supabase", "seed_playbooks.sql"), "utf8");
+  const sql = fs.readFileSync(path.join(__dirname, "..", "supabase", "archive", "seed_playbooks.sql"), "utf8");
   const badSql = sql.match(/\$\$(Qualification|Presentation|Closing|Follow-up)\$\$/g) || [];
   c("SQL seed has no retired stage literals", badSql.length === 0, badSql.join(", ") || "ok");
 

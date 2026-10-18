@@ -160,27 +160,30 @@ micro-backend, **not** the static site.
 ## Supabase Setup
 
 The browser client is configured in `js/supabase-config.js` using a publishable key only.
-Before enabling server-backed auth and persistence, run `supabase/schema.sql` in
-**Supabase Dashboard → SQL Editor**. It creates user profiles, owner-scoped state, audit
-events, a private document bucket and row-level security policies.
+Never put an `sb_secret_...` or service-role key in this project.
 
-Never put an `sb_secret_...` or service-role key in this project. Promote administrators
-only through the SQL Editor, using the commented command at the bottom of
-`supabase/schema.sql`.
+The database schema lives in `supabase/migrations/`:
 
-Run `supabase/patch_registration_approval.sql` after the initial schema to enable
-registration approval. New accounts are created as `pending`; an approved `super-admin`
-can open **Users & Access**, assign a role, and approve or reject each registration.
+- `0000_baseline.sql` rebuilds the whole schema (tables, functions, row-level security,
+  rights, storage rules and buckets; no data). It is generated from the live database
+  with `supabase/phase4_schema_export.sql` (last refreshed 2026-10-18).
+- Numbered files (`0001_…`, `0002_…`) are the changes since; each is safe to run twice.
 
-Core scripts, in order: `schema.sql`, `patch_registration_approval.sql`, `crm_leads.sql`,
-`shared_listings.sql`, `sales_playbooks.sql`, `seed_playbooks.sql`, `notifications.sql`,
-`preselling.sql`, `team_performance.sql`, `cobroking.sql`, `pms_normalized.sql`,
-`patch_presell_buyer_link.sql`, `patch_presell_financing.sql`, `security_hardening.sql`.
-For the public listings REST API continue with `listing_platform_schema.sql` and
-`listing_api.sql`, then deploy the `listing-api` Edge Function using its README. The Value
-Guide additionally needs `compliance_registry.sql` and `ad_posts.sql`. Existing projects
-must run these patches in the SQL Editor; updating the static files alone does not change
-deployed database policies.
+For a new project, run the baseline and then the numbered files, in order, in
+**Supabase Dashboard → SQL Editor**. For the live project, run only new numbered files,
+after the code that needs them is live. How to add a change and refresh the baseline:
+[`supabase/migrations/README.md`](supabase/migrations/README.md). The database tests
+(`tests/db/run.sh`, run on GitHub for every push) build a throwaway database the same way.
+
+Promote the first administrator through the SQL Editor after creating the account:
+
+```
+update public.profiles set role = 'super-admin'
+where id = (select id from auth.users where email = 'your-email@example.com');
+```
+
+The older one-off scripts are kept in `supabase/archive/` for reference only (see its
+README); everything in them that is still used is in the baseline.
 
 ### SEO and PWA
 
@@ -231,8 +234,10 @@ Bell notifications can also go out by email (Resend) and SMS (Semaphore, PH):
      SEMAPHORE_API_KEY=<key> NOTIFY_DISPATCH_SECRET=<random-string>
    ```
 
-2. Run `supabase/notify_dispatch.sql` (adds dispatch-tracking columns; contains a
-   commented `pg_cron` block that auto-calls the function every 5 minutes).
+2. Add the dispatch-tracking columns: `supabase/archive/notify_dispatch.sql` has them
+   (and a commented `pg_cron` block that calls the function every 5 minutes). They are
+   not in the live database yet; when this is switched on, copy them into the next
+   numbered file in `supabase/migrations/` and run that.
 3. Behaviour: emails go to every user with an address; SMS only for **approval** and
    assignment events.
 

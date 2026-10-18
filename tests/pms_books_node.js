@@ -1,4 +1,4 @@
-// PMS books (supabase/pms_v3_books.sql, admin-create-account, js/app.js).
+// PMS books (supabase/archive/pms_v3_books.sql, admin-create-account, js/app.js).
 // Owner's decision 2026-10-17: only brokers and super-admins manage PMS, each
 // their own records; super-admins can look at broker books read-only; logins a
 // broker makes for owners and tenants work straight away. The full behaviour is
@@ -9,7 +9,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const root = path.join(__dirname, "..");
-const sql = fs.readFileSync(path.join(root, "supabase/pms_v3_books.sql"), "utf8");
+const sql = fs.readFileSync(path.join(root, "supabase/archive/pms_v3_books.sql"), "utf8");
 const fn = fs.readFileSync(path.join(root, "supabase/functions/admin-create-account/index.ts"), "utf8");
 const app = fs.readFileSync(path.join(root, "js/app.js"), "utf8");
 const cloud = require("../js/pms_cloud.js");

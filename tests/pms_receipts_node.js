@@ -1,4 +1,4 @@
-// PMS receipt photos in private storage (supabase/pms_v2_receipts.sql).
+// PMS receipt photos in private storage (supabase/archive/pms_v2_receipts.sql).
 // The app and the SQL must agree on the bucket and the file layout, or every
 // upload silently falls back to keeping the photo inside the record.
 "use strict";
@@ -6,10 +6,10 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const root = path.join(__dirname, "..");
-const sql = fs.readFileSync(path.join(root, "supabase/pms_v2_receipts.sql"), "utf8");
-const tables = fs.readFileSync(path.join(root, "supabase/pms_v2_tables.sql"), "utf8");
+const sql = fs.readFileSync(path.join(root, "supabase/archive/pms_v2_receipts.sql"), "utf8");
+const tables = fs.readFileSync(path.join(root, "supabase/archive/pms_v2_tables.sql"), "utf8");
 const app = fs.readFileSync(path.join(root, "js/app.js"), "utf8");
-const books = fs.readFileSync(path.join(root, "supabase/pms_v3_books.sql"), "utf8");
+const books = fs.readFileSync(path.join(root, "supabase/archive/pms_v3_books.sql"), "utf8");
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; console.log("[PASS] " + name); };
 
@@ -22,7 +22,7 @@ ok("staff can upload, replace and delete", /create policy "pms receipts staff al
 ok("others read a receipt only if they can read its payment", /create policy "pms receipts linked read"[\s\S]*for select[\s\S]*foldername\(name\)\)\[1\] = 'payments'[\s\S]*from public\.pms_payments p[\s\S]*p\.id = \(storage\.foldername\(name\)\)\[2\]/.test(sql));
 ok("an archived payment's receipt is not shared", /and not p\.archived/.test(sql));
 ok("no one else gets an insert rule", (sql.match(/create policy/g) || []).length === 2);
-ok("the staff check it relies on comes from pms_v2_tables.sql", /create or replace function public\.pms_is_staff\(\)/.test(tables) && /Run AFTER supabase\/pms_v2_tables\.sql/.test(sql));
+ok("the staff check it relies on comes from pms_v2_tables.sql", /create or replace function public\.pms_is_staff\(\)/.test(tables) && /Run AFTER supabase\/archive\/pms_v2_tables\.sql/.test(sql));
 ok("the app stores files at <book>/<payment id>/ (payments/ before books)", /const path = \(pmsBooks \? pmsMyBook\(\) : "payments"\) \+ "\/" \+ paymentId \+ "\/"/.test(app));
 // Books (pms_v3_books.sql) replace the staff-only write rule with one per book.
 ok("books: the staff-only write rule is replaced", /drop policy if exists "pms receipts staff all"/.test(books) && /create policy "pms receipts manager write"/.test(books));

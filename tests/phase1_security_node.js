@@ -7,7 +7,7 @@ const fs = require("fs");
 const path = require("path");
 const root = path.join(__dirname, "..");
 const read = f => fs.readFileSync(path.join(root, f), "utf8");
-const sql = read("supabase/phase1_security_rest.sql");
+const sql = read("supabase/archive/phase1_security_rest.sql");
 let passed = 0;
 const ok = (name, cond) => { assert.ok(cond, name); passed++; console.log("[PASS] " + name); };
 
@@ -22,7 +22,7 @@ ok("licences: approved accounts can't change their own PRC/RESA", /create trigge
 ok("audit rows: written by the server only", /drop policy if exists "audit owner insert" on public\.audit_events/.test(sql));
 // 6
 ok("old account function: nobody can call it", /revoke all on function public\.admin_create_account\(text, text, text, public\.app_role, text, text, text, uuid\) from public, anon, authenticated/.test(sql));
-ok("old account script: stops before changing anything", /^-- SUPERSEDED/.test(read("supabase/admin_create_account.sql")) && /raise exception 'admin_create_account\.sql is superseded/.test(read("supabase/admin_create_account.sql")));
+ok("old account script: stops before changing anything", /^-- SUPERSEDED/.test(read("supabase/archive/admin_create_account.sql")) && /raise exception 'admin_create_account\.sql is superseded/.test(read("supabase/archive/admin_create_account.sql")));
 // 7
 ok("listing photos: uploads by approved publishers and super-admins only", /create policy "listing photos insert own folder"[\s\S]*listing_current_user_can_publish\(\) or public\.is_super_admin\(\)/.test(sql));
 // 8

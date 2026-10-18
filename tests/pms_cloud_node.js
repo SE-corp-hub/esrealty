@@ -1,5 +1,5 @@
 // Property Management cloud mapping (js/pms_cloud.js) against the v2 tables
-// in supabase/pms_v2_tables.sql: every kind has a table, the link columns the
+// in supabase/archive/pms_v2_tables.sql: every kind has a table, the link columns the
 // row rules need are filled from the record, and only changed records are sent.
 "use strict";
 const assert = require("assert");
@@ -9,7 +9,7 @@ const PC = require("../js/pms_cloud.js");
 let passed = 0;
 const ok = (name, cond, detail) => { assert.ok(cond, name + (detail ? " — " + detail : "")); passed++; console.log("[PASS] " + name); };
 
-const sql = fs.readFileSync(path.join(__dirname, "..", "supabase", "pms_v2_tables.sql"), "utf8");
+const sql = fs.readFileSync(path.join(__dirname, "..", "supabase", "archive", "pms_v2_tables.sql"), "utf8");
 const APP_KINDS = ["properties", "units", "owners", "tenants", "leases", "payments", "maintenance", "expenses", "documents"];
 
 ok("every PMS list in the app has a table", APP_KINDS.every(k => PC.KINDS[k]) && PC.ORDER.length === APP_KINDS.length);
@@ -43,7 +43,7 @@ const out = PC.changed([a, b, c, { id: "" }], synced);
 ok("only edited and new records are sent", out.length === 2 && out[0] === b && out[1] === c);
 ok("a failed save (fp cleared) is sent again", PC.changed([a], { a: { fp: null } }).length === 1);
 
-// Books (supabase/pms_v3_books.sql): the row names its book once that script has run.
+// Books (supabase/archive/pms_v3_books.sql): the row names its book once that script has run.
 ok("a row names its book when one is given", PC.toRow("units", { id: "u1", property_id: "p1" }, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").book_id === "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 ok("without books the row has no book column", !("book_id" in PC.toRow("units", { id: "u1" })));
 ok("the book is a column, not part of the saved record", !("book_id" in PC.toRow("units", { id: "u1" }, PC.COMPANY_BOOK).data));

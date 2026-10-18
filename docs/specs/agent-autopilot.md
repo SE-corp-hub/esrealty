@@ -44,7 +44,7 @@ build the minimum that carries them natively.
   pings it when envs are set. Env-gated so the local app is unaffected.
 
 ### Phase 1 — Task queue + worker
-- `supabase/agent_tasks.sql`:
+- `supabase/archive/agent_tasks.sql`:
   - `public.agent_tasks(id uuid pk, lead_id text not null, kind text, reason text,
     payload jsonb, due_at timestamptz, lease_until timestamptz, lease_id uuid,
     state text check in ('due','working','done','cancelled'),
@@ -140,7 +140,7 @@ For a lead `l` with status `s`, `createdAt`, `updatedAt`, `nextFollowUp`,
    Supabase yields 0 errors; edge function + cron respond `{ok:true}`.
 
 ### Files
-- `supabase/agent_tasks.sql` (new)
+- `supabase/archive/agent_tasks.sql` (new)
 - `supabase/functions/agent-dispatch/index.ts` (new)
 - `market-scan/vercel/vercel.json` (cron)
 - `market-scan/vercel/api/agent-dispatch.js` (new)
@@ -151,7 +151,7 @@ For a lead `l` with status `s`, `createdAt`, `updatedAt`, `nextFollowUp`,
 ### Adjacent feature masters (Phase 0/1, built and gated)
 - `docs/specs/phase-0-1-compliance-and-leadgen.md` — the build spec for compliance foundation + lead-gen
   automation whose acceptance is now green.
-- `supabase/ad_posts.sql` — shared Ads repository + RLS (deploy step #4 in
+- `supabase/archive/ad_posts.sql` — shared Ads repository + RLS (deploy step #4 in
   `DEPLOY_GUIDE.md`).
 - `js/attribution.js` / `js/compliance_due.js` — UMD helpers shared by the app
   and node tests (`window.ESREALTY_ATTR` / `window.ESREALTY_DUE`; app.js falls

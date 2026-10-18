@@ -141,7 +141,7 @@ const REST_TABLES = [
   { table: "saved_listings", note: "saved listings" },
   { table: "agent_tasks", note: "agent follow-up tasks" },
   { table: "pms_workspaces", note: "old property management record (kept for rollback)", anonDenied: true },
-  // Property Management v2 (supabase/pms_v2_tables.sql): visitors have no rights at all.
+  // Property Management v2 (supabase/archive/pms_v2_tables.sql): visitors have no rights at all.
   { table: "pms_owners", note: "PMS owners", anonDenied: true },
   { table: "pms_tenants", note: "PMS tenants", anonDenied: true },
   { table: "pms_properties", note: "PMS properties", anonDenied: true },
@@ -156,7 +156,7 @@ const REST_TABLES = [
 
 // Columns other code depends on. A missing column answers 400 (42703).
 const REST_COLUMNS = [
-  { table: "profiles", column: "email", note: "co-broke invites, fb-leads, notify-dispatch (supabase/phase3_broken_features.sql)" },
+  { table: "profiles", column: "email", note: "co-broke invites, fb-leads, notify-dispatch (supabase/archive/phase3_broken_features.sql)" },
 ];
 
 async function probeTable(entry) {
@@ -169,7 +169,7 @@ async function probeTable(entry) {
     let extra = "";
     if (got === 404) extra = "  <-- MISSING — run the matching supabase/*.sql";
     if (got === 401 || got === 403) extra = "  [present; no anonymous privilege]";
-    if (entry.anonDenied && got === 200) extra = "  <-- VISITORS CAN QUERY THIS TABLE — run supabase/pms_v2_tables.sql / phase1_security_rest.sql again";
+    if (entry.anonDenied && got === 200) extra = "  <-- VISITORS CAN QUERY THIS TABLE — run supabase/archive/pms_v2_tables.sql / phase1_security_rest.sql again";
     return { table: entry.table, note: entry.note, got, ok, extra };
   } catch (e) {
     return { table: entry.table, note: entry.note, got: "ERR", ok: false, extra: " [not reachable: " + (e && e.message || e) + "]" };

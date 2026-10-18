@@ -4,39 +4,15 @@ Three deployment targets. Steps 1–3 enable the CRM Autopilot (queued agent tas
 run by a timed edge function); Step 4 covers the store-locator dev-only route that
 was just added.
 
-## 1. Supabase — schema (run once)
+## 1. Supabase — schema
 
-Run these in the Supabase **SQL Editor** (Project → SQL Editor → New query →
-paste file → Run), in order. All are safe to re-run any number of times:
-1. `supabase/crm_leads.sql` — CRM + RLS helpers (`crm_lead_broker_of` etc.)
-2. `supabase/compliance_registry.sql` — `compliance_records` (self-contained: it
-   now defines `address_book_profile_accessible`, its RLS helper).
-3. `supabase/agent_tasks.sql` — `agent_tasks` + `agent_steps` + the four
-   service-role worker RPCs (`agent_claim_due` / `agent_complete` /
-   `agent_cancel` / `agent_snooze_lead`) and `agent_set_step` (invoker-rights,
-   RLS-gated so reps can only resolve steps on leads they own/supervise).
-4. `supabase/ad_posts.sql` — `ad_posts`: the shared Ads repository (one row per
-   posted listing ad: listing, channel, status, url, `perfViews`/`perfInquiries`,
-   owner). Self-contained like the rest — it defines its own RLS helpers
-   (`ad_posts_keep_creator` / `ad_posts_broker_of(uuid)` /
-   `ad_posts_user_is_approved`), an **idempotent migration** that seeds existing
-   rows from `app_state.payload->'ads'` (existing rows win on any re-run), and
-   issues `notify pgrst` so REST enumerates the table immediately. Run it after
-   the app has been used so historical ads migrate too.
+The tables and functions this needs (`crm_leads`, `compliance_records`, `agent_tasks` /
+`agent_steps` with their worker RPCs, `ad_posts`) are part of the live database and of
+`supabase/migrations/0000_baseline.sql`, which rebuilds the whole schema for a new
+project (see `supabase/migrations/README.md`). Nothing to run on the live project.
 
-> **Gotcha (fixed 2026-09-19):** `compliance_registry.sql` originally referenced
-> `address_book_profile_accessible(text, uuid)` in its RLS policies without ever
-> defining it, so `create policy` failed with
-> `ERROR: 42883 ... function address_book_profile_accessible(text, uuid) does
-> not exist`. The file now ships with the definition. If you deployed an older
-> copy, re-run the current file.
-
-CLI alternative:
-```
-supabase login
-supabase link --project-ref <ref>
-supabase db push   # or: psql "$DATABASE_URL" -f agent_tasks.sql
-```
+The original scripts (`supabase/archive/crm_leads.sql`, `compliance_registry.sql`,
+`agent_tasks.sql`, `ad_posts.sql`) are kept in `supabase/archive/` for reference.
 
 ## 2. Supabase — deploy the `agent-dispatch` edge function
 

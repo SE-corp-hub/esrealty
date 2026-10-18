@@ -8,8 +8,8 @@ existing `profiles` roles; it does not create another authentication system.
 
 Run these files in the Supabase SQL Editor in order:
 
-1. `supabase/listing_platform_schema.sql`
-2. `supabase/listing_api.sql`
+1. `supabase/archive/listing_platform_schema.sql`
+2. `supabase/archive/listing_api.sql`
 
 Set a private rate-limit salt, then deploy from the project root:
 

@@ -1,4 +1,4 @@
-/* Public Supabase connection settings. RLS policies in supabase/schema.sql
+/* Public Supabase connection settings. RLS policies in supabase/archive/schema.sql
  * protect data; never place a secret/service-role key in this browser file. */
 (function () {
   "use strict";
