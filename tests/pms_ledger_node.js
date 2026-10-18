@@ -181,4 +181,16 @@ eq("statement: charges collected apart from rent", [stC.total.collected, stC.tot
 eq("statement: net counts charges collected against the bill", stC.total.net, 300);
 eq("statement: unpaid at month end includes unpaid charges", stC.total.unpaid, 40000 + 500);
 
+// withholding tax on rent (company tenants, EWT with BIR Form 2307)
+eq("withholding: 5% of the rent, to the centavo", [L.withholding(10000, 5), L.withholding(12345.67, 5), L.withholding(0, 5)], [500, 617.28, 0]);
+eq("withholding: a rent payment counts cash plus tax withheld", L.credited({ amount: 9500, withheld: 500 }), 10000);
+eq("withholding: a charge payment counts its cash only", L.credited({ amount: 800, withheld: 40, charge_id: "c1" }), 800);
+const wl = lease();
+const wpays = [pay({ month: "2026-06", amount: 9500, withheld: 500, date: "2026-06-05" })];
+const wLed = L.ledger(wl, wpays, TODAY);
+eq("withholding: the month is paid in full", wLed.months.find(m => m.key === "2026-06").status, "paid");
+eq("withholding: paid total counts the tax withheld", wLed.paidTotal, 10000);
+const stW = L.monthStatement({ leases: [Object.assign({}, wl, { property_id: "p1" })], payments: [pay({ month: "2026-10", amount: 9500, withheld: 500, date: "2026-10-05" })], expenses: [], maintenance: [] }, ["p1"], "2026-10");
+eq("statement: rent counts in full and the tax withheld is shown", [stW.total.collected, stW.total.withheld, stW.total.net], [10000, 500, 10000]);
+
 console.log("\npms_ledger_node: " + passed + " checks passed");

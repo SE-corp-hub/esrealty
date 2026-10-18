@@ -2494,3 +2494,8 @@ a.btn, a.btn:hover { text-decoration: none; }
 .pms-chg-list { display: flex; flex-direction: column; gap: 8px; }
 .pms-chg-row { border: 1px solid var(--stroke, #e3e9f1); border-radius: 10px; padding: 10px 12px; }
 .pms-chg-row .dim.tiny { margin-top: 4px; overflow-wrap: anywhere; }
+
+/* Withholding tax (company tenants, BIR Form 2307) */
+.pms-check { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; font-weight: 500; }
+.pms-check input { width: 20px; height: 20px; flex: none; accent-color: var(--accent); }
+.pms-ar-wht { margin: 12px 0 0; padding: 10px 12px; border: 1px dashed var(--stroke-strong, #cbd4df); border-radius: 8px; line-height: 1.6; }

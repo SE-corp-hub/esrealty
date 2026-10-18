@@ -175,6 +175,10 @@ jobs:
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test pms_charges_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test pms_charges_e2e
       - name: e2e pms_charges_e2e (mobile)
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test pms_charges_e2e -Mobile || pwsh -NoProfile -File tests/run_all.ps1 -Test pms_charges_e2e -Mobile
+      - name: e2e pms_withholding_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test pms_withholding_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test pms_withholding_e2e
+      - name: e2e pms_withholding_e2e (mobile)
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test pms_withholding_e2e -Mobile || pwsh -NoProfile -File tests/run_all.ps1 -Test pms_withholding_e2e -Mobile
       - name: e2e photo_thumbs_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test photo_thumbs_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test photo_thumbs_e2e
       - name: e2e photo_thumbs_e2e (mobile)

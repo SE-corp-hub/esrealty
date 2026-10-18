@@ -88,11 +88,23 @@
     return out;
   }
 
+  /* What a payment pays off. A company tenant that withholds tax on rent
+   * (EWT, BIR Form 2307) pays the cash less the tax and pays the tax to the
+   * BIR for the landlord: both count against the rent. Charges (water,
+   * electricity...) carry no withholding here. */
+  function credited(p) {
+    return num(p && p.amount) + (p && !p.charge_id ? num(p.withheld) : 0);
+  }
+  // Tax withheld on a rent amount at a rate in percent, to the centavo.
+  function withholding(amount, ratePct) {
+    return Math.round(num(amount) * num(ratePct)) / 100;
+  }
+
   // Rent received: paid payments of the lease, except those for a charge
   // (water, electricity, dues...), which are kept apart (chargeStatus).
   function received(lease, payments) {
     return (payments || []).filter(function (p) {
-      return p && !p.archived && p.lease_id === lease.id && p.status === "paid" && num(p.amount) > 0 && !p.charge_id;
+      return p && !p.archived && p.lease_id === lease.id && p.status === "paid" && credited(p) > 0 && !p.charge_id;
     });
   }
 
@@ -124,7 +136,7 @@
     months.forEach(function (m) { byKey[m.key] = m; });
     var pool = 0, paidTotal = 0;
     received(lease, payments).forEach(function (p) {
-      var amt = num(p.amount);
+      var amt = credited(p);
       paidTotal += amt;
       var target = lease.rent_type === "lease" ? months[0] : byKey[monthKey(p.month)];
       if (target) {
@@ -270,12 +282,13 @@
     var propOf = function (p) { return leaseProp[p.lease_id] || p.property_id; };
     var inMonth = function (d) { return dateOnly(d).slice(0, 7) === key; };
     var rows = {};
-    var row = function (id) { return rows[id] || (rows[id] = { property_id: id, collected: 0, charges: 0, expenses: 0, repairs: 0, unpaid: 0, deposits: 0, payments: [], spending: [] }); };
+    var row = function (id) { return rows[id] || (rows[id] = { property_id: id, collected: 0, withheld: 0, charges: 0, expenses: 0, repairs: 0, unpaid: 0, deposits: 0, payments: [], spending: [] }); };
     (propIds || []).forEach(row);
     (data.payments || []).forEach(function (p) {
       if (!p || p.archived || p.status !== "paid" || !ids[propOf(p)] || !inMonth(p.date)) return;
       var r = row(propOf(p));
-      if (p.charge_id) r.charges += num(p.amount); else r.collected += num(p.amount);
+      // Rent counts in full (cash plus tax withheld); the tax is shown apart too.
+      if (p.charge_id) r.charges += num(p.amount); else { r.collected += credited(p); r.withheld += num(p.withheld); }
       r.payments.push(p);
     });
     (data.expenses || []).forEach(function (e) {
@@ -296,9 +309,9 @@
     // Net counts charges collected too: the matching bill is usually an expense.
     var list = Object.keys(rows).map(function (id) { var r = rows[id]; r.net = r.collected + r.charges - r.expenses - r.repairs; return r; });
     var total = list.reduce(function (t, r) {
-      ["collected", "charges", "expenses", "repairs", "net", "unpaid", "deposits"].forEach(function (k) { t[k] += r[k]; });
+      ["collected", "withheld", "charges", "expenses", "repairs", "net", "unpaid", "deposits"].forEach(function (k) { t[k] += r[k]; });
       return t;
-    }, { collected: 0, charges: 0, expenses: 0, repairs: 0, net: 0, unpaid: 0, deposits: 0 });
+    }, { collected: 0, withheld: 0, charges: 0, expenses: 0, repairs: 0, net: 0, unpaid: 0, deposits: 0 });
     return { month: key, label: monthLabel(key), end: end, rows: list, total: total };
   }
 
@@ -312,6 +325,6 @@
     endLimit: endLimit, daysBetween: daysBetween, dueDateFor: dueDateFor, daysLate: daysLate,
     receiptNo: receiptNo, nextReceiptNo: nextReceiptNo, amountInWords: amountInWords,
     depositHeld: depositHeld, depositNote: depositNote, monthStatement: monthStatement, lastDayOf: lastDayOf,
-    chargeStatus: chargeStatus, chargeLabel: chargeLabel
+    chargeStatus: chargeStatus, chargeLabel: chargeLabel, credited: credited, withholding: withholding
   };
 });

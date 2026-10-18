@@ -9078,7 +9078,7 @@ premise: "Fee Simple / As Improved",
   // What a manager can choose when recording money: received, or not cleared yet (a check).
   const PAYMENT_FORM_STATUSES = ["paid", "pending"];
   // Filter choices on the Payments list; "owed" is every unpaid month, due or overdue.
-  const PAYMENT_FILTERS = [{ value: "owed", label: "Owed (due or overdue)" }].concat(PAYMENT_STATUSES.filter(s => s.value !== "late"));
+  const PAYMENT_FILTERS = [{ value: "owed", label: "Owed (due or overdue)" }].concat(PAYMENT_STATUSES.filter(s => s.value !== "late"), [{ value: "form2307", label: "BIR Form 2307 to collect" }]);
   // "From deposit": part of the security deposit used for unpaid rent at move-out.
   const PAYMENT_METHODS = ["Cash", "Bank Transfer", "GCash", "Maya", "Check", "From deposit"];
   const MAINT_PRIORITIES = [["high", "High"], ["medium", "Medium"], ["low", "Low"]];
@@ -9149,7 +9149,17 @@ premise: "Fee Simple / As Improved",
     return pmsTenantName(l.tenant_id) + " \u00B7 " + pmsPropertyTitle(l.property_id) + " " + pmsUnitName(l.unit_id);
   }
   function pmsPaySum(list, statuses) {
-    return list.filter(p => statuses.indexOf(p.status) !== -1).reduce((s, p) => s + C.num(p.amount, 0), 0);
+    return list.filter(p => statuses.indexOf(p.status) !== -1).reduce((s, p) => s + (p.status === "paid" ? PL().credited(p) : C.num(p.amount, 0)), 0);
+  }
+  // Company tenants withhold tax on rent (EWT) and give a BIR Form 2307: the rate in %, or 0.
+  function pmsWhtRate(lease) {
+    const t = lease && pms().tenants.find(x => x.id === lease.tenant_id);
+    return t && t.withholds ? (C.num(t.wht_rate, 0) > 0 ? C.num(t.wht_rate, 0) : 5) : 0;
+  }
+  // The amount, plus the tax withheld on it, for lists.
+  function pmsAmountCell(p) {
+    const w = p.charge_id ? 0 : C.num(p.withheld, 0);
+    return C.money(p.amount) + (w > 0 ? '<div class="dim tiny pms-wht-note">+ ' + C.money(w) + ' tax withheld \u00B7 ' + (p.form2307 ? "2307 received" : "2307 to collect") + '</div>' : "");
   }
   /* Rent figures come from one ledger (js/pms_ledger.js): months are billed
    * from the first due date on or after move-in to the end (or termination)
@@ -9165,7 +9175,7 @@ premise: "Fee Simple / As Improved",
     const leaseProp = {};
     pms().leases.forEach(l => { leaseProp[l.id] = l.property_id; });
     const propOf = p => leaseProp[p.lease_id] || p.property_id;
-    const collected = pmsActivePayments().filter(p => p.status === "paid" && ids.has(propOf(p))).reduce((s, p) => s + C.num(p.amount, 0), 0);
+    const collected = pmsActivePayments().filter(p => p.status === "paid" && ids.has(propOf(p))).reduce((s, p) => s + PL().credited(p), 0);
     const expenses = pmsActiveExpenses().filter(e => ids.has(e.property_id)).reduce((s, e) => s + C.num(e.amount, 0), 0);
     const work = pmsActiveMaintenance().filter(m => ids.has(m.property_id));
     const repairs = work.filter(m => m.status === "completed").reduce((s, m) => s + C.num(m.cost, 0), 0);
@@ -9579,14 +9589,16 @@ premise: "Fee Simple / As Improved",
     });
     list.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
     if (sf === "owed") list = list.filter(p => p.synthetic);
+    else if (sf === "form2307") list = list.filter(p => !p.synthetic && p.status === "paid" && !p.charge_id && C.num(p.withheld, 0) > 0 && !p.form2307);
     else if (sf) list = list.filter(p => p.status === sf);
     if (pf) list = list.filter(p => p.property_id === pf);
     if (lf) list = list.filter(p => p.lease_id === lf);
     if (q) list = list.filter(p => (pmsLeaseLabel(pms().leases.find(l => l.id === p.lease_id)) + " " + pmsPaymentFor(p) + " " + p.method + " " + p.amount + " " + (p.receipt_no || "") + " " + (p.reference || "")).toLowerCase().indexOf(q) !== -1);
     if (!list.length) return pmsEmpty("No payments match", "Adjust your filters or record a payment.");
     const canManage = pmsCan("manage");
-    const sum = st => list.filter(p => p.status === st).reduce((s, p) => s + C.num(p.amount, 0), 0);
+    const sum = st => pmsPaySum(list, [st]);
     const paid = sum("paid"), pending = sum("pending"), late = sum("late"), due = sum("due"), overdue = sum("overdue"), sent = sum("submitted");
+    const withheld = list.filter(p => p.status === "paid" && !p.charge_id).reduce((s, p) => s + C.num(p.withheld, 0), 0);
     let banner = "";
     if (lf) {
       const lease = pms().leases.find(x => x.id === lf);
@@ -9598,7 +9610,7 @@ premise: "Fee Simple / As Improved",
       h += '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td>' +
         '<td>' + esc(pmsLeaseLabel(lease)) + '</td>' +
         '<td>' + esc(pmsPaymentFor(p) || "—") + '</td>' +
-        '<td class="num">' + C.money(p.amount) + (p.synthetic ? '<div class="dim tiny">' + (p.status === "overdue" ? pmsOverdueText(p.date) : "still owed") + '</div>' : "") + '</td>' +
+        '<td class="num">' + pmsAmountCell(p) + (p.synthetic ? '<div class="dim tiny">' + (p.status === "overdue" ? pmsOverdueText(p.date) : "still owed") + '</div>' : "") + '</td>' +
         '<td>' + esc(p.method || "—") + (p.reference ? '<div class="dim tiny">Ref ' + esc(p.reference) + '</div>' : "") + '</td>' +
         '<td>' + pmsPaymentStatusCell(p, lease) + '</td>' +
         '<td>' + pmsProofCell(p) + '</td>' +
@@ -9610,6 +9622,7 @@ premise: "Fee Simple / As Improved",
       (overdue > 0 ? '<span class="badge red">Overdue ' + C.money(overdue) + '</span>' : "") +
       (due > 0 ? '<span class="badge gold">Due ' + C.money(due) + '</span>' : "") +
       (paid > 0 || !sf ? '<span class="badge green">Paid ' + C.money(paid) + '</span>' : "") +
+      (withheld > 0 ? '<span class="badge blue" title="Included in Paid: tax company tenants withheld and paid to the BIR (BIR Form 2307)">of which tax withheld ' + C.money(withheld) + '</span>' : "") +
       (sent > 0 ? '<span class="badge blue">Sent by tenants, to check ' + C.money(sent) + '</span>' : "") +
       (pending > 0 ? '<span class="badge gold">Not cleared yet ' + C.money(pending) + '</span>' : "") +
       (late > 0 ? '<span class="badge red">Old "late" entries ' + C.money(late) + '</span>' : "") + '</div>';
@@ -9817,10 +9830,11 @@ premise: "Fee Simple / As Improved",
         if (total > 0) rows.push([pmsPropertyTitle(l.property_id), pmsUnitName(l.unit_id), pmsTenantName(l.tenant_id)].concat(b, [total]));
       });
     } else if (kind === "payments") {
-      rows = [["Date", "Period", "Property", "Unit", "Tenant", "Amount", "Method", "Status", "Notes", "Receipt No", "Reference"]];
+      rows = [["Date", "Period", "Property", "Unit", "Tenant", "Amount", "Tax withheld", "BIR 2307 received", "Method", "Status", "Notes", "Receipt No", "Reference"]];
       pmsActivePayments().slice().sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))).forEach(p => {
         const sc = PAYMENT_STATUSES.find(x => x.value === p.status);
-        rows.push([String(p.date || "").slice(0, 10), pmsPaymentFor(p), pmsPropertyTitle(p.property_id), pmsUnitName(p.unit_id), pmsTenantName(p.tenant_id), C.num(p.amount, 0), p.method || "", sc ? sc.label : (p.status || ""), p.notes || "", p.receipt_no || "", p.reference || ""]);
+        const w = p.charge_id ? 0 : C.num(p.withheld, 0);
+        rows.push([String(p.date || "").slice(0, 10), pmsPaymentFor(p), pmsPropertyTitle(p.property_id), pmsUnitName(p.unit_id), pmsTenantName(p.tenant_id), C.num(p.amount, 0), w, w > 0 ? (p.form2307 ? "Yes" : "No") : "", p.method || "", sc ? sc.label : (p.status || ""), p.notes || "", p.receipt_no || "", p.reference || ""]);
       });
     } else {
       rows = [["Property", "Monthly Rent", "Collected", "Arrears", "Expenses", "Finished repairs", "Net"]];
@@ -9882,7 +9896,7 @@ premise: "Fee Simple / As Improved",
         const note = p.status === "rejected" && p.reject_reason ? '<div class="dim tiny">' + esc(p.reject_reason) + "</div>" : p.status === "paid" && p.receipt_no ? '<div class="dim tiny pms-ar-no">' + esc(p.receipt_no) + "</div>" : "";
         const ar = p.status === "paid" && p.receipt_no ? '<button type="button" class="btn btn-ghost btn-sm" data-pms-print="receipt:' + esc(p.id) + '">' + icon("print", 13) + " Receipt</button>" : "";
         const proof = pmsHasProof(p) ? pmsProofCell(p) : "";
-        return '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(pmsPaymentFor(p) || "—") + '</td><td class="num">' + C.money(p.amount) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, label) + note + '</td><td>' + (ar || proof ? '<div class="row" style="gap:6px;flex-wrap:wrap">' + ar + proof + "</div>" : '<span class="dim">—</span>') + '</td></tr>';
+        return '<tr><td>' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(pmsPaymentFor(p) || "—") + '</td><td class="num">' + pmsAmountCell(p) + '</td><td>' + esc(p.method || "—") + '</td><td>' + pmsStatusBadge(sc, label) + note + '</td><td>' + (ar || proof ? '<div class="row" style="gap:6px;flex-wrap:wrap">' + ar + proof + "</div>" : '<span class="dim">—</span>') + '</td></tr>';
       }).join("") + "</table></div>";
   }
   /* Tenant self-service: send proof of a payment, ask for a repair. "local" in
@@ -10310,7 +10324,10 @@ premise: "Fee Simple / As Improved",
     const rows = st.rows.map(r => '<tr><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td class="num">' + money(r.collected) + '</td><td class="num">' + money(r.charges) + '</td><td class="num">' + money(r.expenses + r.repairs) + '</td><td class="num"><b>' + money(r.net) + '</b></td><td class="num">' + money(r.unpaid) + '</td><td class="num">' + money(r.deposits) + '</td></tr>').join("");
     const pays = [], spend = [];
     st.rows.forEach(r => {
-      r.payments.forEach(p => pays.push('<tr><td class="num">' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td>' + esc(pmsTenantName(p.tenant_id)) + '</td><td>' + esc(pmsPaymentFor(p) || "\u2014") + '</td><td class="num">' + money(C.num(p.amount, 0)) + '</td><td>' + esc(p.receipt_no || "") + '</td></tr>'));
+      r.payments.forEach(p => {
+        const w = p.charge_id ? 0 : C.num(p.withheld, 0);
+        pays.push('<tr><td class="num">' + esc(String(p.date || "").slice(0, 10)) + '</td><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td>' + esc(pmsTenantName(p.tenant_id)) + '</td><td>' + esc(pmsPaymentFor(p) || "\u2014") + '</td><td class="num">' + money(PL().credited(p)) + (w > 0 ? '<div class="dim tiny">' + money(C.num(p.amount, 0)) + ' cash + ' + money(w) + ' tax withheld</div>' : "") + '</td><td>' + esc(p.receipt_no || "") + '</td></tr>');
+      });
       r.spending.forEach(x => spend.push('<tr><td class="num">' + esc(x.date) + '</td><td>' + esc(pmsPropertyTitle(r.property_id)) + '</td><td>' + esc(x.what) + '</td><td>' + esc(x.note) + '</td><td class="num">' + money(x.amount) + '</td></tr>'));
     });
     const body = '<div class="pms-st-pick no-print"><label for="pms-st-month">Month</label><select class="input" id="pms-st-month">' + months.map(o => '<option value="' + o[0] + '"' + (o[0] === st.month ? " selected" : "") + '>' + esc(o[1]) + '</option>').join("") + '</select></div>' +
@@ -10321,7 +10338,9 @@ premise: "Fee Simple / As Improved",
       '<tr><td><b>Total</b></td><td class="num"><b>' + money(st.total.collected) + '</b></td><td class="num"><b>' + money(st.total.charges) + '</b></td><td class="num"><b>' + money(st.total.expenses + st.total.repairs) + '</b></td><td class="num"><b>' + money(st.total.net) + '</b></td><td class="num"><b>' + money(st.total.unpaid) + '</b></td><td class="num"><b>' + money(st.total.deposits) + '</b></td></tr></table>' +
       '<h3>Rent and charges received</h3>' + (pays.length ? '<table class="print-pays"><tr><th>Date</th><th>Property</th><th>Tenant</th><th>For</th><th class="num">Amount</th><th>Receipt</th></tr>' + pays.join("") + '</table>' : '<p class="dim">No rent received this month.</p>') +
       '<h3>Expenses and finished repairs</h3>' + (spend.length ? '<table class="print-pays"><tr><th>Date</th><th>Property</th><th>Type</th><th>Details</th><th class="num">Amount</th></tr>' + spend.join("") + '</table>' : '<p class="dim">None this month.</p>') +
-      '<div class="print-foot"><span>Net is rent and charges received minus expenses and repairs finished in the month (a utility bill paid for the tenant is usually an expense, and the tenant\u2019s payment for it a charge). Deposits are held for the tenants and are not income. Prepared by SEA ESTATES \u00B7 Property Management System</span></div>' +
+      '<div class="print-foot"><span>Net is rent and charges received minus expenses and repairs finished in the month (a utility bill paid for the tenant is usually an expense, and the tenant\u2019s payment for it a charge). ' +
+        (st.total.withheld > 0 ? 'Rent received includes ' + money(st.total.withheld) + ' tax withheld by company tenants and paid to the BIR for the owner (BIR Form 2307, a credit against the owner\u2019s income tax). ' : "") +
+        'Deposits are held for the tenants and are not income. Prepared by SEA ESTATES \u00B7 Property Management System</span></div>' +
       '</div>';
     pmsPrintModal("Owner Statement \u2014 " + owners[0].name, body);
     const sel = $("#pms-st-month");
@@ -10344,6 +10363,7 @@ premise: "Fee Simple / As Improved",
       '<div><b>Paid by:</b> ' + esc(p.method || "\u2014") + (p.reference ? " \u00B7 Ref " + esc(p.reference) : "") + '</div>' +
       '</div>' +
       '<div class="pms-ar-amount"><div class="pms-ar-figure">' + C.money(p.amount) + '</div><div class="pms-ar-words">' + esc(PL().amountInWords(p.amount)) + '</div></div>' +
+      (!p.charge_id && C.num(p.withheld, 0) > 0 ? '<div class="pms-ar-wht">Tax withheld by the tenant (BIR Form 2307): <b>' + C.money(p.withheld) + '</b><br>Total credited to the rent: <b>' + C.money(PL().credited(p)) + '</b></div>' : "") +
       '<div class="pms-ar-sign"><div class="pms-ar-line"></div><div>Received by: <b>' + esc(p.received_by || "SEA ESTATES") + '</b></div></div>' +
       '<div class="print-foot"><span>Acknowledgement receipt for money received, issued ' + esc(day(p.receipt_issued || p.date)) + '. This is not a BIR official receipt.</span></div>' +
       '</div>';
@@ -10503,8 +10523,13 @@ premise: "Fee Simple / As Improved",
       pmsField("Employment", pmsTxt("pms-ten-emp", d.employment, "e.g. Accountant, Acme Corp")) +
       pmsField("Monthly Income (\u20B1)", pmsNum("pms-ten-income", d.monthly_income)) +
       pmsField("Owner", pmsSel("pms-ten-owner", ownerOpts, d.owner_id || ""), "The landlord this tenant rents from.") +
+      pmsField("Withholding tax", '<label class="pms-check"><input type="checkbox" id="pms-ten-wht"' + (d.withholds ? " checked" : "") + '> Company tenant: withholds tax on the rent and gives a BIR Form 2307</label>', "", true) +
+      '<div class="field" id="pms-ten-whtrate-wrap"' + (d.withholds ? "" : ' style="display:none"') + '><label for="pms-ten-whtrate">Tax withheld (% of rent)</label>' + pmsNum("pms-ten-whtrate", d.withholds && C.num(d.wht_rate, 0) > 0 ? d.wht_rate : 5) +
+        '<div class="field-hint">Usually 5% on rent of land and buildings (expanded withholding tax). Each payment then records the cash received and the tax withheld; both count against the rent.</div></div>' +
       pmsField("Notes", '<textarea class="input" id="pms-ten-notes" rows="3" placeholder="Reference, ID, guarantor, etc.">' + esc(d.notes || "") + '</textarea>', "", true);
     pmsModal(id ? "Edit Tenant" : "New Tenant", body, "tenant", id);
+    const whtEl = $("#pms-ten-wht");
+    if (whtEl) whtEl.addEventListener("change", () => { const w = $("#pms-ten-whtrate-wrap"); if (w) w.style.display = whtEl.checked ? "" : "none"; });
     const email = $("#pms-ten-email");
     if (email && d.authUserId) email.disabled = true;
   }
@@ -10575,8 +10600,16 @@ premise: "Fee Simple / As Improved",
     const lease = leases.find(l => l.id === leaseId) || leases[0];
     const firstOwed = pmsUnpaidMonths(lease)[0];
     const monthSel = PL().monthKey(d.month) || (firstOwed && firstOwed.key) || pmsToday().slice(0, 7);
+    // A company tenant withholds tax on rent: a new payment is filled in as cash = rent less the tax.
+    const whtRate = d.charge_id ? 0 : pmsWhtRate(lease);
+    let amountNow = d.amount != null ? d.amount : (firstOwed ? firstOwed.balance : lease.rent);
+    let whtNow = C.num(d.withheld, 0);
+    if (!id && whtRate > 0) { whtNow = PL().withholding(amountNow, whtRate); amountNow = C.num(amountNow, 0) - whtNow; }
     let body = pmsField("Lease *", pmsSel("pms-pay-lease", leases.map(l => [l.id, pmsLeaseLabel(l)]), leaseId), "", true) +
-      pmsField("Amount (\u20B1)", pmsNum("pms-pay-amount", d.amount != null ? d.amount : (firstOwed ? firstOwed.balance : lease.rent))) +
+      pmsField("Amount received (\u20B1)", pmsNum("pms-pay-amount", amountNow)) +
+      '<div class="field" id="pms-pay-wht-wrap"' + (whtRate > 0 || whtNow > 0 ? "" : ' style="display:none"') + '><label for="pms-pay-wht">Tax withheld (\u20B1)</label>' + pmsNum("pms-pay-wht", whtNow) +
+        '<div class="field-hint" id="pms-pay-wht-hint">' + pmsWhtHint(whtRate) + '</div></div>' +
+      '<div class="field" id="pms-pay-2307-wrap"' + (whtRate > 0 || whtNow > 0 ? "" : ' style="display:none"') + '><label>BIR Form 2307</label><label class="pms-check"><input type="checkbox" id="pms-pay-2307"' + (d.form2307 ? " checked" : "") + '> Received from the tenant</label></div>' +
       pmsField("Payment Date", pmsDate("pms-pay-date", d.date || pmsToday())) +
       pmsField("For", '<select class="input" id="pms-pay-for">' + pmsPayForOptions(lease, d.charge_id) + '</select>', "Rent, or one of the lease's charges (water, electricity, dues\u2026).") +
       pmsField("Period (month)", pmsSel("pms-pay-month", pmsMonthOptions(monthSel, lease), monthSel), "A payment bigger than one month pays the next unpaid months too.") +
@@ -10607,6 +10640,7 @@ premise: "Fee Simple / As Improved",
       if (amountEl) amountEl.value = C.fmtNum(owed ? owed.balance : C.num(l.rent, 0));
       const forEl = $("#pms-pay-for");
       if (forEl) forEl.innerHTML = pmsPayForOptions(l, "");
+      pmsPayWhtSync(owed ? owed.balance : C.num(l.rent, 0));
     });
     // Choosing a charge suggests what is left of it.
     const forEl = $("#pms-pay-for");
@@ -10615,7 +10649,25 @@ premise: "Fee Simple / As Improved",
       const c = l && pmsLeaseCharges(l).find(x => x.id === forEl.value);
       const amountEl = $("#pms-pay-amount");
       if (c && amountEl && c.balance > 0) amountEl.value = C.fmtNum(c.balance);
+      if (c) pmsPayWhtSync(null);
+      else if (l) { const owed = pmsUnpaidMonths(l)[0]; const gross = owed ? owed.balance : C.num(l.rent, 0); if (amountEl) amountEl.value = C.fmtNum(gross); pmsPayWhtSync(gross); }
     });
+  }
+  function pmsWhtHint(rate) {
+    return (rate > 0 ? rate + "% withheld by this company tenant. " : "") + "Cash received plus tax withheld counts against the rent.";
+  }
+  // Show or hide the withholding fields for the chosen lease and "For"; with a
+  // gross amount, fill in cash = gross less the tax.
+  function pmsPayWhtSync(gross) {
+    const l = pms().leases.find(x => x.id === ($("#pms-pay-lease") || {}).value);
+    const forCharge = !!(($("#pms-pay-for") || {}).value);
+    const rate = forCharge ? 0 : pmsWhtRate(l);
+    ["pms-pay-wht-wrap", "pms-pay-2307-wrap"].forEach(i => { const w = $("#" + i); if (w) w.style.display = rate > 0 ? "" : "none"; });
+    const wEl = $("#pms-pay-wht"), aEl = $("#pms-pay-amount"), hEl = $("#pms-pay-wht-hint");
+    if (hEl) hEl.textContent = pmsWhtHint(rate);
+    if (!wEl) return;
+    if (rate <= 0) { wEl.value = ""; return; }
+    if (gross != null) { const w = PL().withholding(gross, rate); wEl.value = C.fmtNum(w); if (aEl) aEl.value = C.fmtNum(C.num(gross, 0) - w); }
   }
   let pmsPayPrefill = null;
   function pmsPayForOptions(lease, current) {
@@ -11313,8 +11365,17 @@ premise: "Fee Simple / As Improved",
       employment: $("#pms-ten-emp").value.trim(),
       monthly_income: C.num($("#pms-ten-income").value, 0),
       owner_id: ($("#pms-ten-owner") && $("#pms-ten-owner").value) || "",
-      notes: $("#pms-ten-notes").value.trim()
+      notes: $("#pms-ten-notes").value.trim(),
+      withholds: !!($("#pms-ten-wht") && $("#pms-ten-wht").checked),
+      wht_rate: 0
     };
+    if (data.withholds) {
+      data.wht_rate = C.num(($("#pms-ten-whtrate") || {}).value, 0);
+      if (!(data.wht_rate > 0 && data.wht_rate < 100)) {
+        if (saveButton) { saveButton.disabled = false; saveButton.innerHTML = icon("check", 15) + " Save"; }
+        toast("Enter the tax withheld as a percent of the rent, e.g. 5", "err"); return;
+      }
+    }
     const store = pms().tenants;
     if (id) {
       const rec = store.find(x => x.id === id);
@@ -11510,6 +11571,11 @@ premise: "Fee Simple / As Improved",
       const ch = lease && (lease.charges || []).find(x => x.id === data.charge_id);
       if (ch && ch.period) data.month = PL().monthKey(ch.period);
     }
+    // Tax a company tenant withheld on the rent (paid to the BIR for the landlord, BIR Form 2307).
+    const whtWrap = $("#pms-pay-wht-wrap");
+    data.withheld = !data.charge_id && whtWrap && whtWrap.style.display !== "none" ? C.num(($("#pms-pay-wht") || {}).value, 0) : 0;
+    if (data.withheld < 0) { toast("Tax withheld can't be negative", "err"); return; }
+    data.form2307 = data.withheld > 0 && !!($("#pms-pay-2307") && $("#pms-pay-2307").checked);
     if (data.status === "paid" && existing.status === "submitted") data.confirmed_at = new Date().toISOString();
     // Who the receipt says received the money: the company, or the broker for their own rentals.
     if (data.status === "paid" && !existing.received_by) data.received_by = userRole() === "broker" ? (currentUser.name || currentUser.email || "Broker") : "SEA ESTATES";
