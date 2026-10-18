@@ -15490,7 +15490,25 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
    * the agent's own number and address. */
   function leadTxt(id, v, ph, type) { return '<input class="input" id="' + id + '" type="' + (type || "text") + '"' + (type ? ' autocomplete="off"' : "") + ' value="' + esc(v == null ? "" : v) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : "") + ">"; }
   function leadNum(id, v) { return '<input class="input input-num" id="' + id + '" type="text" inputmode="decimal" value="' + (C.num(v, 0) > 0 ? C.fmtNum(v) : "") + '" placeholder="0">'; }
-  function openLeadEditor(id) {
+  /* Brokers a super-admin can assign a lead to. On the live site they come
+   * from the real account list (approved brokers, by their login id); the old
+   * local user list held demo people, so a lead could not reach a real broker. */
+  function leadLiveAccounts() { return !!(SB && currentUser && currentUser.id && !currentUser.demo); }
+  function leadBrokerPool() {
+    if (leadLiveAccounts()) {
+      return (remoteProfiles || []).filter(p => String(p.role || "") === "broker" && String(p.registration_status || "") === "approved")
+        .map(p => ({ id: String(p.id), name: String(p.full_name || p.email || "").trim() }));
+    }
+    return (state.users || []).filter(u => u.role === "broker" && u.active !== false).map(u => ({ id: u.id, name: (u.name || u.email || "").trim() }));
+  }
+  async function openLeadEditor(id) {
+    // The broker list must be loaded before the form is drawn.
+    if (roleIs("super-admin") && leadLiveAccounts() && !remoteProfilesLoaded) {
+      try { await loadCloudProfiles(true); } catch (e) {}
+    }
+    openLeadEditorNow(id);
+  }
+  function openLeadEditorNow(id) {
     if (!leadCanManage()) { toast("You don't have permission to manage leads", "err"); return; }
     closeLeadModal();
     const l = id ? (state.leads || []).find(x => x.id === id) || {} : {};
@@ -15507,8 +15525,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
        the picker (their branch below forces self). */
     let agentPool = [];
     if (roleIs("super-admin")) {
-      agentPool = (state.users || []).filter(u => u.role === "broker" && u.active !== false)
-        .map(u => ({ id: u.id, name: (u.name || u.email || "").trim() }));
+      agentPool = leadBrokerPool();
       if (l.assignedTo && !agentPool.find(a => a.name === l.assignedTo)) agentPool.push({ id: l.assignedToId || "", name: l.assignedTo });
     } else if (roleIs("broker")) {
       agentPool = [{ id: currentUser && currentUser.id || "", name: myName, own: true }].concat(brokerTeamMembers());
