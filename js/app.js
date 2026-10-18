@@ -56,6 +56,10 @@
   const esc = (window.ESREALTY_UTIL && window.ESREALTY_UTIL.esc)
     ? window.ESREALTY_UTIL.esc
     : (s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])));
+  // Small copies of listing photos for lists and cards (js/util.js).
+  const thumbAttrs = (window.ESREALTY_UTIL && window.ESREALTY_UTIL.thumbAttrs)
+    ? window.ESREALTY_UTIL.thumbAttrs
+    : ((u, onFail) => 'src="' + esc(u) + '"' + (onFail ? ' onerror="' + esc(onFail) + '"' : ""));
   const friendlyErr = s => {
     const low = String(s == null ? "" : s).toLowerCase();
     if (low.indexOf("database error querying schema") >= 0 || /querying schema|failed to fetch schema/i.test(low)) return "Please contact the administrator (database schema error).";
@@ -13349,7 +13353,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     return '<div class="ls-card card card-pad" data-ls-open="' + esc(l.id) + '">' +
       '<div class="ls-photo">' +
         '<div class="ls-photo-ph">' + icon("home", 30) + "<span>" + esc(listTypeLabel(l.propertyType)) + "</span></div>" +
-        (img ? '<img class="ls-photo-img" src="' + esc(img) + '" alt="" loading="lazy" onerror="this.remove()">' : "") +
+        (img ? '<img class="ls-photo-img" ' + thumbAttrs(img, "this.remove()") + ' alt="" loading="lazy">' : "") +
         '<div class="ls-photo-top">' + (canBulk ? '<label style="margin-right:6px;background:#fff;border:1px solid #cbd4df;border-radius:5px;padding:2px 5px;cursor:pointer" title="Select for bulk actions"><input type="checkbox" data-ls-bulk="' + esc(l.id) + '"' + ((window._lsBulkSel || []).indexOf(l.id) >= 0 ? " checked" : "") + '></label>' : "") + listStatusBadge(l.status) + (l.isPublished === false ? '<span class="badge gold">Draft</span>' : "") + (dropAmt > 0 ? '<span class="badge green" title="Price reduced">▼ ' + esc(C.money(dropAmt)) + '</span>' : "") + (isStale ? '<span class="badge red" title="' + (l.autoUnpublishedAt ? "Auto-drafted after 90 days — refresh to republish" : "Listing is getting stale — refresh or adjust price") + '">' + ageDays + 'd' + (l.autoUnpublishedAt ? " auto-drafted" : " stale") + '</span>' : (ageDays >= 30 ? '<span class="badge gold">' + ageDays + 'd listed</span>' : "")) + (l.furnishing ? '<span class="badge blue" title="Furnishing">' + esc(({ bare: "Bare", semi: "Semi-Furn", full: "Fully Furn." })[l.furnishing] || l.furnishing) + '</span>' : "") + (l.petFriendly === "yes" ? '<span class="badge purple" title="Pet-friendly">Pets OK</span>' : "") + (l.balcony === "yes" ? '<span class="badge cyan">Balcony</span>' : "") + "</div>" +
         (l.featured ? '<div class="ls-feat">' + icon("star", 12) + " Featured</div>" : "") +
         '<button class="ls-fav' + (lsFav(l.id) ? " on" : "") + '" data-ls-fav="' + esc(l.id) + '" title="Save to favorites">' + icon("star", 17) + "</button>" +
@@ -13604,7 +13608,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   function lsTxt(id, v, ph) { return '<input class="input" id="' + id + '" type="text" value="' + esc(v == null ? "" : v) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : "") + ">"; }
   function lsNum(id, v) { return '<input class="input input-num" id="' + id + '" type="text" inputmode="decimal" value="' + (C.num(v, 0) > 0 ? C.fmtNum(v) : "") + '" placeholder="0">'; }
   function lsPhotoThumb(url) {
-    return '<div class="ls-photo-thumb"><img src="' + esc(url) + '" alt="Photo" loading="lazy"><button type="button" class="ls-photo-remove" data-ls-photo-remove title="Remove photo">&times;</button></div>';
+    return '<div class="ls-photo-thumb" data-photo-url="' + esc(url) + '"><img ' + thumbAttrs(url) + ' alt="Photo" loading="lazy"><button type="button" class="ls-photo-remove" data-ls-photo-remove title="Remove photo">&times;</button></div>';
   }
   function lsReadAsDataUrl(file) {
     return new Promise(function (resolve, reject) {
@@ -13612,6 +13616,26 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       rd.onload = () => resolve(rd.result);
       rd.onerror = () => reject(rd.error || new Error("Could not read image"));
       rd.readAsDataURL(file);
+    });
+  }
+  // A small JPEG copy (640 px on the long side) for lists and cards; null if
+  // the browser can't read the image.
+  function lsMakeThumb(file) {
+    return new Promise(function (resolve) {
+      if (!/image\/(jpeg|png|webp|gif|bmp|avif)/.test(file.type || "")) { resolve(null); return; }
+      lsReadAsDataUrl(file).then(function (dataUrl) {
+        const img = new Image();
+        img.onload = function () {
+          const ratio = Math.min(1, 640 / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(img.width * ratio)); canvas.height = Math.max(1, Math.round(img.height * ratio));
+          const ctx = canvas.getContext("2d");
+          try { ctx.imageSmoothingQuality = "high"; ctx.drawImage(img, 0, 0, canvas.width, canvas.height); } catch (e) { resolve(null); return; }
+          canvas.toBlob(blob => resolve(blob || null), "image/jpeg", 0.72);
+        };
+        img.onerror = () => resolve(null);
+        img.src = dataUrl;
+      }).catch(() => resolve(null));
     });
   }
   // Downscale photos before upload: the site renders cards/detail at <= 1280px,
@@ -13687,11 +13711,16 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       let optimized;
       try { optimized = await lsOptimizeImage(file); } catch (e) { toast("Could not process " + esc(file.name), "err"); done += 1; continue; }
       if (optimized.blob.size > OUT_LIMIT) { toast(esc(file.name) + " is larger than 2 MB", "err"); done += 1; continue; }
-      const path = currentUser.id + "/" + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.floor(Math.random() * 1e9)) + "." + optimized.ext;
+      const base = currentUser.id + "/" + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.floor(Math.random() * 1e9));
+      const small = await lsMakeThumb(file);
+      // "-full" in the name says a small copy sits next to it (js/util.js thumbUrl).
+      const path = base + (small ? "-full." : ".") + optimized.ext;
       try {
-        const { error } = await storageUpload("listing-photos", path, optimized.blob, { contentType: optimized.contentType, upsert: false, cacheControl: "31536000" },
-          () => { if (status) status.textContent = "Signal dropped, trying " + file.name + " again…"; });
+        const retrying = () => { if (status) status.textContent = "Signal dropped, trying " + file.name + " again…"; };
+        const { error } = await storageUpload("listing-photos", path, optimized.blob, { contentType: optimized.contentType, upsert: false, cacheControl: "31536000" }, retrying);
         if (error) throw error;
+        // If the small copy doesn't make it, lists fall back to the full photo.
+        if (small) await storageUpload("listing-photos", base + "-thumb.jpg", small, { contentType: "image/jpeg", upsert: false, cacheControl: "31536000" }, retrying);
         const { data } = SB.storage.from("listing-photos").getPublicUrl(path);
         const url = data && data.publicUrl ? data.publicUrl : "";
         if (!url) throw new Error("Could not build the photo URL");
@@ -13942,7 +13971,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         if (remove) {
           const thumb = remove.closest(".ls-photo-thumb");
           const img = thumb && thumb.querySelector("img");
-          const url = img ? (img.getAttribute("src") || "") : "";
+          // The preview may show the small copy: the photo's own address is on the tile.
+          const url = (thumb && thumb.getAttribute("data-photo-url")) || (img ? (img.getAttribute("src") || "") : "");
           const ta = $("#ls-photos");
           if (ta && url) {
             ta.value = ta.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean).filter(u => u !== url).join("\n");

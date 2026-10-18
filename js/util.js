@@ -30,4 +30,18 @@
     }
     return out.join(" ");
   };
+  /* Listing photos uploaded since 2026-10-18 are stored as <id>-full.<ext>
+   * with a small copy, <id>-thumb.jpg (640 px), next to it. Lists and cards
+   * show the small copy; older photos have none and keep their own URL. */
+  util.thumbUrl = function (url) {
+    return String(url == null ? "" : url).replace(/-full\.(?:jpe?g|png|webp|gif|avif)(?=$|[?#])/i, "-thumb.jpg");
+  };
+  /* src (plus a fallback to the full photo if the small copy is missing) for an
+   * <img>. onFail runs if the full photo fails too. */
+  util.thumbAttrs = function (url, onFail) {
+    var full = String(url == null ? "" : url), small = util.thumbUrl(full);
+    if (small === full) return 'src="' + util.esc(full) + '"' + (onFail ? ' onerror="' + util.esc(onFail) + '"' : "");
+    return 'src="' + util.esc(small) + '" data-full="' + util.esc(full) + '" onerror="' +
+      util.esc("if(this.dataset.full){var f=this.dataset.full;delete this.dataset.full;this.src=f}" + (onFail ? "else{" + onFail + "}" : "")) + '"';
+  };
 })();

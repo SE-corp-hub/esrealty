@@ -36,6 +36,11 @@
         });
       };
 
+  // Small copies of listing photos for cards (js/util.js); the detail page keeps the full photo.
+  var thumbAttrs = (typeof window !== "undefined" && window.ESREALTY_UTIL && window.ESREALTY_UTIL.thumbAttrs)
+    ? window.ESREALTY_UTIL.thumbAttrs
+    : function (url) { return 'src="' + esc(url) + '"'; };
+
   function safeImage(value) {
     try {
       var url = new URL(String(value || ""));
@@ -510,9 +515,9 @@
   function cardMedia(listing) {
     var images = cardImages(listing);
     if (!images.length) return '<div class="sf-image-empty" aria-label="Property image not supplied">S.E</div>';
-    if (images.length === 1) return '<img src="' + esc(images[0]) + '" alt="' + esc(listing.title) + '" loading="lazy">';
+    if (images.length === 1) return '<img ' + thumbAttrs(images[0]) + ' alt="' + esc(listing.title) + '" loading="lazy">';
     var slides = images.map(function (image, i) {
-      return '<div class="sf-slide" aria-hidden="' + (i ? "true" : "false") + '"><img src="' + esc(image) + '" alt="' + esc(listing.title) + ' photo ' + (i + 1) + '" loading="lazy"></div>';
+      return '<div class="sf-slide" aria-hidden="' + (i ? "true" : "false") + '"><img ' + thumbAttrs(image) + ' alt="' + esc(listing.title) + ' photo ' + (i + 1) + '" loading="lazy"></div>';
     }).join("");
     var dots = images.map(function (_, i) {
       return '<button type="button" data-sf-car-dot="' + i + '"' + (i === 0 ? ' class="active"' : "") + ' aria-label="Go to photo ' + (i + 1) + '"></button>';
@@ -552,7 +557,7 @@
       return '<button type="button" data-sf-car-dot="' + i + '"' + (i === 0 ? ' class="active"' : "") + ' aria-label="Go to photo ' + (i + 1) + '"></button>';
     }).join("") : "";
     var thumbs = multi ? '<div class="sf-thumbs">' + images.map(function (image, i) {
-      return '<button type="button" data-sf-thumb="' + i + '"' + (i === 0 ? ' class="active"' : "") + ' aria-label="View photo ' + (i + 1) + '"><img src="' + esc(image) + '" alt="" loading="lazy"></button>';
+      return '<button type="button" data-sf-thumb="' + i + '"' + (i === 0 ? ' class="active"' : "") + ' aria-label="View photo ' + (i + 1) + '"><img ' + thumbAttrs(image) + ' alt="" loading="lazy"></button>';
     }).join("") + '</div>' : "";
     return '<div class="sf-gallery"><div class="sf-gallery-stage">' +
       '<div class="sf-carousel" data-sf-carousel data-images="' + images.length + '" data-index="0">' +
@@ -655,7 +660,7 @@
       ["Lot area (sqm)", function (r) { return supplied(r.lot_area_sqm); }],
       ["Year built", function (r) { return supplied(r.year_built); }]
     ];
-    content += '<div class="sf-compare-properties">' + records.map(function (r, i) { var image = safeImage((r.images && r.images[0] && (r.images[0].url || r.images[0])) || ""); return '<article><span>Property ' + (i + 1) + '</span>' + (image ? '<img src="' + esc(image) + '" alt="" loading="lazy">' : '<p>Photo not supplied</p>') + '<h2>' + esc(r.title || "Property") + '</h2><a class="sf-outline-btn" href="#/listing/' + encodeURIComponent(r.id) + '">View property details</a></article>'; }).join("") + '</div>';
+    content += '<div class="sf-compare-properties">' + records.map(function (r, i) { var image = safeImage((r.images && r.images[0] && (r.images[0].url || r.images[0])) || ""); return '<article><span>Property ' + (i + 1) + '</span>' + (image ? '<img ' + thumbAttrs(image) + ' alt="" loading="lazy">' : '<p>Photo not supplied</p>') + '<h2>' + esc(r.title || "Property") + '</h2><a class="sf-outline-btn" href="#/listing/' + encodeURIComponent(r.id) + '">View property details</a></article>'; }).join("") + '</div>';
     content += '<dl class="sf-compare-fields">' + rows.map(function (row) { return '<div><dt>' + esc(row[0]) + '</dt>' + records.map(function (r, i) { return '<dd><span class="sf-compare-mobile-label">Property ' + (i + 1) + ': </span>' + esc(row[1](r)) + '</dd>'; }).join("") + '</div>'; }).join("") + '</dl><p>Sale prices and monthly rent are different measures. Missing or zero-default fields do not establish that a property has no bedrooms, bathrooms or area.</p>';
     return shell(content + '</section>');
   }
