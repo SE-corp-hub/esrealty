@@ -127,12 +127,13 @@ with
   ),
   fgrants as (
     select 16, p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
-           format('revoke all on function public.%I(%s) from public, anon, authenticated', p.proname, pg_get_function_identity_arguments(p.oid))
+           -- the keyword and role names go in as values, so the SQL editor doesn't take the role list for a table name
+           format('revoke all on function public.%I(%s) %s %s', p.proname, pg_get_function_identity_arguments(p.oid), 'from', 'public, anon, authenticated')
            || coalesce((select '; ' || string_agg(format('grant execute on function public.%I(%s) to %s', p.proname, pg_get_function_identity_arguments(p.oid), quote_ident(a.grantee::regrole::text)), '; ')
                         from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
                         where a.privilege_type = 'EXECUTE' and a.grantee <> 0 and a.grantee::regrole::text in ('anon', 'authenticated', 'service_role')), '')
            || case when exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0)
-                   then format('; grant execute on function public.%I(%s) to public', p.proname, pg_get_function_identity_arguments(p.oid)) else '' end
+                   then format('; grant execute on function public.%I(%s) to %s', p.proname, pg_get_function_identity_arguments(p.oid), 'public') else '' end
     from pg_proc p
     where p.pronamespace = (select oid from pub) and p.prokind in ('f', 'p')
       and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
