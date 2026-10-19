@@ -24,6 +24,11 @@ const WindowSize = arg("-window-size", "1400,900");
  * storefront but does not measure its header, and holding those tests for the
  * shell to settle under load only manufactured timeouts. */
 const WaitShellStable = process.argv.indexOf("-wait-shell-stable") >= 0;
+/* Opt-in emulation for the motion and pointer rules: -reduced-motion runs the
+ * page with prefers-reduced-motion: reduce, -touch runs it as a touch phone
+ * ((hover: none) and (pointer: coarse)). The default run is a desktop mouse. */
+const ReducedMotion = process.argv.indexOf("-reduced-motion") >= 0;
+const Touch = process.argv.indexOf("-touch") >= 0;
 const [W, H] = WindowSize.split(",").map(n => parseInt(n, 10));
 
 function report(result) {
@@ -78,7 +83,10 @@ const { chromium: pw } = chromium;
   let context = null;
   let page = null;
   try {
-    context = await browser.newContext({ viewport: { width: W, height: H } });
+    const contextOptions = { viewport: { width: W, height: H } };
+    if (ReducedMotion) contextOptions.reducedMotion = "reduce";
+    if (Touch) { contextOptions.hasTouch = true; contextOptions.isMobile = true; }
+    context = await browser.newContext(contextOptions);
     page = await context.newPage();
     page.on("dialog", async d => { try { await d.accept(); } catch (e) { /* noop */ } });
     await context.addInitScript(() => {
