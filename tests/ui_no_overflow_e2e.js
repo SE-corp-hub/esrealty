@@ -98,10 +98,25 @@ function page_overflowing() {
   const out = [];
   const root = document.querySelector(".sf-site");
   if (!root) return ["no .sf-site"];
+  /* A deliberate sideways scroller (the service explorer's chip row on a
+   * phone) keeps its own box inside the viewport and lets the content scroll
+   * within it, so the content is reachable and not cut off. Anything inside
+   * such a box is exempt; the box itself is still checked. */
+  const inScroller = el => {
+    for (let p = el.parentElement; p && p !== root; p = p.parentElement) {
+      const ox = getComputedStyle(p).overflowX;
+      if (ox === "auto" || ox === "scroll") {
+        const pr = p.getBoundingClientRect();
+        return pr.left >= -2 && pr.right <= w + 2;
+      }
+    }
+    return false;
+  };
   root.querySelectorAll("*").forEach(el => {
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return;
     if (r.right > w + 2 || r.left < -2) {
+      if (inScroller(el)) return;
       out.push(el.tagName.toLowerCase() + "." + String(el.className || "").split(" ")[0]
         + " [" + Math.round(r.left) + ".." + Math.round(r.right) + "]");
     }

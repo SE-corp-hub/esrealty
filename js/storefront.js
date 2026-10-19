@@ -350,6 +350,326 @@
       "</ul>";
   }
 
+  /* ------------------------------------------------------------------
+   * Service explorer on #/property-value: one house, nine services.
+   *
+   * The list is rendered from SERVICES (the same array as the Services menu),
+   * so the page and the menu cannot disagree about a label, a note or a
+   * destination. Only the drawings are new. Each service adds one small piece
+   * to a single line-drawn house; the house draws itself once, then each piece
+   * plays once (under 1.5 s) and rests on its finished frame.
+   *
+   * Markup contract (the e2e test reads it): [data-sf-explorer] root with
+   * data-active (1-9), data-auto (on|off), data-paused, data-inview, data-seen;
+   * [data-sf-x-btn] buttons (aria-current marks the open one, roving tabindex);
+   * [data-sf-x-detail] one detail block per service (hidden unless open);
+   * [data-sf-x-pause] the Pause / Play control.
+   *
+   * Auto-advance exists only for a mouse user who allows motion. It is driven
+   * by the progress bar's CSS animation (animationend moves on), so hover,
+   * focus, a hidden tab, scrolling away and Pause all stop it by pausing the
+   * animation. It plays through all nine once, ends on the service it began
+   * with, then rests.
+   * ------------------------------------------------------------------ */
+  var PV_X_SHORT = ["Buying", "Selling", "Renting", "Pre-selling", "Appraisal", "Broker", "Management", "Title", "Financing"];
+  /* Call to action per service. Buying and Renting go to the listings search and
+     have no landing copy of their own; the others reuse the landing's CTA. */
+  var PV_X_CTA = ["Browse properties", "", "Browse rentals", "", "", "", "", "", ""];
+  var PV_X_DEFAULT = 2;
+
+  /* The house and lot, 400 x 240. Hex values match the --sf-* tokens (ink,
+     soft ink, muted ink, accent): SVG presentation attributes cannot read CSS
+     custom properties. Main strokes carry pathLength="1" so one dash rule
+     draws them. */
+  var PV_X_HOUSE =
+    '<path d="M20 190H380" fill="none" stroke="#6B605A" stroke-width="2"/>' +
+    '<g fill="none" stroke="#14110F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path class="sf-pv-x-draw" pathLength="1" d="M130 190V112M250 190V112M130 190H250"/>' +
+    '<path class="sf-pv-x-draw" pathLength="1" style="--d:.5s" d="M116 114 190 66 264 114"/>' +
+    '<path class="sf-pv-x-draw" pathLength="1" style="--d:.9s" d="M222 90V74H238V104"/></g>' +
+    '<g fill="none" stroke="#443C36" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path class="sf-pv-x-draw" pathLength="1" style="--d:1.1s" d="M178 190V152H202V190"/>' +
+    '<rect class="sf-pv-x-draw" pathLength="1" style="--d:1.3s" x="142" y="128" width="24" height="22" rx="2"/>' +
+    '<rect class="sf-pv-x-draw" pathLength="1" style="--d:1.4s" x="214" y="128" width="24" height="22" rx="2"/>' +
+    '<circle class="sf-pv-x-draw" pathLength="1" style="--d:.8s" cx="60" cy="152" r="18"/>' +
+    '<path d="M60 190V170"/></g>' +
+    '<path d="M20 208H380" fill="none" stroke="#B4521F" stroke-width="1.4" stroke-dasharray="5 6"/>';
+
+  /* One piece per service, in SERVICES order. */
+  var PV_X_PIECES = [
+    /* 1 Buying: a map pin drops onto the roof and sends out one ripple. */
+    '<g class="sf-pv-x-piece" data-piece="1">' +
+    '<ellipse class="sf-pv-x-rip" cx="190" cy="60" rx="22" ry="6" fill="none" stroke="#B4521F" stroke-width="1.6"/>' +
+    '<g class="sf-pv-x-drop"><path d="M190 18c-9 0-15 7-15 15 0 11 15 25 15 25s15-14 15-25c0-8-6-15-15-15z" fill="#B4521F"/><circle cx="190" cy="33" r="5.5" fill="#fff"/></g></g>',
+
+    /* 2 Selling: a for-sale sign swings in the lawn (the three checks are HTML). */
+    '<g class="sf-pv-x-piece" data-piece="2">' +
+    '<path d="M320 190V122H374" stroke="#443C36" stroke-width="3" fill="none" stroke-linecap="round"/>' +
+    '<g class="sf-pv-x-swing"><path d="M336 122V138M362 122V138" stroke="#443C36" stroke-width="1.6" fill="none"/>' +
+    '<rect x="326" y="138" width="52" height="40" rx="4" fill="#B4521F"/>' +
+    '<text x="352" y="154" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">FOR</text>' +
+    '<text x="352" y="168" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">SALE</text></g></g>',
+
+    /* 3 Renting: a key turns and a matched-tenant badge ticks. */
+    '<g class="sf-pv-x-piece" data-piece="3">' +
+    '<circle cx="316" cy="62" r="14" fill="none" stroke="#B4521F" stroke-width="2"/><circle cx="316" cy="58" r="5" fill="none" stroke="#B4521F" stroke-width="2"/>' +
+    '<path d="M306 74c1-6 5-8 10-8s9 2 10 8" fill="none" stroke="#B4521F" stroke-width="2" stroke-linecap="round"/>' +
+    '<g class="sf-pv-x-tick" style="--d:.6s"><circle cx="332" cy="50" r="8" fill="#1F6B45"/><path d="M328.5 50l2.6 2.6 4.4-4.8" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>' +
+    '<g class="sf-pv-x-turn"><circle cx="308" cy="126" r="13" fill="none" stroke="#B4521F" stroke-width="3.4"/><path d="M321 126H366M354 126V138M362 126V135" fill="none" stroke="#B4521F" stroke-width="3.4" stroke-linecap="round"/></g></g>',
+
+    /* 4 Pre-selling: a scaffold outlines the house and a crane lifts a block. */
+    '<g class="sf-pv-x-piece" data-piece="4">' +
+    '<rect class="sf-pv-x-fade" x="104" y="58" width="172" height="132" fill="none" stroke="#B4521F" stroke-width="1.6" stroke-dasharray="5 6"/>' +
+    '<path d="M324 190V36M338 190V36M324 190 338 170 324 150 338 130 324 110 338 90 324 70 338 50" fill="none" stroke="#443C36" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '<path d="M286 36H378" stroke="#443C36" stroke-width="3.4" stroke-linecap="round"/><rect x="362" y="38" width="14" height="14" fill="#6B605A"/>' +
+    '<path class="sf-pv-x-cable" d="M298 36V88" stroke="#443C36" stroke-width="1.6" fill="none"/>' +
+    '<rect class="sf-pv-x-blk" x="290" y="88" width="16" height="12" rx="1.5" fill="#B4521F"/></g>',
+
+    /* 5 Appraisal: a magnifier sweeps the house and the value needle settles. */
+    '<g class="sf-pv-x-piece" data-piece="5">' +
+    '<path d="M282 92A40 40 0 0 1 362 92" fill="none" stroke="#DDD4CA" stroke-width="7" stroke-linecap="round"/>' +
+    '<path d="M282 92A40 40 0 0 1 332 53" fill="none" stroke="#B4521F" stroke-width="7" stroke-linecap="round"/>' +
+    '<path class="sf-pv-x-needle" style="transform-origin:322px 92px" d="M322 92V60" stroke="#14110F" stroke-width="3" stroke-linecap="round" fill="none"/>' +
+    '<circle cx="322" cy="92" r="5" fill="#14110F"/>' +
+    '<text x="322" y="116" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="1.6" fill="#6B605A">VALUE RANGE</text>' +
+    '<g class="sf-pv-x-sweep"><circle cx="190" cy="126" r="30" fill="rgba(180,82,31,.07)" stroke="#B4521F" stroke-width="3.6"/><path d="M212 148 232 168" stroke="#B4521F" stroke-width="6" stroke-linecap="round"/></g></g>',
+
+    /* 6 Broker: typing dots in the visitor's bubble, then a Licensed broker reply. */
+    '<g class="sf-pv-x-piece" data-piece="6">' +
+    '<path d="M44 74 52 86 66 74Z" fill="#fff" stroke="#6B605A" stroke-width="1.4" stroke-linejoin="round"/>' +
+    '<rect x="40" y="34" width="84" height="40" rx="12" fill="#fff" stroke="#6B605A" stroke-width="1.4"/>' +
+    '<circle class="sf-pv-x-dot" cx="64" cy="54" r="4" fill="#443C36"/><circle class="sf-pv-x-dot" style="--d:.15s" cx="82" cy="54" r="4" fill="#443C36"/><circle class="sf-pv-x-dot" style="--d:.3s" cx="100" cy="54" r="4" fill="#443C36"/>' +
+    '<g class="sf-pv-x-tick" style="--d:.7s"><path d="M342 70 334 82 322 70Z" fill="#B4521F"/><rect x="262" y="26" width="96" height="44" rx="12" fill="#B4521F"/>' +
+    '<text x="310" y="45" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">Licensed</text>' +
+    '<text x="310" y="60" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">broker</text></g>' +
+    '<g class="sf-pv-x-tick" style="--d:1s"><circle cx="358" cy="26" r="9" fill="#1F6B45"/><path d="M354 26l3 3 5-5.4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g></g>',
+
+    /* 7 Management: rent cells tick off and a Rent received tag lands. */
+    '<g class="sf-pv-x-piece" data-piece="7">' +
+    '<rect x="282" y="54" width="92" height="84" rx="8" fill="#fff" stroke="#443C36" stroke-width="1.8"/><path d="M282 76H374" stroke="#443C36" stroke-width="1.8"/>' +
+    '<g fill="#B4521F"><rect class="sf-pv-x-tick" style="--d:.1s" x="292" y="86" width="14" height="14" rx="3"/><rect class="sf-pv-x-tick" style="--d:.22s" x="312" y="86" width="14" height="14" rx="3"/>' +
+    '<rect class="sf-pv-x-tick" style="--d:.34s" x="332" y="86" width="14" height="14" rx="3"/><rect class="sf-pv-x-tick" style="--d:.46s" x="352" y="86" width="14" height="14" rx="3"/>' +
+    '<rect class="sf-pv-x-tick" style="--d:.58s" x="292" y="108" width="14" height="14" rx="3"/><rect class="sf-pv-x-tick" style="--d:.7s" x="312" y="108" width="14" height="14" rx="3"/></g>' +
+    '<g fill="#E4DDD5"><rect x="332" y="108" width="14" height="14" rx="3"/><rect x="352" y="108" width="14" height="14" rx="3"/></g>' +
+    '<g class="sf-pv-x-tick" style="--d:.85s"><rect x="282" y="148" width="92" height="24" rx="12" fill="#1F6B45"/>' +
+    '<text x="328" y="164" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">Rent received</text></g></g>',
+
+    /* 8 Title: document lines draw and a stamp presses down with a check. */
+    '<g class="sf-pv-x-piece" data-piece="8">' +
+    '<rect x="284" y="46" width="76" height="98" rx="4" fill="#fff" stroke="#443C36" stroke-width="1.8"/>' +
+    '<path class="sf-pv-x-draw" pathLength="1" style="--d:.1s" d="M296 68H348M296 82H348M296 96H328" stroke="#443C36" stroke-width="1.8" stroke-linecap="round" fill="none"/>' +
+    '<g class="sf-pv-x-slam"><circle cx="338" cy="122" r="19" fill="none" stroke="#B4521F" stroke-width="3.4"/><path d="M329 122l6 6 11-12" fill="none" stroke="#B4521F" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></g></g>',
+
+    /* 9 Financing: bars rise like steps and a peso coin settles on top. */
+    '<g class="sf-pv-x-piece" data-piece="9">' +
+    '<g fill="#B4521F"><rect class="sf-pv-x-rise" x="288" y="168" width="16" height="22" rx="2" opacity=".4"/><rect class="sf-pv-x-rise" style="--d:.12s" x="310" y="152" width="16" height="38" rx="2" opacity=".6"/>' +
+    '<rect class="sf-pv-x-rise" style="--d:.24s" x="332" y="136" width="16" height="54" rx="2" opacity=".8"/><rect class="sf-pv-x-rise" style="--d:.36s" x="354" y="120" width="16" height="70" rx="2"/></g>' +
+    '<g class="sf-pv-x-tick" style="--d:.8s"><circle cx="362" cy="94" r="15" fill="#B4521F"/><text x="362" y="100" text-anchor="middle" font-size="16" font-weight="800" fill="#fff">₱</text></g></g>'
+  ];
+
+  function pvServiceKey(href) {
+    var m = /[?&]service=([a-z-]+)/.exec(String(href || ""));
+    return m ? m[1] : "";
+  }
+
+  function pvExplorer(service) {
+    var start = PV_X_DEFAULT;
+    SERVICES.forEach(function (s, i) { if (service && pvServiceKey(s.href) === service) start = i + 1; });
+    var btns = "", details = "", dots = "";
+    SERVICES.forEach(function (s, i) {
+      var n = i + 1, on = n === start, key = pvServiceKey(s.href);
+      var cta = PV_X_CTA[i] || (PV_SERVICES[key] && PV_SERVICES[key].cta) || s.label;
+      btns += '<button type="button" class="sf-pv-x-btn" id="sf-pv-x-btn-' + n + '" data-sf-x-btn="' + n + '" data-label="' + esc(s.label) + '"' +
+        (on ? ' aria-current="true"' : "") + ' tabindex="' + (on ? "0" : "-1") + '" style="--n:' + n + '">' +
+        '<span class="sf-pv-x-ico" aria-hidden="true">' + (SERVICE_ICONS[i] || "") + '</span>' +
+        '<span class="sf-pv-x-full">' + esc(s.label) + '</span><span class="sf-pv-x-short">' + esc(PV_X_SHORT[i]) + '</span>' +
+        '<span class="sf-pv-x-go" aria-hidden="true">›</span></button>';
+      /* The service that is already open must not become a dead link: its own
+         address is this page, so the CTA scrolls to the form instead. */
+      details += '<div class="sf-pv-x-detail" data-sf-x-detail="' + n + '" style="--n:' + n + '"' + (on ? "" : " hidden") + '>' +
+        '<p class="sf-pv-x-note">' + esc(s.note) + '</p>' +
+        '<a class="sf-pv-x-cta" href="' + esc(s.href) + '"' + (key && key === service ? ' data-sf-scroll="sf-pv-form"' : "") + '>' + esc(cta) + ' <span aria-hidden="true">→</span></a>' +
+        '<span class="sf-pv-x-track" aria-hidden="true"><i></i></span></div>';
+      dots += "<i></i>";
+    });
+    var check = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path d="M3 8.6 6.4 12 13 4.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    var pills = ["Pricing plan", "Preparation checklist", "Offer review"].map(function (t, i) {
+      return '<li class="sf-pv-x-pill" style="--d:' + (0.2 + i * 0.15).toFixed(2) + 's"><i>' + check + '</i>' + t + '</li>';
+    }).join("");
+    return '<section class="sf-pv-x" id="sf-pv-explorer" data-sf-explorer data-active="' + start + '" data-auto="off" data-paused="false" aria-labelledby="sf-pv-x-title">' +
+      '<div class="sf-pv-x-wrap">' +
+      '<header class="sf-pv-x-head"><p class="sf-eyebrow">How we can help</p>' +
+      '<h2 class="sf-pv-h2" id="sf-pv-x-title"><span class="sf-pv-x-line">One property.</span> <span class="sf-pv-x-line">Nine ways we can help.</span></h2>' +
+      '<p class="sf-pv-x-sub">Choose a service to see what it covers, then go straight to the next step.</p></header>' +
+      '<div class="sf-pv-x-body">' +
+      '<div class="sf-pv-x-col"><div class="sf-pv-x-chips" role="group" aria-label="Services">' + btns + '</div>' +
+      '<div class="sf-pv-x-details">' + details + '</div></div>' +
+      '<div class="sf-pv-x-stage">' +
+      '<div class="sf-pv-x-bar">' +
+      '<span class="sf-pv-x-tag" aria-hidden="true"><span class="sf-pv-x-ico" data-sf-x-tag-ico>' + (SERVICE_ICONS[start - 1] || "") + '</span><span data-sf-x-tag-label>' + esc(SERVICES[start - 1].label) + '</span></span>' +
+      '<span class="sf-pv-x-meta"><span class="sf-pv-x-count" aria-hidden="true" data-sf-x-count>0' + start + ' / 09</span>' +
+      '<button type="button" class="sf-pv-x-pause" data-sf-x-pause>' +
+      '<svg class="sf-pv-x-i-pause" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M8.5 6v12M15.5 6v12"/></svg>' +
+      '<svg class="sf-pv-x-i-play" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path d="M8 5.5v13l10-6.5z"/></svg>' +
+      '<span data-sf-x-pause-label>Pause</span></button></span></div>' +
+      '<div class="sf-pv-x-prog" aria-hidden="true">' + dots + '</div>' +
+      '<div class="sf-pv-x-scene"><svg class="sf-pv-x-svg" viewBox="0 0 400 240" aria-hidden="true" focusable="false">' + PV_X_HOUSE + PV_X_PIECES.join("") + '</svg>' +
+      '<ul class="sf-pv-x-pills">' + pills + '</ul></div>' +
+      '</div></div></div></section>';
+  }
+
+  var _pvExplorerOff = null;
+  function bindPvExplorer() {
+    if (_pvExplorerOff) { _pvExplorerOff(); _pvExplorerOff = null; }
+    var root = document.querySelector("[data-sf-explorer]");
+    if (!root) return;
+    var chips = root.querySelector(".sf-pv-x-chips");
+    var btns = Array.prototype.slice.call(root.querySelectorAll("[data-sf-x-btn]"));
+    var details = Array.prototype.slice.call(root.querySelectorAll("[data-sf-x-detail]"));
+    var dots = Array.prototype.slice.call(root.querySelectorAll(".sf-pv-x-prog i"));
+    var countEl = root.querySelector("[data-sf-x-count]");
+    var tagLabel = root.querySelector("[data-sf-x-tag-label]");
+    var tagIco = root.querySelector("[data-sf-x-tag-ico]");
+    var pause = root.querySelector("[data-sf-x-pause]");
+    var pauseLabel = root.querySelector("[data-sf-x-pause-label]");
+    var mq = function (query) { return window.matchMedia ? window.matchMedia(query).matches : false; };
+    var auto = mq("(hover: hover) and (pointer: fine)") && !mq("(prefers-reduced-motion: reduce)");
+    var active = Number(root.getAttribute("data-active")) || PV_X_DEFAULT;
+    var advances = 0;
+    root.setAttribute("data-auto", auto ? "on" : "off");
+
+    function setActive(n) {
+      active = n;
+      root.setAttribute("data-active", String(n));
+      btns.forEach(function (b, i) {
+        var on = i + 1 === n;
+        if (on) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
+        b.tabIndex = on ? 0 : -1;
+      });
+      details.forEach(function (d, i) { d.hidden = i + 1 !== n; });
+      dots.forEach(function (d, i) { d.className = i + 1 < n ? "is-done" : (i + 1 === n ? "is-cur" : ""); });
+      if (countEl) countEl.textContent = "0" + n + " / 09";
+      if (tagLabel) tagLabel.textContent = btns[n - 1].getAttribute("data-label") || "";
+      var ico = btns[n - 1].querySelector(".sf-pv-x-ico");
+      if (tagIco && ico) tagIco.innerHTML = ico.innerHTML;
+    }
+    function setPaused(p) {
+      root.setAttribute("data-paused", p ? "true" : "false");
+      if (pauseLabel) pauseLabel.textContent = p ? "Play" : "Pause";
+    }
+    /* A person choosing a service takes over: the automatic tour stops. */
+    function choose(n, moveFocus) {
+      setActive(n);
+      if (auto) setPaused(true);
+      if (moveFocus) btns[n - 1].focus();
+    }
+    setActive(active);
+
+    function onChipClick(event) {
+      var b = event.target.closest ? event.target.closest("[data-sf-x-btn]") : null;
+      if (b) choose(Number(b.getAttribute("data-sf-x-btn")), false);
+    }
+    function onChipKey(event) {
+      var b = event.target.closest ? event.target.closest("[data-sf-x-btn]") : null;
+      if (!b) return;
+      var i = btns.indexOf(b), to = null;
+      if (event.key === "ArrowDown" || event.key === "ArrowRight") to = i + 1 >= btns.length ? 0 : i + 1;
+      else if (event.key === "ArrowUp" || event.key === "ArrowLeft") to = i - 1 < 0 ? btns.length - 1 : i - 1;
+      else if (event.key === "Home") to = 0;
+      else if (event.key === "End") to = btns.length - 1;
+      if (to === null) return;
+      event.preventDefault();
+      choose(to + 1, true);
+    }
+    function onPause() {
+      if (root.getAttribute("data-paused") === "true") { advances = 0; setPaused(false); }
+      else setPaused(true);
+    }
+    /* The progress bar finishing is the signal to move on. */
+    function onEnd(event) {
+      if (event.animationName !== "sf-pv-x-prog") return;
+      if (!auto || root.getAttribute("data-paused") === "true" || document.hidden) return;
+      advances += 1;
+      setActive(active % btns.length + 1);
+      if (advances >= btns.length) setPaused(true);
+    }
+    function onVisibility() { root.setAttribute("data-hidden", document.hidden ? "true" : "false"); }
+
+    chips.addEventListener("click", onChipClick);
+    chips.addEventListener("keydown", onChipKey);
+    if (pause) pause.addEventListener("click", onPause);
+    root.addEventListener("animationend", onEnd);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    /* "In view" gates the house drawing and the tour, so neither plays
+       unseen. A tall explorer on a short screen counts as seen once most of
+       the viewport shows it. */
+    var io = null;
+    if ("IntersectionObserver" in window) {
+      io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          var on = en.intersectionRatio >= 0.5 || en.intersectionRect.height >= window.innerHeight * 0.6;
+          root.setAttribute("data-inview", on ? "true" : "false");
+          if (on) root.setAttribute("data-seen", "true");
+        });
+      }, { threshold: [0, 0.25, 0.5, 0.75, 1] });
+      io.observe(root);
+    } else {
+      root.setAttribute("data-inview", "true");
+      root.setAttribute("data-seen", "true");
+    }
+
+    _pvExplorerOff = function () {
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (io) io.disconnect();
+    };
+  }
+
+  /* The three steps are quiet cards. Each card's picture plays once when the
+     card first scrolls into view; with reduced motion, or without
+     IntersectionObserver, the finished frames just show. */
+  var _pvStepsObs = null;
+  function bindPvSteps() {
+    if (_pvStepsObs) { _pvStepsObs.disconnect(); _pvStepsObs = null; }
+    var list = document.querySelector("[data-sf-steps]");
+    if (!list) return;
+    var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || !("IntersectionObserver" in window)) return;
+    list.classList.add("sf-pv-steps--motion");
+    _pvStepsObs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        en.target.classList.add("is-in");
+        _pvStepsObs.unobserve(en.target);
+      });
+    }, { threshold: 0.3 });
+    Array.prototype.forEach.call(list.children, function (li) { _pvStepsObs.observe(li); });
+  }
+
+  /* Hero touches. The headline underline is only for the default landing,
+     whose headline is fixed copy; a service page keeps its own plain headline. */
+  function pvHeadline(copy) {
+    if (copy === PV_DEFAULT && /your property\.$/.test(copy.h1)) {
+      return esc(copy.h1.replace(/your property\.$/, "")) +
+        '<span class="sf-pv-underline">your property.' +
+        '<svg viewBox="0 0 300 14" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path pathLength="1" d="M2 9 C 60 2, 120 12, 180 6 S 270 4, 298 8"/></svg></span>';
+    }
+    return esc(copy.h1);
+  }
+  function pvGlyphs() {
+    return '<div class="sf-pv-glyphs" aria-hidden="true">' + [4, 2, 7, 8].map(function (i, k) {
+      return '<span class="sf-pv-glyph" style="--k:' + k + '">' + (SERVICE_ICONS[i] || "") + '</span>';
+    }).join("") + '</div>';
+  }
+
+  /* Same band as the homepage, so the contact details come from the same
+     place (contactDetails() reads siteContact, which applyContact() refreshes
+     when the back-office settings arrive). Nothing is typed in here. */
+  function pvCloseBand() {
+    return '<section class="sf-cta sf-cta-short sf-pv-endband" id="sf-contact"><div class="sf-cta-band"><div><h2>Questions? Talk to our team.</h2><p>Buying, selling, renting or reviewing a property? Send the location and your plans, and a specialist replies within one business day.</p><div class="sf-contact-details">' + contactDetails() + '</div></div>' +
+      '<a class="sf-hero-btn sf-cta-go" href="#sf-pv-form" data-sf-scroll="sf-pv-form">Message our team</a></div></section>';
+  }
+
   function propertyValuePage(params) {
     var service = String((params && params.get("service")) || "").toLowerCase();
     var copy = PV_SERVICES[service] || PV_DEFAULT;
@@ -364,19 +684,20 @@
       ["title", "Title or documentation help"],
       ["finance", "Financing options"]
     ];
-    return shell('<section class="sf-pv">' +
+    return shell('<section class="sf-pv sf-pv--hero">' +
       '<div class="sf-pv-hero">' +
       '<div class="sf-pv-hero-copy">' +
       '<p class="sf-eyebrow sf-reveal sf-reveal-up">' + esc(copy.eyebrow) + '</p>' +
-      '<h1 class="sf-reveal sf-reveal-up">' + esc(copy.h1) + '</h1>' +
+      '<h1 class="sf-reveal sf-reveal-up">' + pvHeadline(copy) + '</h1>' +
       '<p class="sf-pv-lede sf-reveal sf-reveal-up">' + esc(copy.lede) + '</p>' +
-      '<div class="sf-pv-actions sf-reveal sf-reveal-up"><a class="sf-primary-btn" href="#sf-pv-form" data-sf-scroll="sf-pv-form">' + esc(copy.cta) + '</a></div>' +
+      '<div class="sf-pv-actions sf-reveal sf-reveal-up"><a class="sf-primary-btn" href="#sf-pv-form" data-sf-scroll="sf-pv-form">' + esc(copy.cta) + '</a>' +
+      '<a class="sf-pv-seeall" href="#sf-pv-explorer" data-sf-scroll="sf-pv-explorer">See all nine services <span aria-hidden="true">\u2193</span></a></div>' +
       pvTrustRow("sf-reveal sf-reveal-up") +
       '</div>' +
 
       /* The request card sits inside the hero, so the form is visible without
          any scroll on wide screens and immediately after the copy on phones. */
-      '<div class="sf-pv-hero-form sf-reveal sf-reveal-up" id="sf-pv-form"><div class="sf-pv-form-card">' +
+      '<div class="sf-pv-hero-form sf-reveal sf-reveal-up" id="sf-pv-form">' + pvGlyphs() + '<div class="sf-pv-form-card">' +
       '<h2 class="sf-pv-h2">Tell us what you need</h2>' +
       '<p class="sf-pv-form-sub">A few details and the service you are after. We reply within one business day.</p>' +
       '<form class="sf-pv-form" data-sf-consult novalidate>' +
@@ -395,26 +716,23 @@
        '<button class="sf-primary-btn" type="submit">' + esc(copy.submit) + '</button>' +
       '<p class="sf-pv-micro">Takes 30 seconds. No spam. No obligation.</p>' +
       '<p class="sf-form-status" aria-live="polite"></p></form></div></div>' +
-      '</div>' +
+      '</div></section>' +
 
-      /* The journey: the three steps sit beside one sticky stage whose
-         vignette swaps as each step reaches the middle of the viewport
-         (bindPvJourney flips data-active; CSS does the rest). Every vignette
-         is a small animated picture of that step - the form filling itself
-         in, the call, the service pick - so the section teaches the process
-         instead of just describing it. Without JS or with reduced motion the
-         first vignette shows statically and all copy is complete. */
+      /* The service explorer is a full-width band, so it sits between two
+         page sections instead of inside the centred one. */
+      pvExplorer(service) +
+      '<section class="sf-pv sf-pv--rest">' +
+
+      /* What happens: three quiet cards. Each card pairs a small animated
+         picture of the step - the form filling itself in, the call, the
+         service pick - with its copy, so the section teaches the process
+         instead of just describing it. bindPvSteps plays a card's picture
+         once as it scrolls into view; without JS or with reduced motion the
+         finished frames show and all copy is complete. */
       '<div class="sf-pv-steps"><h2 class="sf-pv-h2 sf-blur"><span>What</span> <span>happens</span></h2>' +
       '<p class="sf-pv-steps-sub">Three short steps stand between sending the form and deciding what comes next.</p>' +
-      '<div class="sf-pv-journey" data-sf-journey data-active="1">' +
-      '<div class="sf-pv-stage">' +
-      '<div class="sf-pv-stage-top"><div class="sf-pv-bars" role="group" aria-label="Jump to a step">' +
-      '<button type="button" class="sf-pv-bar" data-sf-journey-jump="0" aria-label="Go to step 1"><i></i></button>' +
-      '<button type="button" class="sf-pv-bar" data-sf-journey-jump="1" aria-label="Go to step 2"><i></i></button>' +
-      '<button type="button" class="sf-pv-bar" data-sf-journey-jump="2" aria-label="Go to step 3"><i></i></button>' +
-      '</div><span class="sf-pv-stage-count" data-sf-journey-count aria-hidden="true">01<b>/03</b></span></div>' +
-      '<div class="sf-pv-stage-body">' +
-      /* Vignette 1: the request form filling itself in. */
+      '<ol class="sf-pv-steps-list" data-sf-steps>' +
+      '<li><div class="sf-pv-vigbox">' +
       '<div class="sf-pv-vig" data-vig="1" aria-hidden="true">' +
       '<span class="sf-pv-vig-kick sf-pv-a" style="--d:.05s">What you do</span>' +
       '<div class="sf-pv-vig-card sf-pv-a" style="--d:.18s">' +
@@ -424,20 +742,22 @@
       '</div>' +
       '<span class="sf-pv-vig-stamp sf-pv-a" style="--d:.72s">About 30 seconds</span>' +
       '</div>' +
-      /* Vignette 2: the call with a specialist. */
+      '</div><div class="sf-pv-step-copy"><span class="sf-pv-step-role">Step 1 \u00B7 You</span><b>Tell us about your property</b><p>Share the location, the property, and the service you are after. The short form is enough to start.</p></div></li>' +
+      '<li><div class="sf-pv-vigbox sf-pv-vigbox--call">' +
       '<div class="sf-pv-vig" data-vig="2" aria-hidden="true">' +
       '<span class="sf-pv-vig-kick sf-pv-a" style="--d:.05s">What we do</span>' +
       '<div class="sf-pv-vig-call sf-pv-a" style="--d:.18s">' +
       '<div class="sf-pv-vig-person"><span class="sf-pv-vig-avatar">SE</span><span class="sf-pv-vig-who"><b>Property specialist</b><i>Connected</i></span><span class="sf-pv-vig-dot" aria-hidden="true"></span></div>' +
       '<div class="sf-pv-vig-wave" aria-hidden="true">' + (function () { var bars = ""; for (var b = 0; b < 12; b++) bars += '<i style="--i:' + b + '"></i>'; return bars; })() + '</div>' +
       '</div>' +
-      '<ul class="sf-pv-vig-agenda">' +
-      '<li class="sf-pv-a" style="--d:.42s">Your plans and timing</li>' +
-      '<li class="sf-pv-a" style="--d:.54s">The property itself</li>' +
-      '<li class="sf-pv-a" style="--d:.66s">Any questions you have</li>' +
-      '</ul>' +
+      '<div class="sf-pv-vig-agenda">' +
+      '<span class="sf-pv-vig-item sf-pv-a" style="--d:.42s">Your plans and timing</span>' +
+      '<span class="sf-pv-vig-item sf-pv-a" style="--d:.54s">The property itself</span>' +
+      '<span class="sf-pv-vig-item sf-pv-a" style="--d:.66s">Any questions you have</span>' +
       '</div>' +
-      /* Vignette 3: choosing the service. */
+      '</div>' +
+      '</div><div class="sf-pv-step-copy"><span class="sf-pv-step-role">Step 2 \u00B7 We call you</span><b>Have a short call with our team</b><p>A specialist reviews your situation, then asks about your plans, timing and the property.</p></div></li>' +
+      '<li><div class="sf-pv-vigbox">' +
       '<div class="sf-pv-vig" data-vig="3" aria-hidden="true">' +
       '<span class="sf-pv-vig-kick sf-pv-a" style="--d:.05s">What you decide</span>' +
       '<div class="sf-pv-vig-chips">' +
@@ -447,23 +767,18 @@
       '</div>' +
       '<div class="sf-pv-vig-deal sf-pv-a" style="--d:.72s"><span>Scope and fees explained first</span><b aria-hidden="true">No commitment</b></div>' +
       '</div>' +
-      '</div>' +
-      '</div>' +
-      '<ol class="sf-pv-steps-list">' +
-      '<li><span class="sf-pv-step-no">01</span><div class="sf-pv-step-copy"><span class="sf-pv-step-role">You</span><b>Tell us about your property</b><p>Share the location, the property, and the service you are after. The short form is enough to start.</p></div></li>' +
-      '<li><span class="sf-pv-step-no">02</span><div class="sf-pv-step-copy"><span class="sf-pv-step-role">We call you</span><b>Have a short call with our team</b><p>A specialist reviews your situation, then asks about your plans, timing and the property.</p></div></li>' +
-      '<li><span class="sf-pv-step-no">03</span><div class="sf-pv-step-copy"><span class="sf-pv-step-role">You decide</span><b>Choose the service you need</b><p>Appraisal, selling support, broker contact, management, title or financing — we explain the scope and the cost before you commit.</p></div></li>' +
+      '</div><div class="sf-pv-step-copy"><span class="sf-pv-step-role">Step 3 \u00B7 You decide</span><b>Choose the service you need</b><p>Appraisal, selling support, broker contact, management, title or financing — we explain the scope and the cost before you commit.</p></div></li>' +
       '</ol>' +
-      '</div></div>' +
+      '</div>' +
 
       /* Objection handling after the ask: every answer restates a promise
          already made elsewhere on the page (free to ask, no obligation, one
          business day, never sold); nothing numeric or testimonial is
          invented. All items start collapsed. Each row carries a small
          teaching glyph and lifts into a card while open. */
-      '<div class="sf-pv-faq"><h2 class="sf-pv-h2 sf-blur"><span>Common</span> <span>questions</span></h2>' +
-      '<p class="sf-pv-faq-sub">The questions property owners ask us first, answered plainly.</p>' +
-      [
+      '<div class="sf-pv-faq"><div class="sf-pv-faq-head"><h2 class="sf-pv-h2 sf-blur"><span>Common</span> <span>questions</span></h2>' +
+      '<p class="sf-pv-faq-sub">The questions property owners ask us first, answered plainly.</p></div>' +
+      '<div class="sf-pv-faq-list">' + [
         ["Is asking free?", "Yes — sending a request and the first conversation are free. If an appraisal or a listing is the right next step, we explain the scope and the fees first, so you decide before anything is charged or signed.", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5h12v17l-2.4-1.7-2.4 1.7-2.4-1.7-2.4 1.7-2.4-1.7z"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/></svg>'],
         ["Will you pressure me to list?", "No. There is no obligation to sell or list with us, and nothing is sent to a broker or appraiser until you ask.", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M10.2 9.2v5.6M13.8 9.2v5.6"/></svg>'],
         ["What happens to my details?", "We use them only to respond to this request, and they are never sold. See our <a href=\"#/privacy\">Privacy Notice</a>.", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>'],
@@ -471,9 +786,12 @@
         ["What can you help with?", "Appraisal and valuation, selling support, broker contact, property management, title and documentation, and financing.", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.7"/><rect x="13" y="4" width="7" height="7" rx="1.7"/><rect x="4" y="13" width="7" height="7" rx="1.7"/><rect x="13" y="13" width="7" height="7" rx="1.7"/></svg>']
       ].map(function (pair) {
         return '<details class="sf-pv-faq-item"><summary><span class="sf-pv-faq-ico">' + pair[2] + '</span><h3>' + esc(pair[0]) + '</h3><span class="sf-pv-faq-chev" aria-hidden="true"></span></summary><div class="sf-pv-faq-body"><p>' + pair[1] + '</p></div></details>';
-      }).join("") +
+      }).join("") + '</div>' +
       '<p class="sf-pv-faq-more">Still unsure? <a href="#sf-pv-form" data-sf-scroll="sf-pv-form">Ask the team directly</a> — a specialist replies within one business day.</p>' +
-      '</div></section>');
+      '</div></section>' +
+
+      /* Closing band: the same contact band as the homepage. */
+      pvCloseBand());
   }
 
   /* Contact details arrive asynchronously. They used to trigger a full
@@ -1213,7 +1531,8 @@
     try { if (typeof window.ESREALTY_EST === "object" && window.ESREALTY_EST.mount) window.ESREALTY_EST.mount(); } catch (e) {}
     if (current.path === "search" && viewState.mode === "map") setTimeout(sfInitMap, 60);
     bindHomeMotion();
-    bindPvJourney();
+    bindPvSteps();
+    bindPvExplorer();
     /* "Message our team" and the other contact links (?go=form) land on the
      * request form itself, not on the page's introduction above it. */
     if (current.path === "property-value" && current.params.get("go") === "form") {
@@ -1360,50 +1679,6 @@
     reveals.forEach(function (el) { _homeMotionObs.observe(el); });
   }
 
-  var _pvJourneyObs = null;
-
-  /* The property-value journey: one sticky stage, three vignettes. An
-     observer picks whichever step block holds the middle of the viewport and
-     flips data-active on the journey; CSS handles the vignette crossfade,
-     the part choreography and the step highlight. The stage's progress bars
-     are real buttons and scroll their step into view. Re-running the page
-     re-binds cleanly by disconnecting the previous observer. */
-  function bindPvJourney() {
-    if (_pvJourneyObs) { _pvJourneyObs.disconnect(); _pvJourneyObs = null; }
-    var journey = document.querySelector("[data-sf-journey]");
-    if (!journey) return;
-    var steps = Array.prototype.slice.call(journey.querySelectorAll(".sf-pv-steps-list > li"));
-    var count = journey.querySelector("[data-sf-journey-count]");
-    var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!reduced) journey.classList.add("sf-pv-journey--motion");
-    var active = 1;
-    function setActive(index) {
-      if (index === active) return;
-      active = index;
-      journey.setAttribute("data-active", String(index));
-      if (count) count.firstChild.nodeValue = "0" + index;
-    }
-    Array.prototype.forEach.call(journey.querySelectorAll("[data-sf-journey-jump]"), function (btn) {
-      btn.addEventListener("click", function () {
-        var target = steps[Number(btn.getAttribute("data-sf-journey-jump"))];
-        if (!target) return;
-        try { target.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" }); }
-        catch (e) { target.scrollIntoView(); }
-      });
-    });
-    if (!("IntersectionObserver" in window)) return;
-    _pvJourneyObs = new IntersectionObserver(function (entries) {
-      var best = null;
-      entries.forEach(function (entry) {
-        if (!entry.isIntersecting) return;
-        var rect = entry.boundingClientRect;
-        var dist = Math.abs((rect.top + rect.bottom) / 2 - window.innerHeight / 2);
-        if (!best || dist < best.dist) best = { index: steps.indexOf(entry.target) + 1, dist: dist };
-      });
-      if (best) setActive(best.index);
-    }, { rootMargin: "-42% 0px -42% 0px" });
-    steps.forEach(function (li) { _pvJourneyObs.observe(li); });
-  }
 
   function bind() {
     if (document.documentElement.getAttribute("data-storefront-bound") === "true") return;
