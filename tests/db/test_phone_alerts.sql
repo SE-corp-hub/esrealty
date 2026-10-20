@@ -47,14 +47,20 @@ insert into results select 'visitors cannot read the key table', pg_temp.fails($
 reset role;
 
 -- lead alerts
+-- Saved by the website's service account: nobody is signed in, so nobody is skipped.
+select set_config('request.jwt.claims', '', true);
 insert into public.crm_leads (id, ref, name, payload, created_by, assigned_to_id)
   values ('lead-a1', 'L-A1', 'Maria Santos', '{"source":"Value Guide"}', '77777777-7777-7777-7777-777777777777', '11111111-1111-1111-1111-111111111111');
 insert into results select 'a lead assigned to an agent tells the agent', (select count(*) from public.notifications where user_id = '11111111-1111-1111-1111-111111111111' and type = 'lead' and title = 'New lead for you: Maria Santos' and body like 'From Value Guide.%' and link_view = 'leads') = 1, (select string_agg(title, '; ') from public.notifications);
 insert into public.crm_leads (id, ref, name, payload, created_by)
   values ('lead-a2', 'L-A2', 'Juan Cruz', '{}', '11111111-1111-1111-1111-111111111111');
 insert into results select 'an unassigned lead tells the super-admins', (select count(*) from public.notifications where user_id = '77777777-7777-7777-7777-777777777777' and title = 'New lead: Juan Cruz') = 1, '';
+-- A person saving their own lead is not told about it.
+set local role authenticated;
+select pg_temp.as_user('11111111-1111-1111-1111-111111111111', 'agent@x.ph');
 insert into public.crm_leads (id, ref, name, payload, created_by, assigned_to_id)
   values ('lead-a3', 'L-A3', 'Own Lead', '{}', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111');
+reset role;
 insert into results select 'an agent''s own lead does not notify them', (select count(*) from public.notifications where title like '%Own Lead%') = 0, '';
 set local role authenticated;
 select pg_temp.as_user('77777777-7777-7777-7777-777777777777', 'admin@x.ph');

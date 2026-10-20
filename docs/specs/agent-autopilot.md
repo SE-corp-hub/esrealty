@@ -112,7 +112,8 @@ For a lead `l` with status `s`, `createdAt`, `updatedAt`, `nextFollowUp`,
 1. **Stale-new:** `s='new'` and no activity for 2+ days → observation step
    ("No touch since created …"), suggestion "Call to qualify", next recheck +2d,
    plus schedule a follow-on task.
-2. **Contacted w/ booking:** has `nextFollowUp` parseable and in the past and
+2. **Contacted w/ booking:** has `nextFollowUp` as a date (`YYYY-MM-DD`; typed text
+   such as "Fri 10am" is a note and does not count) that is tomorrow or earlier, and
    status not closed/lost → observation ("Follow-up date passed"), next recheck
    = today at 09:00 (so the queue holds it; repr surfaces it), reason =
    "promised to call back <date>".

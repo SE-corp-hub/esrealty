@@ -67,4 +67,4 @@ jobs:
             echo "$out"
           done
       - name: Health check
-        run: node supabase/check-backend.js || true
+        run: node supabase/check-backend.js

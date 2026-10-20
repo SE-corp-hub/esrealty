@@ -45,4 +45,4 @@ jobs:
           if [ "$MODE" = "apply" ]; then node tools/apply_migration.js "$FILE"; else node tools/apply_migration.js "$FILE" --test; fi
       - name: Health check
         if: inputs.mode == 'apply'
-        run: node supabase/check-backend.js || true
+        run: node supabase/check-backend.js
