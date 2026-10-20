@@ -15348,8 +15348,6 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       '<div class="lead-card-top">' + leadAvatar(l.name) +
         '<div class="grow"><div class="lead-card-name">' + esc(l.name || "Unnamed") + "</div>" +
         '<div class="lead-card-sub dim tiny">' + esc(l.ref || "") + " · " + esc(leadTypeLabel(l.type)) + "</div></div>" +
-        (can ? '<button class="icon-btn btn-sm" data-lead-snooze="' + esc(l.id) + '" data-snz-days="' + (snoozing ? 0 : 7) + '" title="' + (snoozing ? "Unsnooze follow-up" : "Snooze follow-up 7 days") + '">' + icon("bell", 13) + "</button>" : "") +
-        (can ? '<button class="icon-btn btn-sm" data-lead-edit="' + esc(l.id) + '" title="Edit">' + icon("edit", 13) + "</button>" : "") +
       "</div>" +
       '<div class="lead-card-meta">' +
         (snoozing ? '<div style="margin-bottom:4px"><span class="badge purple">' + icon("bell", 11) + " Snoozed until " + esc(snzAt.toLocaleDateString()) + "</span></div>" : "") +
@@ -15360,12 +15358,15 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         leadScoreChip(l) +
         (l.budget || l.askingPrice || l.rentBudget ? '<div class="lead-card-budget">' + leadBudget(l) + "</div>" : "") +
         '<div class="dim tiny">' + icon("pin", 11) + " " + esc(l.source ? leadSourceLabel(l.source) : "—") + "</div>" +
+        (l.assignedTo ? '<div class="dim tiny">' + icon("users", 11) + " " + esc(l.assignedTo) + "</div>" : "") +
       "</div>" +
       (l.listingTitle ? '<div class="lead-card-listing dim tiny">' + icon("home", 11) + " " + esc(l.listingTitle) + "</div>" : "") +
       leadContactButtons(l) +
-      '<div class="lead-card-foot"><span class="dim tiny">' + icon("calendar", 11) + " " + esc(leadDaysSince(l)) + "</span>" +
-      (l.assignedTo ? '<span class="dim tiny">' + icon("users", 11) + " " + esc(l.assignedTo) + "</span>" : "") +
-      ((l.agentNextRecheck || (l.agent && l.agent.nextRecheck)) ? '<span class="dim tiny">' + icon("spark", 11) + " agent " + esc(new Date(l.agentNextRecheck || l.agent.nextRecheck).toLocaleDateString()) + "</span>" : "") + "</div>" +
+      '<div class="lead-card-foot"><span class="lead-card-when dim tiny">' + icon("calendar", 11) + " " + esc(leadDaysSince(l)) +
+      ((l.agentNextRecheck || (l.agent && l.agent.nextRecheck)) ? '<br>' + icon("spark", 11) + " agent " + esc(new Date(l.agentNextRecheck || l.agent.nextRecheck).toLocaleDateString()) : "") + "</span>" +
+      (can ? '<span class="lead-card-actions">' +
+        '<button class="icon-btn btn-sm" data-lead-snooze="' + esc(l.id) + '" data-snz-days="' + (snoozing ? 0 : 7) + '" title="' + (snoozing ? "Unsnooze follow-up" : "Snooze follow-up 7 days") + '" aria-label="' + (snoozing ? "Unsnooze follow-up" : "Snooze follow-up 7 days") + '">' + icon("bell", 14) + "</button>" +
+        '<button class="icon-btn btn-sm" data-lead-edit="' + esc(l.id) + '" title="Edit" aria-label="Edit ' + esc(l.name || "lead") + '">' + icon("edit", 14) + "</button></span>" : "") + "</div>" +
     "</div>";
   }
   function leadBoardHTML() {

@@ -181,6 +181,12 @@ jobs:
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test pms_withholding_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test pms_withholding_e2e
       - name: e2e pms_withholding_e2e (mobile)
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test pms_withholding_e2e -Mobile || pwsh -NoProfile -File tests/run_all.ps1 -Test pms_withholding_e2e -Mobile
+      - name: e2e backoffice_layout_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test backoffice_layout_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test backoffice_layout_e2e
+      - name: e2e backoffice_layout_e2e (tablet)
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test backoffice_layout_e2e -WindowSize "820,1000" || pwsh -NoProfile -File tests/run_all.ps1 -Test backoffice_layout_e2e -WindowSize "820,1000"
+      - name: e2e backoffice_layout_e2e (mobile)
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test backoffice_layout_e2e -Mobile || pwsh -NoProfile -File tests/run_all.ps1 -Test backoffice_layout_e2e -Mobile
       - name: e2e nav_scroll_top_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test nav_scroll_top_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test nav_scroll_top_e2e
       - name: e2e nav_scroll_top_e2e (mobile)
