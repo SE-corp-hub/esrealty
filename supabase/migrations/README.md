@@ -48,6 +48,8 @@ listing of the photo bucket, Super Admin read of private documents, deals / rent
 co-broke in the change log, one open co-broke per listing and partner) follows `0005`.
 `0007_announcements.sql` (staff announcements) and `0008_lead_response_alerts.sql` (hourly
 "not contacted yet" alerts for new leads) follow in that order.
+`0009_lead_routing.sql` (unassigned website, Value Guide and Facebook leads go to chosen
+brokers in turn; off until switched on in Users & Access) follows `0008`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses

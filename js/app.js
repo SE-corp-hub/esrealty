@@ -17761,6 +17761,57 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     } finally { if (btn) btn.disabled = false; }
   }
 
+  /* ---- Lead routing (F1): website, Value Guide and Facebook leads with nobody assigned go to the
+     chosen brokers in turn (migration 0009 does it in the database). */
+  let routingCfg = null, routingLoaded = false, routingLoading = false, routingError = "";
+  async function loadRouting() {
+    if (routingLoading) return;
+    routingLoading = true; routingError = "";
+    try {
+      if (currentUser && currentUser.demo) routingCfg = routingCfg || { enabled: false, brokers: [], next: 0 };
+      else {
+        const r = await SB.from("site_settings").select("value").eq("key", "leadRouting").maybeSingle();
+        if (r.error) throw r.error;
+        routingCfg = (r.data && r.data.value) || { enabled: false, brokers: [], next: 0 };
+      }
+      routingLoaded = true;
+    } catch (e) { routingError = friendlyErr(String((e && e.message) || e)); }
+    routingLoading = false;
+    if (state.view === "users" && state.usersTab === "routing") render();
+  }
+  function routingCard() {
+    if (!routingLoaded && !routingLoading && !routingError) loadRouting();
+    const brokers = remoteProfiles.filter(p => p.role === "broker" && p.registration_status === "approved").sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || "")));
+    const cfg = routingCfg || { enabled: false, brokers: [] };
+    const chosen = Array.isArray(cfg.brokers) ? cfg.brokers.map(String) : [];
+    let html = '<div class="card card-pad routing-card"><h3>Lead routing</h3><p class="dim tiny">Leads from the website, Value Guide requests and Facebook that arrive with nobody assigned go to the brokers you tick, in turn. The broker gets the usual "New lead for you" alert and the lead says it was routed. Leads you type in yourself, and leads that already have someone (such as the listing\'s agent), are not changed. Needs database update 0009.</p>';
+    if (routingError) return html + '<div class="notice-banner mt-8">' + icon("shield", 14) + "<span>Could not load the setting: " + esc(routingError) + '</span></div><button class="btn btn-ghost btn-sm mt-8" data-routing-retry>Try again</button></div>';
+    if (!routingLoaded) return html + '<p class="dim mt-8">Loading…</p></div>';
+    html += '<label class="ms-chk mt-8"><input type="checkbox" id="rt-enabled"' + (cfg.enabled ? " checked" : "") + "> Route unassigned leads automatically</label>";
+    html += '<fieldset class="mt-8" style="border:0;padding:0;margin:0"><legend style="font-weight:600;margin-bottom:6px">Brokers who take turns</legend>' +
+      (brokers.length ? '<div class="row" style="gap:6px 16px;flex-wrap:wrap">' + brokers.map(b => '<label class="ms-chk"><input type="checkbox" data-rt-broker value="' + esc(b.id) + '"' + (chosen.indexOf(String(b.id)) >= 0 ? " checked" : "") + "> " + esc(b.full_name || b.email || "Broker") + "</label>").join("") + "</div>"
+        : '<p class="dim">No approved brokers yet. Approve a broker under Pending first.</p>') + "</fieldset>";
+    const removed = chosen.filter(id => !brokers.some(b => String(b.id) === id)).length;
+    if (removed) html += '<p class="dim tiny mt-8">' + removed + " broker" + (removed === 1 ? " in the list is" : "s in the list are") + " no longer approved and will be skipped. Save to remove " + (removed === 1 ? "them" : "them") + ".</p>";
+    return html + '<button class="btn btn-primary mt-8" data-routing-save>' + icon("check", 14) + " Save lead routing</button></div>";
+  }
+  async function saveRouting(btn) {
+    const enabled = !!($("#rt-enabled") || {}).checked;
+    const brokers = $$("[data-rt-broker]").filter(c => c.checked).map(c => c.value);
+    if (enabled && !brokers.length) { toast("Tick at least one broker, or turn routing off", "err"); return; }
+    const value = { enabled, brokers, next: 0 };
+    if (currentUser && currentUser.demo) { routingCfg = value; toast("Demo: lead routing " + (enabled ? "on for " + brokers.length + " broker" + (brokers.length === 1 ? "" : "s") : "off")); render(); return; }
+    if (btn) btn.disabled = true;
+    try {
+      const r = await SB.from("site_settings").upsert({ key: "leadRouting", value, is_public: false }, { onConflict: "key" });
+      if (r.error) throw r.error;
+      routingCfg = value;
+      toast(enabled ? "Lead routing on: " + brokers.length + " broker" + (brokers.length === 1 ? "" : "s") + " take turns" : "Lead routing off");
+      render();
+    } catch (e) { toast("Could not save: " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
+    finally { if (btn) btn.disabled = false; }
+  }
+
   /* ---- Change log (K3) ---- */
   function auditCtx() {
     return {
@@ -17832,7 +17883,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       const pending = statusCount("pending");
       const approved = statusCount("approved");
       const rejected = statusCount("rejected");
-      const tab = (["pending", "approved", "rejected", "all", "log", "roles", "announce"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
+      const tab = (["pending", "approved", "rejected", "all", "log", "roles", "announce", "routing"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
       const srcBadge = currentUser.demo ? '<span class="chip">Demo data</span>' : (roleIs("super-admin") ? '<span class="chip">Live Supabase</span>' : "");
       const shown = tab === "all" ? remoteProfiles : remoteProfiles.filter(u => u.registration_status === tab);
       const filteredShown = shown.filter(u => (!userFiltQ || [u.full_name, u.email, u.agency].join(" ").toLowerCase().indexOf(userFiltQ) >= 0) && (!userFiltRole || u.role === userFiltRole));
@@ -17843,14 +17894,15 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         '<button class="tab' + (tab === "all" ? " active" : "") + '" data-users-tab="all">All (' + remoteProfiles.length + ")</button>" +
         '<button class="tab' + (tab === "log" ? " active" : "") + '" data-users-tab="log">Change log</button>' +
         '<button class="tab' + (tab === "roles" ? " active" : "") + '" data-users-tab="roles">Who can do what</button>' +
-        '<button class="tab' + (tab === "announce" ? " active" : "") + '" data-users-tab="announce">Announcement</button></div>';
+        '<button class="tab' + (tab === "announce" ? " active" : "") + '" data-users-tab="announce">Announcement</button>' +
+        '<button class="tab' + (tab === "routing" ? " active" : "") + '" data-users-tab="routing">Lead routing</button></div>';
       const roleFilterOpts = '<option value="">All roles</option>' + ROLES.map(r => '<option value="' + esc(r.value) + '">' + esc(r.label) + '</option>').join("");
       const toolsHtml = '<div class="users-tools"><div class="users-search">' + icon("search", 15) + '<input id="users-search" type="search" placeholder="Search name, email, agency..." autocomplete="off"></div><select class="input" id="users-role-filter">' + roleFilterOpts + '</select><span class="dim tiny" id="users-visible-count">' + shown.length + ' account' + (shown.length === 1 ? "" : "s") + '</span></div>';
       let cloudHtml = '<section class="users-access"><div class="hero"><div><h1>Users &amp; Access</h1><p>Approve registrations and assign server-enforced roles. ' + srcBadge + '</p></div>' +
         '<div class="actions"><button class="btn btn-primary" data-cloud-user-new>' + icon("plus", 15) + " Add Account</button></div></div>" +
         '<div class="ls-stat-row">' + lsStat("Registrations", remoteProfiles.length) + lsStat("Pending approval", pending) + lsStat("Approved", approved) + lsStat("Rejected", rejected) + '</div>' +
         '<div class="notice-banner mt-16">' + icon("shield", 14) + ' <span>New accounts cannot access SEA ESTATES until a Super Admin assigns a role and approves the registration.</span></div>';
-      cloudHtml += '<div class="users-directory card">' + tabsHtml + (tab === "log" || tab === "roles" || tab === "announce" ? "" : toolsHtml) + '</div>';
+      cloudHtml += '<div class="users-directory card">' + tabsHtml + (["log", "roles", "announce", "routing"].indexOf(tab) >= 0 ? "" : toolsHtml) + '</div>';
       let gridHtml;
       if (remoteProfilesError) {
         const low = String(remoteProfilesError).toLowerCase();
@@ -17871,9 +17923,10 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       if (tab === "log") cloudHtml += '<div class="mt-16" id="audit-log">' + auditLogCard() + "</div>";
       else if (tab === "roles") cloudHtml += '<div class="mt-16" id="role-matrix">' + roleMatrixCard() + "</div>";
       else if (tab === "announce") cloudHtml += '<div class="mt-16" id="announce">' + announceCard() + "</div>";
+      else if (tab === "routing") cloudHtml += '<div class="mt-16" id="routing">' + routingCard() + "</div>";
       else cloudHtml += '<div class="user-grid mt-16" id="users-grid">' + gridHtml + '</div><div class="card card-pad empty mt-16" id="users-filter-empty" style="display:none"><h3>No matching accounts</h3><p class="dim">Try a different name, email, or role.</p></div>';
       const pendingResets = passwordResetRequests.filter(r => r.user_id);
-      if (pendingResets.length && ["log", "roles", "announce"].indexOf(tab) < 0) {
+      if (pendingResets.length && ["log", "roles", "announce", "routing"].indexOf(tab) < 0) {
         cloudHtml += '<div class="card card-pad mt-16"><h3>' + icon("key", 15) + ' Password reset requests</h3><p class="dim">These users requested a reset from the Forgot Password tab. Generate a temporary password and share it with them.</p>' +
           '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' + pendingResets.map(r =>
             '<div class="chip-row" style="display:flex;align-items:center;gap:8px;border:1px solid var(--stroke);border-radius:10px;padding:6px 10px"><div><div class="tiny" style="font-weight:600">' + esc(r.full_name || r.email) + '</div><div class="dim tiny">' + esc(r.email) + '</div></div>' +
@@ -18260,6 +18313,9 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         if (e.target.closest("[data-audit-more]")) { loadAuditLog(true); return; }
         const anSend = e.target.closest("[data-an-send]");
         if (anSend) { sendAnnouncement(anSend); return; }
+        const rtSave = e.target.closest("[data-routing-save]");
+        if (rtSave) { saveRouting(rtSave); return; }
+        if (e.target.closest("[data-routing-retry]")) { routingError = ""; routingLoaded = false; render(); return; }
         if (e.target.closest("[data-audit-retry]")) { auditError = ""; auditLoaded = false; render(); return; }
         if (e.target.closest("[data-audit-csv]")) {
           if (AUDIT && auditRows.length) { download("change-log-" + new Date().toISOString().slice(0, 10) + ".csv", "data:text/csv;charset=utf-8," + encodeURIComponent(AUDIT.toCsv(auditRows, auditCtx()))); toast("Change log downloaded (CSV)"); }
