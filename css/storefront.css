@@ -989,6 +989,8 @@
 }
 body .sf-search-form button { min-height: 46px !important; height: 46px !important; }
 .sf-search-form label:last-of-type { border-right: 0; }
+/* The keyword field (H2) takes its own full-width row above the filters. */
+.sf-search-form label.sf-search-wide { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--sf-line-soft); padding-bottom: 10px; }
 .sf-search-more[hidden] { display: none !important; }
 .sf-search-more { grid-column: 1 / -1; min-width: 0; border-top: 1px solid var(--sf-line); }
 .sf-search-more > summary {

@@ -76,6 +76,17 @@ const stringValue = (value: unknown, max: number, field: string, required = fals
 // and * (which the API treats as %) is dropped. Place names contain none of these.
 const likeLiteral = (value: string) => value.replace(/[\\%_]/g, "\\$&").replace(/\*/g, "");
 
+// Free-text search (H2): up to 4 words, each must appear in the title, description, address,
+// barangay, city or reference. Only letters, digits, spaces, hyphens and apostrophes are kept, so a
+// word can never carry PostgREST filter syntax (commas, dots, brackets) or LIKE wildcards.
+const SEARCH_COLUMNS = ["title", "description", "address", "barangay", "city", "ref"];
+const searchWords = (raw: string | null): string[] => {
+  if (raw == null) return [];
+  const text = String(raw).normalize("NFC").slice(0, 120).replace(/[^\p{L}\p{N}\s'-]/gu, " ");
+  return text.split(/\s+/).map((w) => w.replace(/^[-']+|[-']+$/g, "")).filter((w) => w.length >= 2).slice(0, 4);
+};
+const searchFilter = (word: string) => SEARCH_COLUMNS.map((c) => `${c}.ilike.*${word}*`).join(",");
+
 // A phone number as people type it, kept as typed. At least seven digits and not one digit
 // repeated ("0000000"), so an empty or made-up value is refused. Landlines and two numbers are fine.
 const looksLikePhone = (text: string) => {
@@ -352,6 +363,7 @@ const listListings = async (url: URL, admin: SupabaseClient) => {
   if (beds != null) query = query.gte("bedrooms", beds);
   if (baths != null) query = query.gte("bathrooms", baths);
   if (url.searchParams.get("featured") === "true") query = query.eq("featured", true);
+  for (const word of searchWords(url.searchParams.get("q"))) query = query.or(searchFilter(word));
 
   const sort = url.searchParams.get("sort") || "date_desc";
   if (sort === "price_asc") query = query.order("display_price", { ascending: true });
