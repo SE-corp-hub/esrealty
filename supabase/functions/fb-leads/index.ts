@@ -166,9 +166,13 @@ Deno.serve(async (req) => {
       if (insert.error) {
         // Meta delivered it twice at once: the other copy saved it. Not a failure.
         if (insert.error.code === "23505") { results.push({ leadgen_id: leadgenId, action: "duplicate" }); continue; }
-        console.error("fb-leads insert", leadgenId, insert.error.message);
-        results.push({ leadgen_id: leadgenId, action: "insert-failed" });
-        failed++;
+        console.error("fb-leads insert", leadgenId, insert.error.code, insert.error.message);
+        // A row the database rejects for its content (SQLSTATE class 22 data, 23 rules, 42 schema) fails
+        // the same way on every retry, and Meta switches a webhook off after days of failures. Only
+        // other failures (database down, timeout) ask Meta to send it again. The rejected lead is in the log.
+        const rejected = /^(22|23|42)/.test(String(insert.error.code || ""));
+        results.push({ leadgen_id: leadgenId, action: rejected ? "insert-rejected" : "insert-failed" });
+        if (!rejected) failed++;
         continue; // no "new lead" notice for a lead that wasn't saved
       }
       results.push({ leadgen_id: leadgenId, action: fetchProblem ? "created-without-answers" : "created" });
@@ -184,9 +188,9 @@ Deno.serve(async (req) => {
     }
   }
 
-  // A lead that could not be saved must not be answered with 200: Meta only
-  // sends the webhook again when it gets an error. Saved leads are skipped on
-  // the retry (the id check above), so a retry cannot double them.
+  // A lead that could not be saved because of a passing fault must not be answered with 200: Meta
+  // only sends the webhook again when it gets an error. Saved leads are skipped on the retry
+  // (the id check above), so a retry cannot double them.
   if (failed > 0) return json({ ok: false, error: "Some leads could not be saved", results }, 500);
   return json({ ok: true, results });
 });

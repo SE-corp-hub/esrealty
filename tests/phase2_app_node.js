@@ -37,7 +37,7 @@ ok("the copy needs a cloud account and never throws", /async function mirrorComp
 ok("the owner is not sent (the table's trigger sets it)", !/owner:/.test(/function complianceRow[\s\S]*?\n  \}\n/.exec(app)[0]));
 ok("settings: Contact Us and Value Guide saves copy to site_settings", /publishSiteSetting\("siteContact", c\)/.test(app) && /publishSiteSetting\("valueGuide", v\)/.test(app));
 ok("settings: only a super-admin writes them, as public rows", /async function publishSiteSetting[\s\S]*?!roleIs\("super-admin"\)[\s\S]*?is_public: true/.test(app));
-ok("settings: copied after sign-in only where the table lacks them", /async function syncSiteSettings[\s\S]*?have\.indexOf\("siteContact"\) === -1[\s\S]*?have\.indexOf\("valueGuide"\) === -1/.test(app));
+ok("settings: after sign-in the table's value is adopted and a missing one is copied (run in site_settings_mirror_e2e)", /async function syncSiteSettings[\s\S]*?if \(have\.siteContact\)[\s\S]*?else await publishSiteSetting\("siteContact"[\s\S]*?if \(have\.valueGuide\)[\s\S]*?else await publishSiteSetting\("valueGuide"/.test(app));
 ok("the public settings reader prefers the table, then the saved data", /table\.siteContact \?\? /.test(fs.readFileSync(path.join(root, "supabase/functions/listing-api/index.ts"), "utf8")) && /table\.valueGuide \?\? /.test(fs.readFileSync(path.join(root, "supabase/functions/listing-api/index.ts"), "utf8")));
 ok("the reader ignores a missing table (before the migration)", /const readSettingsTable[\s\S]*?if \(error \|\| !Array\.isArray\(data\)\) return \{\};/.test(fs.readFileSync(path.join(root, "supabase/functions/listing-api/index.ts"), "utf8")));
 

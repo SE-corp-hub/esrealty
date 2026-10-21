@@ -42,7 +42,12 @@ ok("an unchanged price/published/status writes no log row", /Number\(existing\.p
 const fb = read("supabase/functions/fb-leads/index.ts");
 ok("fb-leads: a lead that could not be saved makes the answer 500 so Meta sends it again", /failed\+\+;/.test(fb) && /if \(failed > 0\) return json\(\{ ok: false, error: "Some leads could not be saved", results \}, 500\)/.test(fb));
 ok("fb-leads: a duplicate (23505) is not a failure", /insert\.error\.code === "23505"[\s\S]{0,120}action: "duplicate"/.test(fb));
-ok("fb-leads: the database message is not returned", !/"error:" \+ insert\.error\.message/.test(fb) && /action: "insert-failed"/.test(fb));
+ok("fb-leads: a row the database rejects for its content is logged, not retried forever (Meta would switch the webhook off)", /\^\(22\|23\|42\)/.test(fb) && /insert-rejected/.test(fb) && /if \(!rejected\) failed\+\+;/.test(fb));
+{
+  const re = /^(22|23|42)/;
+  ok("fb-leads: data, rule and schema errors count as rejected; connection and timeout errors do not", ["22001", "23502", "23514", "42703"].every(c => re.test(c)) && ["", "08006", "57014", "53300", "PGRST301", "undefined"].every(c => !re.test(c)));
+}
+ok("fb-leads: the database message is not returned", !/"error:" \+ insert\.error\.message/.test(fb) && /"insert-failed"/.test(fb));
 ok("fb-leads: the Graph call times out", /graph\.facebook\.com[\s\S]{0,300}AbortSignal\.timeout\(8000\)/.test(fb));
 
 // ---- location-report ---------------------------------------------------------------------------

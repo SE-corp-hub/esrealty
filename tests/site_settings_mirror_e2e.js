@@ -13,11 +13,14 @@
   try {
     var writes = [];
     // Every call on the stand-in answers "nothing, no error"; upserts are remembered.
+    var rows = [];   // what a read of site_settings returns
     var reply = function (table) {
+      var ops = [];
       var p = new Proxy(function () {}, {
         get: function (_, prop) {
-          if (prop === "then") return function (res) { res({ data: [], error: null }); };
+          if (prop === "then") return function (res) { res({ data: table === "site_settings" && ops.indexOf("select") !== -1 ? rows : [], error: null }); };
           return function () {
+            ops.push(prop);
             if (prop === "upsert") writes.push({ table: table, row: arguments[0], opts: arguments[1] });
             return p;
           };
@@ -59,7 +62,28 @@
     add("... public, with the approved factors", g.length === 1 && g[0].row.is_public === true && g[0].row.value.proxyFactors.residential === 1.1 && g[0].row.value.construction.mixed_chb === 26000 && !!g[0].row.value.approvedAt, g.length ? JSON.stringify(g[0].row.value.proxyFactors) + JSON.stringify(g[0].row.value.construction) : "none");
     add("nothing else was written to the table", writes.filter(w => w.table === "site_settings").length === 2, writes.map(w => w.table + ":" + (w.row && w.row.key)).join(","));
 
-    ok = checks.every(x => x.ok) && checks.length >= 9;
+    // After sign-in (the helper runs the same step): what the table has is adopted, what it lacks is copied.
+    var H = window.__ESREALTY_TEST_HELPERS, st = H.getState();
+    document.querySelector('[data-view="dashboard"]').click(); await wait(300);
+    writes.length = 0;
+    rows = [{ key: "siteContact", value: { phone: "0999 111 2222", title: "From the table" } }];
+    await H.syncSiteSettings(); await wait(300);
+    st = H.getState();
+    add("sign-in: a Contact Us row in the table is adopted", st.siteContact.phone === "0999 111 2222" && st.siteContact.title === "From the table", JSON.stringify(st.siteContact).slice(0, 100));
+    add("... fields the row lacks keep their defaults", /PROPERTY GUIDANCE/.test(st.siteContact.eyebrow || "") && !!st.siteContact.email, st.siteContact.eyebrow);
+    add("... the Contact Us row is not written back; the missing Value Guide row is copied once", writes.filter(w => w.row.key === "siteContact").length === 0 && writes.filter(w => w.row.key === "valueGuide").length === 1, writes.map(w => w.row.key).join(","));
+    writes.length = 0;
+    rows = [{ key: "valueGuide", value: { version: "2026.10.9", approvedBy: "second admin", proxyFactors: { residential: 1.3 }, construction: { rca_steel: 33000 } } }];
+    await H.syncSiteSettings(); await wait(300);
+    st = H.getState();
+    add("sign-in: a Value Guide row is adopted, with defaults filled in", st.valueGuide.proxyFactors.residential === 1.3 && st.valueGuide.proxyFactors.commercial === 1.7 && st.valueGuide.construction.rca_steel === 33000 && st.valueGuide.construction.wood_prefab === 16000 && st.valueGuide.approvedBy === "second admin", JSON.stringify(st.valueGuide).slice(0, 140));
+    add("... and the missing Contact Us row is copied once", writes.filter(w => w.row.key === "valueGuide").length === 0 && writes.filter(w => w.row.key === "siteContact").length === 1, writes.map(w => w.row.key).join(","));
+    writes.length = 0;
+    rows = [];
+    await H.syncSiteSettings(); await wait(300);
+    add("sign-in with an empty table copies both", writes.map(w => w.row.key).sort().join(",") === "siteContact,valueGuide", writes.map(w => w.row.key).join(","));
+
+    ok = checks.every(x => x.ok) && checks.length >= 15;
   } catch (e) { log.push("ERR:" + e.message); ok = false; }
   window.__msChecks = checks; window.__msOk = ok; window.__msDone = true;
 })();

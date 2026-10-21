@@ -5470,16 +5470,32 @@ function bindPerView() {
       return !error;
     } catch (e) { return false; }
   }
-  /* After a super-admin signs in: copy the settings the table does not have yet. What the public site
-   * shows does not change, because it already showed these same saved values. */
+  /* After a super-admin signs in, the table and the account's own copy are brought together:
+   * a setting the table has is adopted (so a second super-admin sees and edits what the first one
+   * saved, instead of an older copy that would overwrite it), and a setting the table lacks is
+   * copied into it once. What the public site shows does not change, because it already showed
+   * these same saved values. */
   async function syncSiteSettings() {
     if (!SB || !currentUser || !roleIs("super-admin")) return;
     try {
-      const { data, error } = await SB.from("site_settings").select("key").in("key", ["siteContact", "valueGuide"]);
+      const { data, error } = await SB.from("site_settings").select("key,value").in("key", ["siteContact", "valueGuide"]);
       if (error || !Array.isArray(data)) return;
-      const have = data.map(r => r.key);
-      if (have.indexOf("siteContact") === -1) await publishSiteSetting("siteContact", siteContactData());
-      if (have.indexOf("valueGuide") === -1) await publishSiteSetting("valueGuide", valueGuideSettings());
+      const have = {};
+      data.forEach(r => { if (r && r.value && typeof r.value === "object" && !Array.isArray(r.value)) have[r.key] = r.value; });
+      let changed = false;
+      if (have.siteContact) {
+        const next = Object.assign(siteContactDefaults(), have.siteContact);
+        if (JSON.stringify(next) !== JSON.stringify(state.siteContact)) { state.siteContact = next; changed = true; }
+      } else await publishSiteSetting("siteContact", siteContactData());
+      if (have.valueGuide) {
+        const d = defaultState().valueGuide, g = have.valueGuide;
+        const next = Object.assign({}, d, g, {
+          proxyFactors: Object.assign({}, d.proxyFactors, g.proxyFactors), marketBandMid: Object.assign({}, d.marketBandMid, g.marketBandMid),
+          construction: Object.assign({}, d.construction, g.construction)
+        });
+        if (JSON.stringify(next) !== JSON.stringify(state.valueGuide)) { state.valueGuide = next; changed = true; }
+      } else await publishSiteSetting("valueGuide", valueGuideSettings());
+      if (changed) { save(); render(); }
     } catch (e) { /* not available yet */ }
   }
   function renderSiteContactAdmin() {
@@ -19764,6 +19780,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       }
       return false;
     },
+    syncSiteSettings: function() { return syncSiteSettings(); },
     getState: function() { return state; },
     persistTransaction: function(id) { return persistTransactionToCloud((state.transactions || []).find(t => t.id === id)); }
   };
