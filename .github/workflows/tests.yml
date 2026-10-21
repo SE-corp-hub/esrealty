@@ -331,6 +331,8 @@ jobs:
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test leads_pinmove_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test leads_pinmove_e2e
       - name: e2e listings_stale_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test listings_stale_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test listings_stale_e2e
+      - name: e2e site_settings_mirror_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test site_settings_mirror_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test site_settings_mirror_e2e
       - name: e2e market_filters_mobile_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test market_filters_mobile_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test market_filters_mobile_e2e
       - name: e2e market_index_e2e

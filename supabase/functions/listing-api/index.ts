@@ -523,7 +523,24 @@ const getFavorites = async (req: Request, admin: SupabaseClient) => {
   return json({ data: ids.map((id) => byId.get(id)).filter(Boolean) });
 };
 
+// Website settings saved in the site_settings table (migration 0005). Returns {} when the table is
+// not there yet or has no public rows, and the caller falls back to the super-admin's saved data.
+const readSettingsTable = async (admin: SupabaseClient): Promise<Record<string, JsonRecord>> => {
+  try {
+    const { data, error } = await admin.from("site_settings").select("key,value").eq("is_public", true).in("key", ["siteContact", "valueGuide"]);
+    if (error || !Array.isArray(data)) return {};
+    const out: Record<string, JsonRecord> = {};
+    for (const row of data) {
+      if (row && typeof row.value === "object" && row.value && !Array.isArray(row.value)) out[String(row.key)] = row.value as JsonRecord;
+    }
+    return out;
+  } catch (_error) {
+    return {};
+  }
+};
+
 const getSiteSettings = async (admin: SupabaseClient) => {
+  const table = await readSettingsTable(admin);
   const { data: adminProfile, error: profileError } = await admin
     .from("profiles")
     .select("id")
@@ -545,12 +562,12 @@ const getSiteSettings = async (admin: SupabaseClient) => {
     .eq("owner_id", adminProfile.id)
     .maybeSingle();
   if (stateError) throw new Error(stateError.message);
-  const saved = appState?.payload && typeof appState.payload === "object" && !Array.isArray(appState.payload)
+  const saved = table.siteContact ?? (appState?.payload && typeof appState.payload === "object" && !Array.isArray(appState.payload)
     ? (appState.payload as JsonRecord).siteContact
-    : null;
-  const savedGuide = appState?.payload && typeof appState.payload === "object" && !Array.isArray(appState.payload)
+    : null);
+  const savedGuide = table.valueGuide ?? (appState?.payload && typeof appState.payload === "object" && !Array.isArray(appState.payload)
     ? (appState.payload as JsonRecord).valueGuide
-    : null;
+    : null);
   const contact = saved && typeof saved === "object" && !Array.isArray(saved) ? saved as JsonRecord : {};
   const guide = savedGuide && typeof savedGuide === "object" && !Array.isArray(savedGuide) ? savedGuide as JsonRecord : {};
   const proxy = guide.proxyFactors && typeof guide.proxyFactors === "object" ? guide.proxyFactors as JsonRecord : {};
