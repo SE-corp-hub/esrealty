@@ -16,6 +16,8 @@
   /* Compliance expiry-window math (js/compliance_due.js) — falls back inline
    * so the raw harness and cold loads never depend on the script. */
   const DUE = window.ESREALTY_DUE || null;
+  /* Change log wording (js/audit_view.js): turns audit_events rows into sentences and CSV. */
+  const AUDIT = window.ESREALTY_AUDIT || null;
   /* CRM Autopilot "What next" reasoning (js/agent_next.js) — falls back inline
    * so the raw harness and cold loads never depend on the script. */
   const NEXT = window.ESREALTY_NEXT || null;
@@ -296,6 +298,9 @@
   let leadColExpanded = {};
   let userFiltQ = "";
   let userFiltRole = "";
+  // Change log (K3): rows of public.audit_events, newest first. Super Admins only (RLS).
+  const AUDIT_PAGE = 50;
+  let auditRows = [], auditLoaded = false, auditLoading = false, auditError = "", auditGroup = "all", auditMore = false;
 
   function temporaryPassword() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$";
@@ -17402,6 +17407,69 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       loadCloudProfiles(true);
     })();
   }
+  /* ---- Change log (K3) ---- */
+  function auditCtx() {
+    return {
+      name: id => {
+        const p = remoteProfiles.find(x => String(x.id) === String(id));
+        if (p) return p.full_name || p.email || "";
+        return currentUser && String(currentUser.id) === String(id) ? (currentUser.name || currentUser.email || "") : "";
+      }
+    };
+  }
+  function demoAuditRows() {
+    const me = currentUser && currentUser.id, ago = m => new Date(Date.now() - m * 60000).toISOString();
+    return [
+      { id: 5, owner_id: me, event_type: "cash_posted", entity_type: "cash_entry", entity_id: "demo-entry-0005", detail: { direction: "in", amount: 25000 }, created_at: ago(12) },
+      { id: 4, owner_id: me, event_type: "lead_status", entity_type: "crm_lead", entity_id: "demo-lead-0003", detail: { from: "new", to: "contacted" }, created_at: ago(95) },
+      { id: 3, owner_id: me, event_type: "listing_price", entity_type: "shared_listing", entity_id: "demo-listing-0002", detail: { from: 5200000, to: 4950000 }, created_at: ago(300) },
+      { id: 2, owner_id: me, event_type: "role_changed", entity_type: "profile", entity_id: me, detail: { from: "agent", to: "broker" }, created_at: ago(1500) },
+      { id: 1, owner_id: me, event_type: "lead_created", entity_type: "crm_lead", entity_id: "demo-lead-0003", detail: { source: "website" }, created_at: ago(2900) }
+    ].filter(r => auditGroup === "all" || (AUDIT && AUDIT.typesInGroup(auditGroup).indexOf(r.event_type) >= 0));
+  }
+  async function loadAuditLog(more) {
+    if (auditLoading || !canManageUsers() || !AUDIT) return;
+    if (!currentUser || (!currentUser.demo && !(SB && currentUser.id))) return;
+    auditLoading = true; auditError = "";
+    try {
+      if (currentUser.demo) {
+        auditRows = demoAuditRows(); auditMore = false;
+      } else {
+        const res = await AUDIT.query(SB, auditGroup, more && auditRows.length ? auditRows[auditRows.length - 1].id : null, AUDIT_PAGE);
+        if (res.error) throw res.error;
+        const rows = Array.isArray(res.data) ? res.data : [];
+        auditRows = more ? auditRows.concat(rows) : rows;
+        auditMore = rows.length === AUDIT_PAGE;
+      }
+      auditLoaded = true;
+    } catch (e) { auditError = friendlyErr(String((e && e.message) || e)); }
+    auditLoading = false;
+    if (state.view === "users" && state.usersTab === "log") render();
+  }
+  function auditLogCard() {
+    if (!AUDIT) return '<div class="card card-pad empty"><h3>Change log unavailable</h3><p class="dim">The change log script did not load. Reload the page.</p></div>';
+    if (!auditLoaded && !auditLoading && !auditError) loadAuditLog(false);
+    const ctx = auditCtx();
+    let html = '<div class="card card-pad audit-log"><div class="row spread" style="flex-wrap:wrap;gap:8px"><div><h3>Change log</h3><p class="dim tiny">Who changed leads, money, listings and roles, newest first. Only Super Admins can see this.</p></div>' +
+      '<button class="btn btn-ghost btn-sm" data-audit-csv' + (auditRows.length ? "" : " disabled") + '>' + icon("download", 13) + ' Download CSV</button></div>';
+    html += '<div class="row mt-8" role="group" aria-label="Filter the change log" style="gap:6px;flex-wrap:wrap">' + AUDIT.GROUPS.map(g =>
+      '<button class="btn btn-sm ' + (g.key === auditGroup ? "btn-primary" : "btn-ghost") + '" data-audit-group="' + esc(g.key) + '" aria-pressed="' + (g.key === auditGroup ? "true" : "false") + '">' + esc(g.label) + "</button>").join("") + "</div>";
+    if (auditError) {
+      html += '<div class="notice-banner mt-8">' + icon("shield", 14) + "<span>Could not load the change log: " + esc(auditError) + '</span></div><button class="btn btn-ghost btn-sm mt-8" data-audit-retry>' + icon("refresh", 13) + " Try again</button>";
+    } else if (!auditLoaded) {
+      html += '<p class="dim mt-8">Loading the change log…</p>';
+    } else if (!auditRows.length) {
+      html += '<p class="dim mt-8">Nothing has been logged for this filter yet. If you expect entries, check that database update 0005 has been applied.</p>';
+    } else {
+      html += '<div class="table-wrap mt-8"><table class="data"><thead><tr><th>When</th><th>Who</th><th>What happened</th><th>Record</th></tr></thead><tbody>' +
+        auditRows.map(r => { const x = AUDIT.describe(r, ctx); return "<tr><td>" + esc(x.when ? new Date(x.when).toLocaleString() : "") + "</td><td>" + esc(x.who) + "</td><td>" + esc(x.text) + '</td><td class="dim tiny">' + esc(x.record) + "</td></tr>"; }).join("") +
+        "</tbody></table></div>" +
+        '<p class="dim tiny mt-8">Showing ' + auditRows.length + " entr" + (auditRows.length === 1 ? "y" : "ies") + (auditMore ? "." : ", all of them.") + "</p>" +
+        (auditMore ? '<button class="btn btn-ghost btn-sm mt-8" data-audit-more' + (auditLoading ? " disabled" : "") + ">Show older entries</button>" : "");
+    }
+    return html + "</div>";
+  }
+
   function renderUsers() {
     if (!canManageUsers()) return '<section class="users-access"><div class="hero"><div><h1>Users & Access</h1></div></div><div class="card card-pad empty">' + icon("shield", 40) + "<h3>Super Admin only</h3><p>User management is limited to the Super Admin role.</p></div></section>";
     const cloudMode = (SB && currentUser && currentUser.id) || (currentUser && currentUser.demo);
@@ -17410,7 +17478,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       const pending = statusCount("pending");
       const approved = statusCount("approved");
       const rejected = statusCount("rejected");
-      const tab = (["pending", "approved", "rejected", "all"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
+      const tab = (["pending", "approved", "rejected", "all", "log"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
       const srcBadge = currentUser.demo ? '<span class="chip">Demo data</span>' : (roleIs("super-admin") ? '<span class="chip">Live Supabase</span>' : "");
       const shown = tab === "all" ? remoteProfiles : remoteProfiles.filter(u => u.registration_status === tab);
       const filteredShown = shown.filter(u => (!userFiltQ || [u.full_name, u.email, u.agency].join(" ").toLowerCase().indexOf(userFiltQ) >= 0) && (!userFiltRole || u.role === userFiltRole));
@@ -17418,14 +17486,15 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         '<button class="tab' + (tab === "pending" ? " active" : "") + '" data-users-tab="pending">Pending (' + pending + ")</button>" +
         '<button class="tab' + (tab === "approved" ? " active" : "") + '" data-users-tab="approved">Approved (' + approved + ")</button>" +
         '<button class="tab' + (tab === "rejected" ? " active" : "") + '" data-users-tab="rejected">Rejected (' + rejected + ")</button>" +
-        '<button class="tab' + (tab === "all" ? " active" : "") + '" data-users-tab="all">All (' + remoteProfiles.length + ")</button></div>";
+        '<button class="tab' + (tab === "all" ? " active" : "") + '" data-users-tab="all">All (' + remoteProfiles.length + ")</button>" +
+        '<button class="tab' + (tab === "log" ? " active" : "") + '" data-users-tab="log">Change log</button></div>';
       const roleFilterOpts = '<option value="">All roles</option>' + ROLES.map(r => '<option value="' + esc(r.value) + '">' + esc(r.label) + '</option>').join("");
       const toolsHtml = '<div class="users-tools"><div class="users-search">' + icon("search", 15) + '<input id="users-search" type="search" placeholder="Search name, email, agency..." autocomplete="off"></div><select class="input" id="users-role-filter">' + roleFilterOpts + '</select><span class="dim tiny" id="users-visible-count">' + shown.length + ' account' + (shown.length === 1 ? "" : "s") + '</span></div>';
       let cloudHtml = '<section class="users-access"><div class="hero"><div><h1>Users &amp; Access</h1><p>Approve registrations and assign server-enforced roles. ' + srcBadge + '</p></div>' +
         '<div class="actions"><button class="btn btn-primary" data-cloud-user-new>' + icon("plus", 15) + " Add Account</button></div></div>" +
         '<div class="ls-stat-row">' + lsStat("Registrations", remoteProfiles.length) + lsStat("Pending approval", pending) + lsStat("Approved", approved) + lsStat("Rejected", rejected) + '</div>' +
         '<div class="notice-banner mt-16">' + icon("shield", 14) + ' <span>New accounts cannot access SEA ESTATES until a Super Admin assigns a role and approves the registration.</span></div>';
-      cloudHtml += '<div class="users-directory card">' + tabsHtml + toolsHtml + '</div>';
+      cloudHtml += '<div class="users-directory card">' + tabsHtml + (tab === "log" ? "" : toolsHtml) + '</div>';
       let gridHtml;
       if (remoteProfilesError) {
         const low = String(remoteProfilesError).toLowerCase();
@@ -17443,9 +17512,10 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       } else {
         gridHtml = '<div class="card card-pad empty"><h3>No ' + (tab === "all" ? "registered accounts" : tab + " accounts") + '</h3><p class="dim">Nothing to show here yet. New sign-ups appear under Pending once they register.</p></div>';
       }
-      cloudHtml += '<div class="user-grid mt-16" id="users-grid">' + gridHtml + '</div><div class="card card-pad empty mt-16" id="users-filter-empty" style="display:none"><h3>No matching accounts</h3><p class="dim">Try a different name, email, or role.</p></div>';
+      if (tab === "log") cloudHtml += '<div class="mt-16" id="audit-log">' + auditLogCard() + "</div>";
+      else cloudHtml += '<div class="user-grid mt-16" id="users-grid">' + gridHtml + '</div><div class="card card-pad empty mt-16" id="users-filter-empty" style="display:none"><h3>No matching accounts</h3><p class="dim">Try a different name, email, or role.</p></div>';
       const pendingResets = passwordResetRequests.filter(r => r.user_id);
-      if (pendingResets.length) {
+      if (pendingResets.length && tab !== "log") {
         cloudHtml += '<div class="card card-pad mt-16"><h3>' + icon("key", 15) + ' Password reset requests</h3><p class="dim">These users requested a reset from the Forgot Password tab. Generate a temporary password and share it with them.</p>' +
           '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' + pendingResets.map(r =>
             '<div class="chip-row" style="display:flex;align-items:center;gap:8px;border:1px solid var(--stroke);border-radius:10px;padding:6px 10px"><div><div class="tiny" style="font-weight:600">' + esc(r.full_name || r.email) + '</div><div class="dim tiny">' + esc(r.email) + '</div></div>' +
@@ -17827,6 +17897,14 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         if (access) { setCloudProfileAccess(access.getAttribute("data-profile-id"), access.getAttribute("data-profile-action")); return; }
         const utab = e.target.closest("[data-users-tab]");
         if (utab) { state.usersTab = utab.getAttribute("data-users-tab"); save(); render(); return; }
+        const agrp = e.target.closest("[data-audit-group]");
+        if (agrp) { auditGroup = agrp.getAttribute("data-audit-group"); auditLoaded = false; auditRows = []; auditError = ""; render(); return; }
+        if (e.target.closest("[data-audit-more]")) { loadAuditLog(true); return; }
+        if (e.target.closest("[data-audit-retry]")) { auditError = ""; auditLoaded = false; render(); return; }
+        if (e.target.closest("[data-audit-csv]")) {
+          if (AUDIT && auditRows.length) { download("change-log-" + new Date().toISOString().slice(0, 10) + ".csv", "data:text/csv;charset=utf-8," + encodeURIComponent(AUDIT.toCsv(auditRows, auditCtx()))); toast("Change log downloaded (CSV)"); }
+          return;
+        }
         const cun = e.target.closest("[data-cloud-user-new]");
         if (cun) { openCloudUserEditor(); return; }
         const cus = e.target.closest("[data-cloud-user-save]");

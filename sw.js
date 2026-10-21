@@ -56,6 +56,7 @@ const SHELL = [
   "./js/value_guide_pdf.js",
   "./js/value_guide_flow.js",
   "./js/compliance_due.js",
+  "./js/audit_view.js",
   "./js/agent_next.js",
   "./js/app.min.js",
   "./404.html",
