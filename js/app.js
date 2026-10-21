@@ -10713,7 +10713,7 @@ premise: "Fee Simple / As Improved",
       pmsField("Reference no.", pmsTxt("pms-pay-ref", d.reference, "GCash / bank reference")) +
       pmsField("Notes", pmsTxt("pms-pay-notes", d.notes), "", true) +
       '<div class="field col-full"><label>Proof of Payment</label>' +
-      '<label class="btn btn-ghost btn-sm" style="margin:0">' + icon("upload", 14) + ' Choose image<input type="file" id="pms-pay-proof" style="display:none" accept="image/*"></label>' +
+      '<label class="btn btn-ghost btn-sm" style="margin:0">' + icon("upload", 14) +  (pmsReceiptsCloud() ? " Choose image or PDF" : " Choose image") + '<input type="file" id="pms-pay-proof" style="display:none" accept="' + (pmsReceiptsCloud() ? "image/*,application/pdf" : "image/*") + '"></label>' +
       (proof ? '<div class="mt-8"><img src="' + esc(proof) + '" alt="Current proof of payment" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid var(--stroke)"></div>'
         : d.proofPath ? '<div class="mt-8 row" style="gap:8px;align-items:center"><span class="dim">Receipt on file.</span><button type="button" class="btn btn-ghost btn-sm" data-pms-proof="' + esc(d.id) + '">' + icon("camera", 13) + ' View</button></div>' : "") +
       '<div class="field-hint">Attach a photo or screenshot of the receipt (GCash, bank transfer, etc.). It is shrunk before saving' + (pmsReceiptsCloud() ? " and kept private: only staff, the owner and the tenant can open it" : "") + '. A new photo replaces the old one.</div></div>';
@@ -10817,6 +10817,13 @@ premise: "Fee Simple / As Improved",
     if (!SB) { fail("The receipt is stored online. Connect to the internet to open it."); return; }
     SB.storage.from(PMS_RECEIPTS).createSignedUrl(p.proofPath, 300).then(res => {
       if (res.error || !res.data || !res.data.signedUrl) throw res.error || new Error("No link");
+      if (pmsProofIsPdf(p)) {
+        const a = document.createElement("a");
+        a.href = res.data.signedUrl; a.target = "_blank"; a.rel = "noopener"; a.className = "btn btn-primary";
+        a.textContent = "Open the PDF receipt" + (p.proofName ? " (" + p.proofName + ")" : "");
+        if (body) { body.innerHTML = '<p class="dim">The link works for five minutes.</p>'; body.appendChild(a); }
+        return;
+      }
       const img = new Image();
       img.alt = "Proof of payment";
       img.style.cssText = "width:100%;height:auto;border-radius:8px";
@@ -10853,6 +10860,18 @@ premise: "Fee Simple / As Improved",
     pmsReceiptsOk = true;
     return path;
   }
+  const PMS_RECEIPT_PDF_MAX = 5 * 1024 * 1024; // the pms-receipts bucket limit (migrations 0006 allows PDF)
+  async function pmsUploadReceiptFile(paymentId, file, onRetry) {
+    const path = (pmsBooks ? pmsMyBook() : "payments") + "/" + paymentId + "/" + Date.now().toString(36) + ".pdf";
+    const up = await storageUpload(PMS_RECEIPTS, path, file, { contentType: "application/pdf", upsert: false }, onRetry);
+    if (up.error) {
+      if (/bucket not found/i.test(String(up.error.message || up.error.error || ""))) pmsReceiptsOk = false;
+      throw up.error;
+    }
+    pmsReceiptsOk = true;
+    return path;
+  }
+  function pmsProofIsPdf(p) { return !!(p && p.proofPath && /\.pdf$/i.test(p.proofPath)); }
   function pmsRemoveReceipt(path) {
     if (!path || !SB || !pmsCloudAccounts()) return;
     Promise.resolve(SB.storage.from(PMS_RECEIPTS).remove([path])).catch(() => {});
@@ -11699,6 +11718,25 @@ premise: "Fee Simple / As Improved",
       save(); closePmsModal(); toast(existing.status === "submitted" && data.status === "paid" ? "Payment confirmed" : "Payment recorded"); render();
       if (replacedPath) pmsRemoveReceipt(replacedPath);
     };
+    if (fileEl && fileEl.files && fileEl.files.length && fileEl.files[0].type === "application/pdf") {
+      // A PDF receipt (bank or e-wallet statement) goes straight to the private receipts store.
+      const f = fileEl.files[0];
+      if (!pmsReceiptsCloud()) { if (saveBtn) saveBtn.disabled = false; toast("PDF receipts are kept online only. Attach a photo or screenshot instead.", "err"); return; }
+      if (f.size > PMS_RECEIPT_PDF_MAX) { if (saveBtn) saveBtn.disabled = false; toast("The PDF is larger than 5 MB", "err"); return; }
+      (async () => {
+        if (saveBtn) saveBtn.innerHTML = icon("upload", 15) + " Uploading…";
+        try {
+          const path = await pmsUploadReceiptFile(payId, f, () => { if (saveBtn) saveBtn.innerHTML = icon("upload", 15) + " Signal dropped, trying again\u2026"; });
+          delete data.proof; data.proofPath = path; data.proofName = f.name;
+          replacedPath = existing.proofPath || "";
+          persist();
+        } catch (e) {
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = icon("check", 15) + " Save"; }
+          toast("The PDF could not be uploaded: " + esc(friendlyErr(String((e && e.message) || e))), "err");
+        }
+      })();
+      return;
+    }
     if (fileEl && fileEl.files && fileEl.files.length) {
       const f = fileEl.files[0];
       if (!/^image\//.test(f.type)) { if (saveBtn) saveBtn.disabled = false; toast("Proof must be an image (JPEG/PNG)", "err"); return; }
@@ -15238,7 +15276,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         (can ? '<button class="btn btn-ghost" data-lead-agent-all title="Run the CRM Autopilot on every lead in scope">' + icon("play", 15) + " Run Agent</button>" : "") +
         '<button class="btn btn-ghost" data-lead-sheet>' + icon("doc", 15) + " Call Sheet</button>" +
         '<button class="btn btn-ghost" data-lead-digest>' + icon("trending", 15) + " Weekly Digest</button>" +
-        '<button class="btn btn-ghost" data-lead-csv>' + icon("download", 15) + " Export CSV</button>") + "</div></div>";
+        '<button class="btn btn-ghost" data-lead-csv>' + icon("download", 15) + " Export CSV</button>" +
+        (can ? '<button class="btn btn-ghost" data-lead-bulk>' + icon("layers", 15) + " Bulk update</button>" : "") +
+        (can ? '<button class="btn btn-ghost" data-lead-import>' + icon("upload", 15) + " Import CSV</button>" : "")) + "</div></div>";
     html += '<div class="lead-stats">' +
       '<div class="ls-stat"><div class="ls-stat-v">' + leads.length + '</div><div class="ls-stat-l dim">Total leads</div></div>' +
       '<div class="ls-stat"><div class="ls-stat-v">' + newCount + '</div><div class="ls-stat-l dim">New</div></div>' +
@@ -16021,6 +16061,133 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       setTimeout(() => { window.location.href = mailto; }, 600);
     }
   }
+  /* ---- Bulk lead actions and CSV import (F6) ---- */
+  function leadModal(id, title, body, okLabel) {
+    const old = document.getElementById(id); if (old) old.remove();
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = id;
+    ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-labelledby", id + "-title");
+    ov.innerHTML = '<div class="modal-card modal-card-wide"><div class="modal-head"><h3 id="' + id + '-title">' + esc(title) + '</h3><button class="icon-btn" data-modal-close aria-label="Close">&times;</button></div>' +
+      '<div class="modal-body" style="max-height:70vh;overflow:auto">' + body + "</div>" +
+      '<div class="modal-foot"><button class="btn btn-ghost" data-modal-close>Cancel</button><button class="btn btn-primary" id="' + id + '-ok">' + esc(okLabel) + "</button></div></div>";
+    document.body.appendChild(ov);
+    const close = () => { ov.remove(); document.removeEventListener("keydown", onKey, true); };
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    document.addEventListener("keydown", onKey, true);
+    ov.addEventListener("click", e => { if (e.target === ov || e.target.closest("[data-modal-close]")) close(); });
+    return { ov, close };
+  }
+  function openLeadBulk() {
+    const targets = leadFiltered().filter(l => leadCanEdit(l));
+    if (!targets.length) { toast("No leads you can change match the current filters", "err"); return; }
+    const pool = roleIs("super-admin") ? leadBrokerPool() : roleIs("broker") ? [{ id: currentUser && currentUser.id || "", name: ((currentUser && currentUser.name) || "").trim() }].concat(brokerTeamMembers()) : [];
+    const agentOpts = pool.filter(a => a && a.name).map(a => '<option value="' + esc(a.id || "") + '" data-name="' + esc(a.name) + '">' + esc(a.name) + "</option>").join("");
+    const body = '<p>This changes <b>' + targets.length + "</b> lead" + (targets.length === 1 ? "" : "s") + ": the ones matching the filters on screen that you can edit.</p>" +
+      '<div class="field mt-8"><label for="lb-action">Change</label><select class="input" id="lb-action"><option value="status">Status</option>' + (agentOpts ? '<option value="assign">Assigned agent</option>' : "") + "</select></div>" +
+      '<div class="field mt-8" id="lb-status-wrap"><label for="lb-status">New status</label><select class="input" id="lb-status">' + leadSelOpt(LEAD_STATUSES, "contacted") + "</select></div>" +
+      '<div class="field mt-8" id="lb-lost-wrap" hidden><label for="lb-lost">Why they were lost</label><select class="input" id="lb-lost">' + leadSelOpt([["", "Choose a reason"]].concat(LEAD_LOST_REASONS), "") + "</select></div>" +
+      (agentOpts ? '<div class="field mt-8" id="lb-agent-wrap" hidden><label for="lb-agent">Assign to</label><select class="input" id="lb-agent">' + agentOpts + "</select></div>" : "") +
+      '<p class="dim tiny mt-8">Leads that cannot take the change (for example no phone or email for Site Visit or later) are skipped and counted.</p>';
+    const m = leadModal("lb-modal", "Bulk update leads", body, "Apply to " + targets.length);
+    const act = m.ov.querySelector("#lb-action"), st = m.ov.querySelector("#lb-status");
+    const sync = () => {
+      m.ov.querySelector("#lb-status-wrap").hidden = act.value !== "status";
+      m.ov.querySelector("#lb-lost-wrap").hidden = !(act.value === "status" && st.value === "lost");
+      const aw = m.ov.querySelector("#lb-agent-wrap"); if (aw) aw.hidden = act.value !== "assign";
+    };
+    act.addEventListener("change", sync); st.addEventListener("change", sync);
+    m.ov.querySelector("#lb-modal-ok").addEventListener("click", () => {
+      const now = new Date().toISOString();
+      const actor = ((currentUser && (currentUser.name || currentUser.email)) || "someone").trim();
+      let changed = 0, skipped = 0;
+      if (act.value === "status") {
+        const status = st.value, reason = m.ov.querySelector("#lb-lost").value;
+        if (status === "lost" && !reason) { fieldInErr("lb-lost", "Choose why the leads were lost"); return; }
+        targets.forEach(l => {
+          if (l.status === status) return;
+          if (leadStageProblem(l, status)) { skipped++; return; }
+          const prev = (leadStatusCfg(l.status) || [0, l.status])[1];
+          l.status = status;
+          if (status === "lost") { l.lostReason = reason; l.lostNote = ""; } else { delete l.lostReason; delete l.lostNote; }
+          l.updatedAt = now; l.activity = l.activity || [];
+          l.activity.push({ date: now, text: "Status changed: " + prev + " → " + (leadStatusCfg(status) || [0, status])[1] + (status === "lost" ? " (" + leadLostLabel(reason) + ")" : "") + " (bulk update by " + actor + ")" });
+          persistLeadToCloud(l); changed++;
+        });
+      } else {
+        const opt = m.ov.querySelector("#lb-agent"), o = opt.options[opt.selectedIndex];
+        const id = opt.value, name = o ? o.getAttribute("data-name") : "";
+        targets.forEach(l => {
+          if (String(l.assignedToId || "") === String(id)) return;
+          l.assignedToId = id; l.assignedTo = name; l.updatedAt = now; l.activity = l.activity || [];
+          l.activity.push({ date: now, text: "Assigned to " + name + " by " + actor + " (" + (userRole() || "unknown") + ", bulk update)" });
+          persistLeadToCloud(l); changed++;
+        });
+      }
+      m.close(); save(); render();
+      toast(changed + " lead" + (changed === 1 ? "" : "s") + " updated" + (skipped ? ", " + skipped + " skipped (no phone or email)" : "") + ".", skipped ? "info" : "ok");
+    });
+  }
+  function openLeadImport() {
+    const LI = window.ESREALTY_LEAD_IMPORT;
+    if (!LI) { toast("The import script did not load. Reload the page.", "err"); return; }
+    const body = '<p>Choose a CSV file (in Excel or Google Sheets: File > Download / Save as > CSV). The first row must name the columns. ' +
+      "Needed: <b>Name</b> and a <b>Phone</b> or <b>Email</b>. Also read: Source, Type, Interest, Budget, Notes. Up to " + LI.MAX_ROWS + " rows.</p>" +
+      '<div class="field mt-8"><label for="li-file">CSV file</label><input class="input" type="file" id="li-file" accept=".csv,text/csv"></div>' +
+      '<div id="li-preview" class="mt-8" aria-live="polite"></div>';
+    const m = leadModal("li-modal", "Import leads from CSV", body, "Import");
+    const ok = m.ov.querySelector("#li-modal-ok");
+    ok.disabled = true;
+    let plan = null;
+    m.ov.querySelector("#li-file").addEventListener("change", ev => {
+      const f = ev.target.files && ev.target.files[0];
+      plan = null; ok.disabled = true;
+      const pv = m.ov.querySelector("#li-preview");
+      if (!f) { pv.innerHTML = ""; return; }
+      if (f.size > 2 * 1024 * 1024) { pv.innerHTML = '<p class="dim">That file is larger than 2 MB. Split it and import in parts.</p>'; return; }
+      const rd = new FileReader();
+      rd.onload = () => {
+        const res = LI.toLeads(LI.parseCsv(rd.result), { sources: LEAD_SOURCES.map(x => x[0]) });
+        const fresh = [], dupes = [];
+        const pending = [];
+        res.leads.forEach(r => {
+          const cand = { phone: r.phone ? phNormalizeMobile(r.phone) : "", email: r.email };
+          const same = x => (cand.phone && x.phone && phNormalizeMobile(x.phone) === cand.phone) || (cand.email && x.email && String(x.email).toLowerCase() === cand.email);
+          if ((state.leads || []).some(same) || pending.some(same)) { dupes.push(r); return; }
+          pending.push(cand); fresh.push(r);
+        });
+        plan = fresh;
+        pv.innerHTML = '<p><b>' + fresh.length + "</b> new lead" + (fresh.length === 1 ? "" : "s") + " ready" +
+          (dupes.length ? ", <b>" + dupes.length + "</b> already in the CRM (same phone or email, not imported)" : "") +
+          (res.skipped.length ? ", <b>" + res.skipped.length + "</b> row" + (res.skipped.length === 1 ? "" : "s") + " skipped" : "") + (res.tooMany ? ". Only the first " + LI.MAX_ROWS + " rows were read" : "") + ".</p>" +
+          (res.skipped.length ? '<ul class="dim tiny">' + res.skipped.slice(0, 8).map(x => "<li>Line " + x.line + ": " + esc(x.reason) + "</li>").join("") + (res.skipped.length > 8 ? "<li>…</li>" : "") + "</ul>" : "");
+        ok.disabled = !fresh.length;
+        ok.textContent = fresh.length ? "Import " + fresh.length : "Import";
+      };
+      rd.readAsText(f);
+    });
+    ok.addEventListener("click", () => {
+      if (!plan || !plan.length) return;
+      const now = new Date().toISOString();
+      const me = ((currentUser && currentUser.name) || "").trim();
+      if (!state.leads) state.leads = [];
+      plan.forEach((r, k) => {
+        const rec = {
+          id: "lead-" + Date.now() + "-" + k + "-" + Math.floor(Math.random() * 1000),
+          ref: "LD-" + String(state.leads.length + 1).padStart(4, "0"),
+          name: r.name, type: r.type, email: r.email, phone: r.phone ? phNormalizeMobile(r.phone) : "",
+          status: "new", source: r.source, propertyInterest: r.propertyInterest, budget: r.budget, notes: r.notes,
+          assignedTo: roleIs("agent") ? me : "", assignedToId: roleIs("agent") ? (currentUser && currentUser.id || "") : "",
+          createdAt: now, updatedAt: now, createdBy: currentUser && currentUser.id,
+          activity: [{ date: now, text: "Lead created (imported from CSV)" }]
+        };
+        state.leads.unshift(rec);
+        persistLeadToCloud(rec);
+      });
+      m.close(); save(); render();
+      toast(plan.length + " lead" + (plan.length === 1 ? "" : "s") + " imported");
+    });
+  }
+
   function leadExportCsv() {
     const rows = leadFiltered();
     if (!rows.length) { toast("No leads match the current filters", "err"); return; }
@@ -16121,6 +16288,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         if (conv) { leadConvertToTransaction(conv.getAttribute("data-tx-convert")); return; }
         const csvB = e.target.closest("[data-lead-csv]");
         if (csvB) { leadExportCsv(); return; }
+        if (e.target.closest("[data-lead-bulk]")) { openLeadBulk(); return; }
+        if (e.target.closest("[data-lead-import]")) { openLeadImport(); return; }
         const sheetB = e.target.closest("[data-lead-sheet]");
         if (sheetB) { leadCallSheet(); return; }
         const digB = e.target.closest("[data-lead-digest]");
@@ -17519,6 +17688,36 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       loadCloudProfiles(true);
     })();
   }
+  /* ---- Who can do what (K2): a read-only view of ROLE_CAPABILITIES, so the owner can see it
+     without reading code. The database has its own rules; this is what each role sees in the app. */
+  const CAPABILITY_LABELS = [
+    ["dashboard.view", "Dashboard"], ["leads.view", "See leads"], ["leads.manage", "Add and change leads"],
+    ["listings.view", "See listings"], ["listings.manage", "Add and change listings"],
+    ["transactions.view", "See deals"], ["transactions.manage", "Add and change deals"],
+    ["presell.view", "Pre-selling projects"], ["appraisal.view", "Appraisal and Value Guide"], ["market.view", "Market scan"],
+    ["financing.view", "Financing calculators"], ["financing.manage", "Save financing scenarios"],
+    ["pms.view", "Property management"], ["pms.manage", "Manage property management books"],
+    ["brokerage.view", "Brokerage (team, co-broke, inventory)"], ["agents.supervise", "Supervise agents"],
+    ["commission.manage", "Commission settings"], ["payout.approve", "Approve payouts"], ["inventory.view", "Developer inventory"],
+    ["reports.view", "Reports"], ["assistant.view", "Assistant"], ["buyer.portal.view", "Buyer portal"],
+    ["portfolio.view", "Investor portfolio"], ["investments.manage", "Investment analysis"], ["playbook.manage", "Sales playbooks"],
+    ["users.manage", "Users, access and change log"], ["settings.view", "Settings"]
+  ];
+  function roleMatrixCard() {
+    const known = CAPABILITY_LABELS.map(c => c[0]);
+    const extra = [];
+    Object.keys(ROLE_CAPABILITIES).forEach(r => ROLE_CAPABILITIES[r].forEach(c => { if (c !== "*" && known.indexOf(c) < 0 && extra.indexOf(c) < 0) extra.push(c); }));
+    const rows = CAPABILITY_LABELS.concat(extra.map(c => [c, c]));
+    const has = (role, cap) => { const caps = ROLE_CAPABILITIES[role] || []; return caps.indexOf("*") >= 0 || caps.indexOf(cap) >= 0; };
+    let html = '<div class="card card-pad role-matrix"><h3>Who can do what</h3><p class="dim tiny">What each role can open and change in the app. The database checks the same people again on every save, so a hidden button is never the only protection. Changing this table is a code change.</p>';
+    html += '<div class="table-wrap mt-8"><table class="data"><thead><tr><th scope="col">Area</th>' + ROLES.map(r => '<th scope="col">' + esc(r.label) + "</th>").join("") + "</tr></thead><tbody>" +
+      rows.map(c => '<tr><th scope="row" style="text-align:left;font-weight:600">' + esc(c[1]) + "</th>" + ROLES.map(r => has(r.value, c[0])
+        ? '<td style="text-align:center"><span aria-hidden="true">' + icon("check", 14) + '</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap">Yes</span></td>'
+        : '<td style="text-align:center" class="dim"><span aria-hidden="true">&mdash;</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap">No</span></td>').join("") + "</tr>").join("") +
+      "</tbody></table></div></div>";
+    return html;
+  }
+
   /* ---- Change log (K3) ---- */
   function auditCtx() {
     return {
@@ -17590,7 +17789,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       const pending = statusCount("pending");
       const approved = statusCount("approved");
       const rejected = statusCount("rejected");
-      const tab = (["pending", "approved", "rejected", "all", "log"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
+      const tab = (["pending", "approved", "rejected", "all", "log", "roles"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
       const srcBadge = currentUser.demo ? '<span class="chip">Demo data</span>' : (roleIs("super-admin") ? '<span class="chip">Live Supabase</span>' : "");
       const shown = tab === "all" ? remoteProfiles : remoteProfiles.filter(u => u.registration_status === tab);
       const filteredShown = shown.filter(u => (!userFiltQ || [u.full_name, u.email, u.agency].join(" ").toLowerCase().indexOf(userFiltQ) >= 0) && (!userFiltRole || u.role === userFiltRole));
@@ -17599,14 +17798,15 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         '<button class="tab' + (tab === "approved" ? " active" : "") + '" data-users-tab="approved">Approved (' + approved + ")</button>" +
         '<button class="tab' + (tab === "rejected" ? " active" : "") + '" data-users-tab="rejected">Rejected (' + rejected + ")</button>" +
         '<button class="tab' + (tab === "all" ? " active" : "") + '" data-users-tab="all">All (' + remoteProfiles.length + ")</button>" +
-        '<button class="tab' + (tab === "log" ? " active" : "") + '" data-users-tab="log">Change log</button></div>';
+        '<button class="tab' + (tab === "log" ? " active" : "") + '" data-users-tab="log">Change log</button>' +
+        '<button class="tab' + (tab === "roles" ? " active" : "") + '" data-users-tab="roles">Who can do what</button></div>';
       const roleFilterOpts = '<option value="">All roles</option>' + ROLES.map(r => '<option value="' + esc(r.value) + '">' + esc(r.label) + '</option>').join("");
       const toolsHtml = '<div class="users-tools"><div class="users-search">' + icon("search", 15) + '<input id="users-search" type="search" placeholder="Search name, email, agency..." autocomplete="off"></div><select class="input" id="users-role-filter">' + roleFilterOpts + '</select><span class="dim tiny" id="users-visible-count">' + shown.length + ' account' + (shown.length === 1 ? "" : "s") + '</span></div>';
       let cloudHtml = '<section class="users-access"><div class="hero"><div><h1>Users &amp; Access</h1><p>Approve registrations and assign server-enforced roles. ' + srcBadge + '</p></div>' +
         '<div class="actions"><button class="btn btn-primary" data-cloud-user-new>' + icon("plus", 15) + " Add Account</button></div></div>" +
         '<div class="ls-stat-row">' + lsStat("Registrations", remoteProfiles.length) + lsStat("Pending approval", pending) + lsStat("Approved", approved) + lsStat("Rejected", rejected) + '</div>' +
         '<div class="notice-banner mt-16">' + icon("shield", 14) + ' <span>New accounts cannot access SEA ESTATES until a Super Admin assigns a role and approves the registration.</span></div>';
-      cloudHtml += '<div class="users-directory card">' + tabsHtml + (tab === "log" ? "" : toolsHtml) + '</div>';
+      cloudHtml += '<div class="users-directory card">' + tabsHtml + (tab === "log" || tab === "roles" ? "" : toolsHtml) + '</div>';
       let gridHtml;
       if (remoteProfilesError) {
         const low = String(remoteProfilesError).toLowerCase();
@@ -17625,9 +17825,10 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         gridHtml = '<div class="card card-pad empty"><h3>No ' + (tab === "all" ? "registered accounts" : tab + " accounts") + '</h3><p class="dim">Nothing to show here yet. New sign-ups appear under Pending once they register.</p></div>';
       }
       if (tab === "log") cloudHtml += '<div class="mt-16" id="audit-log">' + auditLogCard() + "</div>";
+      else if (tab === "roles") cloudHtml += '<div class="mt-16" id="role-matrix">' + roleMatrixCard() + "</div>";
       else cloudHtml += '<div class="user-grid mt-16" id="users-grid">' + gridHtml + '</div><div class="card card-pad empty mt-16" id="users-filter-empty" style="display:none"><h3>No matching accounts</h3><p class="dim">Try a different name, email, or role.</p></div>';
       const pendingResets = passwordResetRequests.filter(r => r.user_id);
-      if (pendingResets.length && tab !== "log") {
+      if (pendingResets.length && tab !== "log" && tab !== "roles") {
         cloudHtml += '<div class="card card-pad mt-16"><h3>' + icon("key", 15) + ' Password reset requests</h3><p class="dim">These users requested a reset from the Forgot Password tab. Generate a temporary password and share it with them.</p>' +
           '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' + pendingResets.map(r =>
             '<div class="chip-row" style="display:flex;align-items:center;gap:8px;border:1px solid var(--stroke);border-radius:10px;padding:6px 10px"><div><div class="tiny" style="font-weight:600">' + esc(r.full_name || r.email) + '</div><div class="dim tiny">' + esc(r.email) + '</div></div>' +
@@ -18540,6 +18741,19 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       { k: "authority", label: "Authority to Sell / owner SPA to broker" }
     ];
   }
+  /* Closing needs the core papers (J3). The other checklist items depend on the buyer (married,
+     abroad, financing) or the property (a survey plan for lots), so they stay optional. */
+  const TX_REQUIRED_FOR_CLOSING = ["id", "tin", "title", "taxdec", "authority"];
+  const TX_CLOSING_STAGES = ["doas", "done"];
+  function txClosingMissing(t, nextStage) {
+    if (TX_CLOSING_STAGES.indexOf(nextStage) < 0) return [];
+    if (TX_CLOSING_STAGES.indexOf(t && t.stage) >= 0) return []; // already there: not a new step
+    const done = (t && t.checklist) || [];
+    return txDocChecklist().filter(i => TX_REQUIRED_FOR_CLOSING.indexOf(i.k) >= 0 && done.indexOf(i.k) < 0).map(i => i.label);
+  }
+  function txClosingMessage(missing, nextStage) {
+    return "Before " + txStageCfg(nextStage).label + ", tick these in the document checklist: " + missing.join("; ") + ".";
+  }
   function txCompute(t) {
     const price = C.num(t.price, 0);
     const dpPct = C.num(t.dpPct, 20);
@@ -18740,7 +18954,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       '<div class="notice-banner mt-8">' + icon("shield", 14) + ' Estimates only — verify current BIR rates, LGU transfer tax, and Registry of Deeds fees. CGT/DST are typically seller costs; allocation is negotiable. Not tax or legal advice.</div></div>';
     html += "</div>";
     html += '<div class="card card-pad mb-24"><div class="row spread tx-doc-heading"><div><h3>Document Checklist</h3><p class="dim mt-8">Track required buyer, seller, tax, title, and transfer records.</p></div><div class="tx-doc-progress-label"><b>' + done.length + '/' + cl.length + '</b><span>complete</span></div></div><div class="tx-doc-progress"><i style="width:' + checklistPct + '%"></i></div><div class="chk-grid mt-8">' +
-      cl.map(x => { const ch = done.indexOf(x.k) >= 0; return '<label class="ms-chk"><input type="checkbox" data-tx-chk="' + esc(t.id) + '" data-chk-key="' + esc(x.k) + '"' + (ch ? " checked" : "") + (!canManageTx ? " disabled" : "") + "> " + esc(x.label) + "</label>"; }).join("") + "</div></div>";
+      cl.map(x => { const ch = done.indexOf(x.k) >= 0; return '<label class="ms-chk"><input type="checkbox" data-tx-chk="' + esc(t.id) + '" data-chk-key="' + esc(x.k) + '"' + (ch ? " checked" : "") + (!canManageTx ? " disabled" : "") + "> " + esc(x.label) + (TX_REQUIRED_FOR_CLOSING.indexOf(x.k) >= 0 ? ' <span class="badge gold">needed to close</span>' : "") + "</label>"; }).join("") + "</div></div>";
     html += '<div class="card card-pad mb-24 tx-documents"><div class="row spread tx-doc-heading"><div><div class="row" style="gap:8px"><h3>Transaction Documents</h3><span class="badge blue">' + txDocs.length + ' file' + (txDocs.length === 1 ? "" : "s") + '</span></div><div class="dim mt-8">Reservation, contracts, title records, BIR clearances, receipts, and closing documents.</div></div>' +
       (canManageTx ? '<button class="btn btn-primary btn-sm" data-tx-vault="' + esc(t.id) + '">' + icon("folder", 14) + " Manage Documents</button>" : "") + '</div><div class="vault-list tx-vault-list">' +
       (txDocs.length ? txDocs.map(d => vaultDocRow(d, !canManageTx)).join("") : '<div class="vault-empty compact">' + icon("folder", 28) + '<b>No transaction documents</b><span>Upload the reservation agreement, contracts, title and closing records.</span></div>') + "</div></div>";
@@ -18835,6 +19049,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const m = $("#tx-modal");
     const editId = m ? (m.getAttribute("data-edit-id") || "") : "";
     const rec = editId ? ((state.transactions || []).find(x => x.id === editId) || {}) : {};
+    const closingMissing = txClosingMissing(rec, $v("tx-stage") || "reservation");
+    if (closingMissing.length) { fieldInErr("tx-stage", txClosingMessage(closingMissing, $v("tx-stage"))); return; }
     rec.id = rec.id || ("tx-" + Date.now() + "-" + Math.floor(Math.random() * 999));
     rec.ref = rec.ref || txRef();
     rec.title = title;
@@ -18875,6 +19091,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const i = TX_STAGE_ORDER.indexOf(t.stage);
     if (i < 0 || i >= TX_STAGE_ORDER.length - 1) { toast("Transaction already completed", "err"); return; }
     const next = TX_STAGE_ORDER[i + 1];
+    const closingMissing = txClosingMissing(t, next);
+    if (closingMissing.length) { toast(txClosingMessage(closingMissing, next), "err"); return; }
     const prevLabel = txStageCfg(t.stage).label;
     t.stage = next;
     t.updatedAt = new Date().toISOString();
@@ -19949,6 +20167,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   /* ================= TEST HELPERS ================= */
   window.__ESREALTY_TEST_HELPERS = {
     selectAllPages: selectAllPages,
+    txClosingMissing: txClosingMissing,
+    roleMatrixCard: function () { return roleMatrixCard(); },
     listingQualityGaps: listingQualityGaps,
     leadStageProblem: leadStageProblem,
     leadLostLabel: leadLostLabel,
