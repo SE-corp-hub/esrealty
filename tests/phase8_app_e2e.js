@@ -37,6 +37,24 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
       const ru = new URL(rg.href);
       chk("the message holds the temporary password and says to change it", ru.searchParams.get("body").indexOf(q("#rp-pass").value) > 0 && /choose a new password/.test(ru.searchParams.get("body")), "");
     }
+    // H8: listing performance for the owner.
+    q('#nav [data-view="listings"]').click(); await wait(900);
+    const lc = q("[data-ls-open]");
+    chk("a listing card exists", !!lc, "");
+    lc.click(); await wait(900);
+    const perf = q("[data-ls-perf]");
+    chk("the listing shows its performance to staff", !!perf && /Page views/.test(perf.textContent) && /Inquiry rate/.test(perf.textContent) && /Days on market/.test(perf.textContent), perf ? perf.textContent.slice(0, 120) : "none");
+    const pg = perf && perf.querySelector("a[data-gmail]");
+    chk("with an Email the owner via Gmail link holding the summary", !!pg && /Page views: \d+/.test(new URL(pg.href).searchParams.get("body")), "");
+    const pf = H.listingPerformance({ id: "x", views: 200, inquiries: 5, createdAt: "2026-10-01T00:00:00Z", price: 900, previousPrice: 1000 }, Date.parse("2026-10-15T00:00:00Z"));
+    chk("performance numbers: 14 days, 2.5% rate, price drop", pf.days === 14 && pf.rate === 2.5 && pf.dropped && pf.perWeek === 100, JSON.stringify(pf));
+    // I11: unpaid rent by age.
+    const ag = H.pmsAgeing([]);
+    chk("rent ageing has four buckets", Array.isArray(ag) && ag.length === 4, JSON.stringify(ag));
+    q('#nav [data-view="pms"]').click(); await wait(800);
+    const rt = q('[data-pmtab="reports"]'); if (rt && rt.offsetParent !== null) rt.click(); else { const s = q("#pms-section"); if (s) { s.value = "reports"; s.dispatchEvent(new Event("change", { bubbles: true })); } }
+    await wait(700);
+    chk("reports show unpaid rent by age and yield", /Unpaid rent by age/.test(document.body.textContent), "");
   } catch (e) { window.__msChecks.push({ name: "runner", ok: false, detail: (e && e.message || e) }); }
   window.__msOk = window.__msChecks.every(c => c.ok);
   window.__msDone = true;

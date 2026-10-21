@@ -9289,6 +9289,27 @@ premise: "Fee Simple / As Improved",
     const estimates = work.filter(m => m.status === "open" || m.status === "in progress").reduce((s, m) => s + C.num(m.cost, 0), 0);
     return { collected: collected, expenses: expenses, repairs: repairs, estimates: estimates, spent: expenses + repairs, net: collected - expenses - repairs };
   }
+  /* I11: unpaid rent by how long it has been overdue, from the same rent ledger the CSV uses. */
+  function pmsAgeing(leases) {
+    const b = [0, 0, 0, 0], today = pmsToday();
+    (leases || []).forEach(l => pmsLeaseLedger(l).months.forEach(m => {
+      if (m.balance <= 0 || m.due >= today) return;
+      const days = Math.round((new Date(today + "T00:00:00") - new Date(m.due + "T00:00:00")) / 86400000);
+      b[days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3] += m.balance;
+    }));
+    return b;
+  }
+  // Rent and charges received in the last 12 months (paid, by payment date), and the yield on the
+  // property's price when one is recorded: received / price.
+  function pmsYearFor(prop) {
+    const since = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+    const leaseProp = {};
+    pms().leases.forEach(l => { leaseProp[l.id] = l.property_id; });
+    const got = pmsActivePayments().filter(x => x.status === "paid" && (leaseProp[x.lease_id] || x.property_id) === prop.id && String(x.date || "").slice(0, 10) >= since)
+      .reduce((t, x) => t + PL().credited(x), 0);
+    const price = C.num(prop.price, 0);
+    return { received: got, price, yieldPct: price > 0 ? Math.round(got / price * 1000) / 10 : null };
+  }
   function pmsPaymentsOfProperty(propId) {
     return pmsActivePayments().filter(p => { const l = pms().leases.find(x => x.id === p.lease_id); return (l ? l.property_id : p.property_id) === propId; });
   }
@@ -9885,6 +9906,17 @@ premise: "Fee Simple / As Improved",
       html += '<tr><td>' + esc(p.title) + '</td><td class="num">' + C.money(monthly) + '</td><td class="num">' + C.money(m.collected) + '</td><td class="num">' + C.money(arr) + '</td><td class="num">' + C.money(m.spent) + '</td><td class="num"><b>' + C.money(m.net) + '</b></td></tr>';
     });
     html += '</table></div></div>';
+    // I11: how late the unpaid rent is, and what each property earned on its price in the last year.
+    const ageAll = pmsAgeing(leases);
+    html += '<div class="card card-pad mb-24 pms-ageing"><h3>Unpaid rent by age, and yield</h3><p class="dim tiny mb-16">Overdue rent grouped by how long it has been overdue. Yield is rent and charges received in the last 12 months divided by the property price (add the price on the property to see it).</p>' +
+      '<div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">0\u201330 days</th><th class="num">31\u201360</th><th class="num">61\u201390</th><th class="num">Over 90</th><th class="num">Received, last 12 months</th><th class="num">Yield</th></tr>';
+    props.forEach(p => {
+      const a = pmsAgeing(leases.filter(x => x.property_id === p.id)), y = pmsYearFor(p);
+      html += '<tr><td>' + esc(p.title) + "</td>" + a.map((v, i) => '<td class="num' + (v > 0 && i >= 2 ? " neg" : "") + '">' + (v > 0 ? C.money(v) : "\u2014") + "</td>").join("") +
+        '<td class="num">' + C.money(y.received) + '</td><td class="num">' + (y.yieldPct == null ? '<span class="dim tiny">no price</span>' : y.yieldPct + "%") + "</td></tr>";
+    });
+    html += '<tr><td><b>Total</b></td>' + ageAll.map(v => '<td class="num"><b>' + (v > 0 ? C.money(v) : "\u2014") + "</b></td>").join("") + '<td class="num"><b>' + C.money(props.reduce((t, p) => t + pmsYearFor(p).received, 0)) + "</b></td><td></td></tr>";
+    html += "</table></div></div>";
     html += '<div class="card card-pad mb-24"><h3 class="mb-16">Property Reports</h3><div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">Units</th><th class="num">Active Leases</th><th class="num">Collected</th><th class="num">Arrears</th><th>Actions</th></tr>';
     props.forEach(p => {
       const u = pmsActiveUnits().filter(x => x.property_id === p.id);
@@ -9925,14 +9957,8 @@ premise: "Fee Simple / As Improved",
     } else if (kind === "ageing") {
       // Arrears by how long each unpaid month has been overdue.
       rows = [["Property", "Unit", "Tenant", "0-30 days", "31-60 days", "61-90 days", "Over 90 days", "Total overdue"]];
-      const today = pmsToday();
       pmsActiveLeases().forEach(l => {
-        const b = [0, 0, 0, 0];
-        pmsLeaseLedger(l).months.forEach(m => {
-          if (m.balance <= 0 || m.due >= today) return;
-          const days = Math.round((new Date(today + "T00:00:00") - new Date(m.due + "T00:00:00")) / 86400000);
-          b[days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3] += m.balance;
-        });
+        const b = pmsAgeing([l]);
         const total = b[0] + b[1] + b[2] + b[3];
         if (total > 0) rows.push([pmsPropertyTitle(l.property_id), pmsUnitName(l.unit_id), pmsTenantName(l.tenant_id)].concat(b, [total]));
       });
@@ -13489,6 +13515,39 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
 
   /* ================= LISTINGS STOREFRONT ================= */
   function listTypeLabel(v) { const f = LISTING_TYPES.find(x => x[0] === v); return f ? f[1] : (v || "—"); }
+  // Listing performance for the owner (roadmap H8): views and inquiries counted on the public site,
+  // days on market and price changes. "Email the owner" opens Gmail with the same summary.
+  function listingPerformance(l, now) {
+    const st = (state.listingStats && state.listingStats[l.id]) || {};
+    const views = C.num(st.views != null ? st.views : l.views, 0), inquiries = C.num(st.inquiries != null ? st.inquiries : l.inquiries, 0);
+    const start = Date.parse(l.publishedAt || l.createdAt || "");
+    const days = isFinite(start) ? Math.max(0, Math.floor(((now || Date.now()) - start) / 86400000)) : null;
+    const dropped = C.num(l.previousPrice, 0) > 0 && C.num(l.price, 0) > 0 && C.num(l.price, 0) < C.num(l.previousPrice, 0);
+    return { views, inquiries, days, rate: views > 0 ? Math.round(inquiries / views * 1000) / 10 : null,
+      perWeek: days ? Math.round(views / Math.max(1, days / 7) * 10) / 10 : null,
+      dropped, previousPrice: dropped ? C.num(l.previousPrice, 0) : 0 };
+  }
+  function listingOwnerSummary(l, p) {
+    const lines = ["Listing update: " + (l.title || "your property") + (l.ref ? " (" + l.ref + ")" : ""), "",
+      "Asking price: " + (C.num(l.price, 0) > 0 ? C.money(C.num(l.price, 0)) : "on request") + (p.dropped ? " (reduced from " + C.money(p.previousPrice) + ")" : ""),
+      "Days on the market: " + (p.days == null ? "not recorded" : p.days),
+      "Page views: " + p.views + (p.perWeek != null ? " (about " + p.perWeek + " a week)" : ""),
+      "Inquiries: " + p.inquiries + (p.rate != null ? " (" + p.rate + "% of views)" : ""),
+      "", "Views and inquiries are counted on our website only; calls and walk-ins are not included."];
+    return lines.join("\n");
+  }
+  function listingOwnerReportHtml(l) {
+    const p = listingPerformance(l);
+    const text = listingOwnerSummary(l, p);
+    return '<div class="card card-pad mb-24" data-ls-perf="' + esc(l.id) + '"><h3>Listing performance</h3>' +
+      '<p class="dim tiny mt-8">Counted on the public website. Only you and Super Admins see this.</p>' +
+      '<div class="ls-stats mt-8">' + lsStat("Page views", p.views) + lsStat("Inquiries", p.inquiries) +
+      lsStat("Inquiry rate", p.rate == null ? "—" : p.rate + "%") + lsStat("Days on market", p.days == null ? "—" : p.days) + "</div>" +
+      (p.dropped ? '<p class="mt-8">Price reduced from ' + esc(C.money(p.previousPrice)) + (l.priceDroppedAt ? " on " + esc(new Date(l.priceDroppedAt).toLocaleDateString()) : "") + ".</p>" : "") +
+      (p.views >= 50 && p.inquiries === 0 ? '<p class="mt-8 dim">Many views but no inquiries yet: the price, photos or description may need another look.</p>' : "") +
+      '<div class="row mt-16" style="gap:8px;flex-wrap:wrap">' + gmailLink("", "Listing update: " + (l.title || ""), text + emailSignature(), "Email the owner via Gmail") +
+      '<button class="btn btn-ghost btn-sm" data-ls-perf-copy="' + esc(l.id) + '">' + icon("doc", 13) + " Copy summary</button></div></div>";
+  }
   function listingCanEdit(l) {
     if (!listingCanManage()) return false;
     if (!l || !l.id || (currentUser && currentUser.demo) || roleIs("super-admin")) return true;
@@ -13710,6 +13769,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (l.hoaDues || l.condoDues) html += '<div class="mt-8"><label class="ls-sublabel">Association / Condo dues</label><div>' + (l.hoaDues ? "HOA " + C.money(l.hoaDues) + "/mo" : "") + (l.condoDues ? (l.hoaDues ? " · " : "") + "Condo " + C.money(l.condoDues) + "/mo" : "") + "</div></div>";
     html += listingContactHtml(l);
     html += "</div></div>";
+    if (listingCanEdit(l) && l.id) html += listingOwnerReportHtml(l);
     html += '<div class="grid grid-3 mb-24">';
     html += '<div class="card card-pad" style="grid-column:span 2">' +
       (l.description ? "<h3>Description</h3><p class='dim mt-8'>" + esc(l.description) + "</p>" : "") +
@@ -14168,6 +14228,12 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         }
         const adCopy = e.target.closest("[data-ls-ad-copy]");
         if (adCopy) { copyListingAd(adCopy.getAttribute("data-ls-ad-copy")); return; }
+        const perfCopy = e.target.closest("[data-ls-perf-copy]");
+        if (perfCopy) {
+          const pl = (state.listings || []).find(x => x.id === perfCopy.getAttribute("data-ls-perf-copy"));
+          if (pl) { const t = listingOwnerSummary(pl, listingPerformance(pl)); if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(() => toast("Summary copied")).catch(() => toast(t, "info")); else toast(t, "info"); }
+          return;
+        }
         const ltap = e.target.closest("[data-listing-contact]");
         if (ltap) {
           const lid = ltap.getAttribute("data-listing-id");
@@ -20331,6 +20397,9 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   /* ================= TEST HELPERS ================= */
   window.__ESREALTY_TEST_HELPERS = {
     selectAllPages: selectAllPages,
+    pmsAgeing: function (leases) { return pmsAgeing(leases); },
+    listingPerformance: function (l, now) { return listingPerformance(l, now); },
+    listingOwnerSummary: listingOwnerSummary,
     txClosingMissing: txClosingMissing,
     roleMatrixCard: function () { return roleMatrixCard(); },
     listingQualityGaps: listingQualityGaps,
