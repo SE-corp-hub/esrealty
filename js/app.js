@@ -7445,7 +7445,19 @@ if(editId){
     const csv = rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(",")).join("\r\n");
     download(filename, "data:text/csv;charset=utf-8," + encodeURIComponent(csv));
   }
+  /* A real .xlsx workbook (J7, js/xlsx_lite.js). The old fallback below (an HTML page named .xls)
+     only runs if that script did not load. */
   function exportXLS(filename, sheets) {
+    const X = window.ESREALTY_XLSX;
+    if (X) {
+      const bytes = X.build(sheets.map(sh => ({ name: sh.name, headers: sh.headers, rows: sh.rows })));
+      const url = URL.createObjectURL(new Blob([bytes], { type: X.MIME }));
+      const a = document.createElement("a");
+      a.href = url; a.download = String(filename).replace(/\.xls$/i, "") + ".xlsx";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      return;
+    }
     let html = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:x='urn:schemas-microsoft-com:office:excel'><head><meta charset='utf-8'><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>";
     sheets.forEach((sh, i) => { html += "<x:ExcelWorksheet><x:Name>" + sh.name + "</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>"; });
     html += "</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>";
@@ -17718,6 +17730,37 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     return html;
   }
 
+  /* ---- Staff announcements (K8): one notice to the bell of every approved account with the chosen roles. */
+  function announceCard() {
+    const pick = ["broker", "agent"];
+    return '<div class="card card-pad announce-card"><h3>Send an announcement</h3><p class="dim tiny">It arrives in the bell of every approved account with the roles you tick (and on phones that turned alerts on). You get a copy. The change log records who sent it, to whom and how many, not the text.</p>' +
+      '<div class="field mt-8"><label for="an-title">Title</label><input class="input" id="an-title" maxlength="120" placeholder="e.g. Office closed on Friday"></div>' +
+      '<div class="field mt-8"><label for="an-body">Message</label><textarea class="input" id="an-body" rows="4" maxlength="1000" placeholder="What staff need to know"></textarea></div>' +
+      '<fieldset class="field mt-8" style="border:0;padding:0;margin:0"><legend style="font-weight:600;margin-bottom:6px">Send to</legend><div class="row" style="gap:6px 16px;flex-wrap:wrap">' +
+      ROLES.map(r => '<label class="ms-chk"><input type="checkbox" data-an-role value="' + esc(r.value) + '"' + (pick.indexOf(r.value) >= 0 ? " checked" : "") + "> " + esc(r.label) + "</label>").join("") + "</div></fieldset>" +
+      '<button class="btn btn-primary mt-8" data-an-send>' + icon("bell", 14) + " Send announcement</button></div>";
+  }
+  async function sendAnnouncement(btn) {
+    const title = String(($("#an-title") || {}).value || "").trim(), body = String(($("#an-body") || {}).value || "").trim();
+    const roles = $$("[data-an-role]").filter(c => c.checked).map(c => c.value);
+    if (!title) { fieldInErr("an-title", "Add a title"); return; }
+    if (!roles.length) { toast("Tick at least one role to send to", "err"); return; }
+    if (!(await confirmModal({ title: "Send announcement", message: "Send \u201c" + title + "\u201d to every approved " + roles.map(r => roleLabel(r)).join(", ") + " account?", confirmLabel: "Send" }))) return;
+    if (currentUser && currentUser.demo) { toast("Demo: the announcement would be sent to " + roles.length + " role" + (roles.length === 1 ? "" : "s")); return; }
+    if (!SB) { toast("Connect to the internet to send announcements", "err"); return; }
+    if (btn) btn.disabled = true;
+    try {
+      const r = await SB.rpc("admin_announce", { p_title: title, p_body: body, p_roles: roles });
+      if (r.error) throw r.error;
+      $("#an-title").value = ""; $("#an-body").value = "";
+      toast("Announcement sent to " + r.data + " account" + (r.data === 1 ? "" : "s"));
+      if (typeof refreshNotifications === "function") refreshNotifications();
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      toast(/admin_announce|function/i.test(msg) && /not find|does not exist|schema cache/i.test(msg) ? "Announcements need database update 0007 first." : "Could not send: " + esc(friendlyErr(msg)), "err");
+    } finally { if (btn) btn.disabled = false; }
+  }
+
   /* ---- Change log (K3) ---- */
   function auditCtx() {
     return {
@@ -17789,7 +17832,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       const pending = statusCount("pending");
       const approved = statusCount("approved");
       const rejected = statusCount("rejected");
-      const tab = (["pending", "approved", "rejected", "all", "log", "roles"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
+      const tab = (["pending", "approved", "rejected", "all", "log", "roles", "announce"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
       const srcBadge = currentUser.demo ? '<span class="chip">Demo data</span>' : (roleIs("super-admin") ? '<span class="chip">Live Supabase</span>' : "");
       const shown = tab === "all" ? remoteProfiles : remoteProfiles.filter(u => u.registration_status === tab);
       const filteredShown = shown.filter(u => (!userFiltQ || [u.full_name, u.email, u.agency].join(" ").toLowerCase().indexOf(userFiltQ) >= 0) && (!userFiltRole || u.role === userFiltRole));
@@ -17799,14 +17842,15 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         '<button class="tab' + (tab === "rejected" ? " active" : "") + '" data-users-tab="rejected">Rejected (' + rejected + ")</button>" +
         '<button class="tab' + (tab === "all" ? " active" : "") + '" data-users-tab="all">All (' + remoteProfiles.length + ")</button>" +
         '<button class="tab' + (tab === "log" ? " active" : "") + '" data-users-tab="log">Change log</button>' +
-        '<button class="tab' + (tab === "roles" ? " active" : "") + '" data-users-tab="roles">Who can do what</button></div>';
+        '<button class="tab' + (tab === "roles" ? " active" : "") + '" data-users-tab="roles">Who can do what</button>' +
+        '<button class="tab' + (tab === "announce" ? " active" : "") + '" data-users-tab="announce">Announcement</button></div>';
       const roleFilterOpts = '<option value="">All roles</option>' + ROLES.map(r => '<option value="' + esc(r.value) + '">' + esc(r.label) + '</option>').join("");
       const toolsHtml = '<div class="users-tools"><div class="users-search">' + icon("search", 15) + '<input id="users-search" type="search" placeholder="Search name, email, agency..." autocomplete="off"></div><select class="input" id="users-role-filter">' + roleFilterOpts + '</select><span class="dim tiny" id="users-visible-count">' + shown.length + ' account' + (shown.length === 1 ? "" : "s") + '</span></div>';
       let cloudHtml = '<section class="users-access"><div class="hero"><div><h1>Users &amp; Access</h1><p>Approve registrations and assign server-enforced roles. ' + srcBadge + '</p></div>' +
         '<div class="actions"><button class="btn btn-primary" data-cloud-user-new>' + icon("plus", 15) + " Add Account</button></div></div>" +
         '<div class="ls-stat-row">' + lsStat("Registrations", remoteProfiles.length) + lsStat("Pending approval", pending) + lsStat("Approved", approved) + lsStat("Rejected", rejected) + '</div>' +
         '<div class="notice-banner mt-16">' + icon("shield", 14) + ' <span>New accounts cannot access SEA ESTATES until a Super Admin assigns a role and approves the registration.</span></div>';
-      cloudHtml += '<div class="users-directory card">' + tabsHtml + (tab === "log" || tab === "roles" ? "" : toolsHtml) + '</div>';
+      cloudHtml += '<div class="users-directory card">' + tabsHtml + (tab === "log" || tab === "roles" || tab === "announce" ? "" : toolsHtml) + '</div>';
       let gridHtml;
       if (remoteProfilesError) {
         const low = String(remoteProfilesError).toLowerCase();
@@ -17826,9 +17870,10 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       }
       if (tab === "log") cloudHtml += '<div class="mt-16" id="audit-log">' + auditLogCard() + "</div>";
       else if (tab === "roles") cloudHtml += '<div class="mt-16" id="role-matrix">' + roleMatrixCard() + "</div>";
+      else if (tab === "announce") cloudHtml += '<div class="mt-16" id="announce">' + announceCard() + "</div>";
       else cloudHtml += '<div class="user-grid mt-16" id="users-grid">' + gridHtml + '</div><div class="card card-pad empty mt-16" id="users-filter-empty" style="display:none"><h3>No matching accounts</h3><p class="dim">Try a different name, email, or role.</p></div>';
       const pendingResets = passwordResetRequests.filter(r => r.user_id);
-      if (pendingResets.length && tab !== "log" && tab !== "roles") {
+      if (pendingResets.length && ["log", "roles", "announce"].indexOf(tab) < 0) {
         cloudHtml += '<div class="card card-pad mt-16"><h3>' + icon("key", 15) + ' Password reset requests</h3><p class="dim">These users requested a reset from the Forgot Password tab. Generate a temporary password and share it with them.</p>' +
           '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' + pendingResets.map(r =>
             '<div class="chip-row" style="display:flex;align-items:center;gap:8px;border:1px solid var(--stroke);border-radius:10px;padding:6px 10px"><div><div class="tiny" style="font-weight:600">' + esc(r.full_name || r.email) + '</div><div class="dim tiny">' + esc(r.email) + '</div></div>' +
@@ -18213,6 +18258,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         const agrp = e.target.closest("[data-audit-group]");
         if (agrp) { auditGroup = agrp.getAttribute("data-audit-group"); auditLoaded = false; auditRows = []; auditError = ""; render(); return; }
         if (e.target.closest("[data-audit-more]")) { loadAuditLog(true); return; }
+        const anSend = e.target.closest("[data-an-send]");
+        if (anSend) { sendAnnouncement(anSend); return; }
         if (e.target.closest("[data-audit-retry]")) { auditError = ""; auditLoaded = false; render(); return; }
         if (e.target.closest("[data-audit-csv]")) {
           if (AUDIT && auditRows.length) { download("change-log-" + new Date().toISOString().slice(0, 10) + ".csv", "data:text/csv;charset=utf-8," + encodeURIComponent(AUDIT.toCsv(auditRows, auditCtx()))); toast("Change log downloaded (CSV)"); }
