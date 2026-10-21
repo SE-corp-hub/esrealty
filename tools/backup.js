@@ -76,7 +76,9 @@ async function exportAll(run, now) {
     out.tables["public." + t] = rows;
     out.counts["public." + t] = rows.length;
   }
-  const users = await run("select coalesce(json_agg(x), '[]'::json) as rows from (select " + AUTH_USER_COLUMNS.join(", ") + " from auth.users order by created_at) x");
+  // Only the listed columns, and only those this database has (a test stand-in may have fewer).
+  const users = await run("select coalesce(json_agg(x), '[]'::json) as rows from (select (select jsonb_object_agg(k, v) from jsonb_each(to_jsonb(u)) e(k, v) where k = any (array['" +
+    AUTH_USER_COLUMNS.join("','") + "'])) as x from auth.users u order by u.created_at) y");
   out.tables["auth.users"] = asRows(users[0] && users[0].rows);
   out.counts["auth.users"] = out.tables["auth.users"].length;
   const files = await run("select coalesce(json_agg(x), '[]'::json) as rows from (select o.bucket_id, o.name, to_jsonb(o) -> 'metadata' ->> 'size' as size, to_jsonb(o) -> 'metadata' ->> 'mimetype' as mimetype, to_jsonb(o) ->> 'created_at' as created_at from storage.objects o order by o.bucket_id, o.name) x");
@@ -99,8 +101,11 @@ function restoreSql(data) {
     for (let i = 0; i < rows.length; i += 500) {
       const json = JSON.stringify(rows.slice(i, i + 500)), t = tag(json);
       if (full === "auth.users") {
-        lines.push("insert into auth.users (" + AUTH_USER_COLUMNS.join(", ") + ") select " + AUTH_USER_COLUMNS.join(", ") +
-          " from json_populate_recordset(null::auth.users, " + t + json + t + "::json) on conflict (id) do nothing;");
+        // The listed columns that the target database has.
+        const t2 = tag(json + t);
+        lines.push("do " + t2 + " declare cols text; begin select string_agg(quote_ident(c), ', ') into cols from unnest(array['" + AUTH_USER_COLUMNS.join("','") +
+          "']) c where exists (select 1 from information_schema.columns where table_schema = 'auth' and table_name = 'users' and column_name = c); " +
+          "execute format('insert into auth.users (%s) select %s from json_populate_recordset(null::auth.users, %L::json) on conflict (id) do nothing', cols, cols, " + t + json + t + "); end " + t2 + ";");
       } else {
         lines.push("insert into " + target + " overriding system value select * from json_populate_recordset(null::" + target + ", " + t + json + t + "::json);");
       }

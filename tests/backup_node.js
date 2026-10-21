@@ -40,7 +40,7 @@ const c = (name, ok, detail) => checks.push({ name, ok: !!ok, detail: detail || 
 
   const sql = B.restoreSql(ex.data);
   c("restore loads with triggers and checks off, in one transaction", /^-- SEA ESTATES backup/.test(sql) && /begin;\nset local session_replication_role = replica;/.test(sql) && /commit;\n$/.test(sql));
-  c("accounts are loaded first", sql.indexOf("insert into auth.users") < sql.indexOf('insert into "public"."crm_leads"'));
+  c("accounts are loaded first", sql.indexOf("insert into auth.users") > 0 && sql.indexOf("insert into auth.users") < sql.indexOf('insert into "public"."crm_leads"'));
   c("numbered ids are kept and counters continue after them", /overriding system value/.test(sql) && /setval\(pg_get_serial_sequence/.test(sql));
   c("empty tables add no statement", !/"es realty" overriding/.test(sql));
   c("data is passed in a quoted block, not pasted into SQL", /json_populate_recordset\(null::"public"\."crm_leads", \$b\$\[\{"id":"L1"/.test(sql));
