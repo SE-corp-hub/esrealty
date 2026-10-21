@@ -31,7 +31,27 @@ create table if not exists auth.users (
   id uuid primary key,
   email text,
   raw_user_meta_data jsonb default '{}'::jsonb,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  -- the columns admin_create_account() fills in
+  instance_id uuid,
+  aud text,
+  role text,
+  encrypted_password text,
+  email_confirmed_at timestamptz,
+  raw_app_meta_data jsonb default '{}'::jsonb,
+  updated_at timestamptz,
+  confirmation_token text,
+  recovery_token text
+);
+create table if not exists auth.identities (
+  id uuid primary key default gen_random_uuid(),
+  provider_id text,
+  user_id uuid references auth.users (id) on delete cascade,
+  identity_data jsonb,
+  provider text,
+  last_sign_in_at timestamptz,
+  created_at timestamptz,
+  updated_at timestamptz
 );
 
 create table if not exists storage.buckets (
