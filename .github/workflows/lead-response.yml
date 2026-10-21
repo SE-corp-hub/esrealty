@@ -1,0 +1,59 @@
+name: Leads - not contacted yet
+
+# Every hour: a lead still marked New after 24 hours puts "Not contacted yet" in the assigned
+# person's bell (the Super Admins' when nobody is assigned); after 48 hours the agent's broker
+# hears too. Each message goes once per lead; leads older than 14 days are left alone.
+# Sending is OFF until the repository variable LEAD_RESPONSE_ALERTS is set to "on"
+# (Settings -> Secrets and variables -> Actions -> Variables). LEAD_RESPONSE_HOURS changes the
+# 24 hours. Until switched on each run only works it out and logs counts. The log never shows
+# names or people (this repository is public).
+#
+# Needs migration 0008 (public.lead_response_sweep). Before it is applied the run says so in its
+# log and stops without an alarm.
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # every hour at :17
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: lead-response
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: mrngaqtbaseewzcsogqi
+      SENDING: ${{ vars.LEAD_RESPONSE_ALERTS }}
+      LEAD_RESPONSE_HOURS: ${{ vars.LEAD_RESPONSE_HOURS }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Sweep
+        run: |
+          if [ "$SENDING" = "on" ]; then node tools/lead_response_alerts.js --send; else node tools/lead_response_alerts.js; fi
+
+      # A failed scheduled run used to be seen only by whoever opened the Actions tab.
+      # This opens one issue (found again by its title) so the failure reaches the owner.
+      - name: Open an issue when this run fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Scheduled job failed: Lead response alerts"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body "Failed again. Run: $RUN_URL"; exit 0; fi
+          gh issue create --title "$title" --body "A scheduled run failed. Run log: $RUN_URL
+
+          Close this issue once it is fixed; the next failure opens a new one."

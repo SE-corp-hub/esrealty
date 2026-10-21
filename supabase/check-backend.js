@@ -197,6 +197,7 @@ const REST_RPCS = [
   { fn: "pms_my_repair_requests", note: "tenant's own requests (migrations/0001)" },
   { fn: "listing_stale_sweep", note: "stale-listing alerts, server only (migrations/0005)", pending: "0005" },
   { fn: "admin_announce", note: "staff announcements, Super Admin only (migrations/0007)", pending: "0007" },
+  { fn: "lead_response_sweep", note: "lead response alerts, server only (migrations/0008)", pending: "0008" },
 ];
 async function probeRpc(entry) {
   try {
