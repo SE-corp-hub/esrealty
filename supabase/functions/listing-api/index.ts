@@ -74,6 +74,9 @@ const stringValue = (value: unknown, max: number, field: string, required = fals
 
 // A text filter that matches the whole word, not a pattern: % and _ are escaped for ILIKE,
 // and * (which the API treats as %) is dropped. Place names contain none of these.
+// The privacy notice the visitor agreed to (js/storefront.js, "Last updated"). Stored with each
+// consent so it is known later which wording a person accepted (B1). Change both together.
+const PRIVACY_NOTICE_VERSION = "2026-10-01";
 const likeLiteral = (value: string) => value.replace(/[\\%_]/g, "\\$&").replace(/\*/g, "");
 
 // Free-text search (H2): up to 4 words, each must appear in the title, description, address,
@@ -682,6 +685,7 @@ const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pe
     source: "listing",
     status: "new",
     consent: true,
+    consentRecord: { at: new Date().toISOString(), notice: PRIVACY_NOTICE_VERSION, channel: "listing-inquiry" },
     propertyInterest: listing.title,
     listingId: listing.id,
     listingTitle: listing.title,
@@ -781,6 +785,7 @@ const submitContact = async (req: Request, admin: SupabaseClient, pepper: string
       source: "website",
       status: "new",
       consent: true,
+      consentRecord: { at: now, notice: PRIVACY_NOTICE_VERSION, channel: inquiryType },
       origin: "storefront",
       channel: inquiryType,
       propertyInterest: isProjectBt ? (interest || kind.interest) : kind.interest,

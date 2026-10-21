@@ -8,7 +8,7 @@ Written 2026-10-21. Plain words on purpose. Times are Philippine time.
 |---|---|---|
 | Website and back office | Cloudflare (esrealty.tradersgag6.workers.dev) | every push to `main` |
 | Database, logins, photos, server functions | Supabase | database: you run **Actions > Apply database migration**; functions: **Actions > Deploy edge functions** |
-| Market Scan (live listing search) and one daily call | Vercel (esrealty-market-scan.vercel.app) | its own Vercel deploy |
+| Market Scan (live listing search) | Vercel (esrealty-market-scan.vercel.app) | its own Vercel deploy |
 | Scheduled jobs and tests | GitHub Actions | they run by themselves |
 
 Pushing to `main` changes the live website. Work happens on a branch and a pull request; merge only after the checks are green.
@@ -23,13 +23,14 @@ Pushing to `main` changes the live website. Work happens on a branch and a pull 
 | Keep-alive (`keepalive`) | 11:00 daily | pings Supabase and the Market Scan so the free project is not paused | none |
 | Lead response alerts (`lead-response`) | every hour at :17 | "Not contacted yet" to the assigned person after 24 hours (Super Admins when unassigned), the broker after 48; once per lead; leads older than 14 days ignored | `LEAD_RESPONSE_ALERTS` = on (off: counts only); `LEAD_RESPONSE_HOURS` changes 24 |
 | Database backup (`backup`) | 02:23 daily | copies every table, accounts and the file list; encrypts it; keeps it 30 days as a run artifact; proves it restores | `BACKUP_PASSPHRASE` secret (12+ characters; keep a copy outside GitHub) |
+| Old data clean-up (`retention`) | monthly, 2nd, 03:41 | counts (and, when on, deletes) read notifications after 180 days, resolved password resets after 30, spam inquiries after 90, Autopilot steps after 180 | `RETENTION_CLEANUP` = on, only after the periods are confirmed |
 | Backend health check (`backend-check`) | 13:00 daily, and after each push to `main` | probes every function, table and endpoint a visitor could reach; fails if something is open that should be closed, or if a function's newer code has waited more than 3 days for **Deploy edge functions**; lists secret names the functions read but that are not set | `SUPABASE_ACCESS_TOKEN` (for the deploy and secret-name part only) |
 | Market price index (`market-index`) | 02:30 daily | writes `data/market-index.json` to `main` | variable `MS_API_URL` (optional) |
 | Market scan nightly check (`market-scan-nightly`) | 03:23 daily | runs two real scans and opens one issue if a source stops returning listings | none |
 | Tests (`tests`) | every push and pull request, and 11:17 daily | all test suites | none |
 | Comparables refresh (`comparables-monthly`) | 1st of the month, 10:17 | bank and Pag-IBIG prices into `data/comparables`; opens a calibration pull request | none |
 | Value Guide data review (`estimator-data-review`) | Monday 18:30 | opens an issue when the reference data review is due | none |
-| Vercel cron | 14:00 daily | calls `/api/agent-dispatch` (the Autopilot worker). Refuses everything unless `CRON_SECRET` is set in Vercel | `CRON_SECRET` in Vercel |
+| Vercel cron | switched off (21 Oct 2026) | the daily Autopilot call to `/api/agent-dispatch` was removed from `market-scan/vercel/vercel.json`: Autopilot made no outside changes (owner decision). The in-app "Run Agent" still works. To bring it back, add the `crons` entry again. The endpoint still refuses calls without `CRON_SECRET` | `CRON_SECRET` in Vercel (kept) |
 
 Secrets live in **Settings > Secrets and variables > Actions**. The job log never prints names, amounts or keys; it prints counts only, because the repository is public.
 

@@ -8,7 +8,7 @@ SRC="${DB_NAME:-sea_ci}"
 DST="${SRC}_restore"
 WORK="$(mktemp -d)"
 export BACKUP_PASSPHRASE="test-passphrase-not-secret"
-node tests/backup_roundtrip_node.js export "$SRC" "$WORK/b.bin"
+node tests/db/backup_roundtrip_helper.js export "$SRC" "$WORK/b.bin"
 psql -v ON_ERROR_STOP=1 -q -d postgres -c "drop database if exists $DST" -c "create database $DST"
 PGDATABASE="$DST" psql -v ON_ERROR_STOP=1 -q -f tests/db/00_supabase_stub.sql > /dev/null 2>&1 || true
 PGDATABASE="$DST" psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/0000_baseline.sql > /dev/null
@@ -17,5 +17,5 @@ for m in $(ls supabase/migrations/*.sql | grep -v 0000_baseline.sql); do PGDATAB
 PGDATABASE="$DST" psql -v ON_ERROR_STOP=1 -q -c "set client_min_messages = warning; set session_replication_role = replica; do \$\$ declare r record; begin for r in select tablename from pg_tables where schemaname = 'public' loop execute format('truncate public.%I cascade', r.tablename); end loop; truncate auth.users cascade; end \$\$;" > /dev/null
 node tools/backup.js restore "$WORK/b.bin" --sql "$WORK/restore.sql" > /dev/null
 PGDATABASE="$DST" psql -v ON_ERROR_STOP=1 -q -f "$WORK/restore.sql" > /dev/null
-node tests/backup_roundtrip_node.js compare "$SRC" "$DST"
+node tests/db/backup_roundtrip_helper.js compare "$SRC" "$DST"
 rm -rf "$WORK"

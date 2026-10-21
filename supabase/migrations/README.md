@@ -50,6 +50,8 @@ co-broke in the change log, one open co-broke per listing and partner) follows `
 "not contacted yet" alerts for new leads) follow in that order.
 `0009_lead_routing.sql` (unassigned website, Value Guide and Facebook leads go to chosen
 brokers in turn; off until switched on in Users & Access) follows `0008`.
+`0010_handover_retention.sql` (hand over a person's records before deleting the account, the
+change log outlives accounts, old-data clean-up that is off until switched on) follows `0009`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses

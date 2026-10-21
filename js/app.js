@@ -18238,6 +18238,53 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       loadPasswordResets(true);
     }
   }
+  const OWNED_LABELS = { leads: "leads", listings: "listings", deals: "deals", ledger_entries: "ledger entries", ledger_accounts: "ledger accounts", construction_projects: "construction projects", cobroke: "co-broke agreements", compliance: "compliance records", ads: "ads", agents: "supervised agents" };
+  async function handOverBeforeDelete(id, name) {
+    let owned;
+    try {
+      const r = await SB.rpc("admin_records_owned", { p_user: id });
+      if (r.error) throw r.error;
+      owned = r.data || {};
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      toast(/admin_records_owned/.test(msg) && /not find|does not exist|schema cache/i.test(msg)
+        ? "Apply database update 0010 first. Deleting now would also delete this person's leads, listings and deals."
+        : "Could not check what " + name + " still owns: " + friendlyErr(msg), "err");
+      return false;
+    }
+    const parts = Object.keys(OWNED_LABELS).filter(k => Number(owned[k]) > 0).map(k => owned[k] + " " + OWNED_LABELS[k]);
+    if (!parts.length) return true;
+    const pool = remoteProfiles.filter(x => x.id !== id && x.registration_status === "approved" && ["super-admin", "broker", "agent"].indexOf(x.role) >= 0)
+      .sort((a, b) => String(a.full_name || a.email).localeCompare(String(b.full_name || b.email)));
+    if (!pool.length) { toast("There is no approved staff account to give " + name + "'s records to", "err"); return false; }
+    return new Promise(resolve => {
+      const ov = document.createElement("div");
+      ov.className = "modal-overlay"; ov.id = "ho-modal";
+      ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-labelledby", "ho-title");
+      ov.innerHTML = '<div class="modal-card"><div class="modal-head"><h3 id="ho-title">Hand over ' + esc(name) + "'s records</h3>" + '<button class="icon-btn" data-ho-cancel aria-label="Close">&times;</button></div>' +
+        '<div class="modal-body"><p>' + esc(name) + " still has " + esc(parts.join(", ")) + ". Deleting the account would delete them too. Give them to someone first.</p>" +
+        '<div class="field mt-8"><label for="ho-to">Give everything to</label><select class="input" id="ho-to">' +
+        pool.map(x => '<option value="' + esc(x.id) + '">' + esc((x.full_name || x.email) + " (" + roleLabel(x.role) + ")") + "</option>").join("") + "</select></div>" +
+        '<p class="dim tiny mt-8">Their property management book moves to a broker you choose (or to the company book for a Super Admin). The handover is written to the change log.</p></div>' +
+        '<div class="modal-foot"><button class="btn btn-ghost" data-ho-cancel>Cancel</button><button class="btn btn-primary" id="ho-ok">Hand over</button></div></div>';
+      document.body.appendChild(ov);
+      const done = v => { ov.remove(); resolve(v); };
+      ov.addEventListener("click", async e => {
+        if (e.target === ov || e.target.closest("[data-ho-cancel]")) { done(false); return; }
+        if (!e.target.closest("#ho-ok")) return;
+        const btn = ov.querySelector("#ho-ok"); btn.disabled = true; btn.textContent = "Handing over…";
+        try {
+          const r = await SB.rpc("admin_handover_records", { p_from: id, p_to: ov.querySelector("#ho-to").value });
+          if (r.error) throw r.error;
+          toast("Records handed over");
+          done(true);
+        } catch (err) {
+          btn.disabled = false; btn.textContent = "Hand over";
+          toast("Could not hand over: " + esc(friendlyErr(String((err && err.message) || err))), "err");
+        }
+      });
+    });
+  }
   async function deleteCloudAccount(id) {
     if (!canManageUsers()) { toast("You don't have permission to manage users", "err"); return; }
     if (currentUser && currentUser.id && id === currentUser.id) { toast("You can't delete your own account", "err"); return; }
@@ -18248,6 +18295,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     const linkedTenant = (pms().tenants || []).find(t => t.archived !== true && String(t.authUserId || "") === String(id));
     if (linkedTenant && !allowPmsTenantDeletion(linkedTenant)) return;
     if (p && p.registration_status !== "rejected") { toast("Only rejected accounts can be deleted", "err"); return; }
+    // A5: their leads, listings, deals and ledger would be deleted with the account. Hand them over first.
+    if (!currentUser.demo && !(await handOverBeforeDelete(id, name))) return;
     if (!(await confirmModal({ title: "Delete account", message: "Delete the account for " + name + "? This permanently removes the user, their profile, and their access. This cannot be undone.", danger: true, confirmLabel: "Delete", typeToConfirm: "DELETE" }))) return;
     if (currentUser.demo) {
       remoteProfiles = remoteProfiles.filter(x => x.id !== id);
