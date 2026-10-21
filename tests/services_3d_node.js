@@ -21,7 +21,7 @@ const sw = read("sw.js");
 // --- document basics
 c("html lang and viewport", /<html lang="en">/.test(html) && /name="viewport"[^>]*viewport-fit=cover/.test(html));
 c("title names the site", /<title>[^<]*SEA ESTATES<\/title>/.test(html));
-c("kept out of search until the owner links it", /<meta name="robots" content="noindex">/.test(html));
+c("open to search engines now that the Services menu links it", !/noindex/.test(html));
 c("no prototype leftovers", !/claude\.ai|Concept page|does not send anything|cowritten|claude:viewport/i.test(html));
 
 // --- CSP
