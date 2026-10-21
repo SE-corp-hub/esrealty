@@ -16,7 +16,7 @@ grant all on got to authenticated;
 set local role authenticated;
 select pg_temp.as_user('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'brokera@x.ph');
 insert into results select 'a broker cannot send announcements',
-  pg_temp.fails($q$select public.admin_announce('Hi', 'x', array['agent'])$q$) like 'error: Super Admin access required%', '';
+  pg_temp.fails($q$select public.admin_announce('Hi', 'x', array['agent'])$q$) = 'refused', '';
 select pg_temp.as_user('77777777-7777-7777-7777-777777777777', 'admin@x.ph');
 insert into results select 'a title is required', pg_temp.fails($q$select public.admin_announce('  ', 'x', array['agent'])$q$) like 'error: Title must be%', '';
 insert into results select 'someone must receive it', pg_temp.fails($q$select public.admin_announce('Hi', 'x', array[]::text[])$q$) like 'error: Choose who%', '';
