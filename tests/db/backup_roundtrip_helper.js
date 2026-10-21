@@ -1,7 +1,7 @@
 /* Helper for tests/db/backup_roundtrip.sh: runs tools/backup.js against a local Postgres the way the
  * Management API would (each query's rows as JSON), and compares two databases table by table. */
 const { execFileSync } = require("child_process");
-const B = require("../tools/backup.js");
+const B = require("../../tools/backup.js");
 const [cmd, db, other] = process.argv.slice(2);
 const psql = (database, sql) => execFileSync("psql", ["-X", "-At", "-v", "ON_ERROR_STOP=1", "-d", database, "-c", sql], { encoding: "utf8", maxBuffer: 512 * 1024 * 1024 });
 const runOn = database => async sql => JSON.parse(psql(database, "select coalesce(json_agg(q), '[]'::json) from (" + sql + ") q").trim() || "[]");
