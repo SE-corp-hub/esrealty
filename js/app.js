@@ -10449,7 +10449,12 @@ premise: "Fee Simple / As Improved",
         (st.total.withheld > 0 ? 'Rent received includes ' + money(st.total.withheld) + ' tax withheld by company tenants and paid to the BIR for the owner (BIR Form 2307, a credit against the owner\u2019s income tax). ' : "") +
         'Deposits are held for the tenants and are not income. Prepared by SEA ESTATES \u00B7 Property Management System</span></div>' +
       '</div>';
-    pmsPrintModal("Owner Statement \u2014 " + owners[0].name, body);
+    const ownerEmail = owners.map(o => o.email).filter(Boolean)[0];
+    const stBody = "Hi " + (String(owners[0].name || "").split(/\s+/)[0] || "") + ",\n\nHere is your SEA ESTATES owner statement for " + st.label + ".\n\n" +
+      "Rent received: " + money(st.total.collected) + "\nCharges collected: " + money(st.total.charges) + "\nExpenses and repairs: " + money(st.total.expenses + st.total.repairs) +
+      "\nNet: " + money(st.total.net) + "\n\nThe full statement is attached as a PDF." + emailSignature();
+    const bodyWithMail = ownerEmail && pmsIsManager() ? body.replace('<div class="pms-st-pick no-print">', '<div class="pms-st-pick no-print"><span class="row" style="gap:8px;flex-wrap:wrap">' + gmailLink(ownerEmail, "Owner statement: " + st.label, stBody, "Email via Gmail") + '<span class="dim tiny">Save the statement as a PDF first (Print > Save as PDF), then attach it.</span></span>') : body;
+    pmsPrintModal("Owner Statement \u2014 " + owners[0].name, bodyWithMail);
     const sel = $("#pms-st-month");
     if (sel) sel.addEventListener("change", () => pmsOwnerStatement(ownerIds, sel.value));
   }
@@ -13377,13 +13382,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       "Regards,",
       (currentUser && currentUser.name) || "Property Management"
     ].filter(line => line !== null).join("\n");
-    const link = document.createElement("a");
-    link.href = "mailto:" + encodeURIComponent(email) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    toastHtml("Payment email prepared for <b>" + esc(email) + "</b>");
+    openGmail(email, subject, body);
+    toastHtml("Gmail opened with the payment email for <b>" + esc(email) + "</b>. Check it and press Send.");
   }
 
   let pmsHooked = false;
@@ -15331,6 +15331,36 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (/^639\d{9}$/.test(d)) return "+" + d;
     return String(v || "").trim();
   }
+  /* Email by hand through Gmail (owner decision 21 Oct: no email provider). Opens Gmail's
+     "New message" in a new tab, written and addressed; the staff member checks it, attaches
+     anything needed and presses Send from their own Gmail. A popup blocker falls back to the
+     device's mail app (mailto). */
+  function gmailUrl(to, subject, body) {
+    return "https://mail.google.com/mail/?view=cm&fs=1&to=" + encodeURIComponent(to || "") + "&su=" + encodeURIComponent(subject || "") + "&body=" + encodeURIComponent(String(body || "").slice(0, 1800));
+  }
+  function mailtoUrl(to, subject, body) {
+    return "mailto:" + encodeURIComponent(to || "") + "?subject=" + encodeURIComponent(subject || "") + "&body=" + encodeURIComponent(String(body || "").slice(0, 1800));
+  }
+  function openGmail(to, subject, body) {
+    const w = window.open(gmailUrl(to, subject, body), "_blank", "noopener");
+    if (!w) { const a = document.createElement("a"); a.href = mailtoUrl(to, subject, body); a.style.display = "none"; document.body.appendChild(a); a.click(); a.remove(); }
+  }
+  function gmailLink(to, subject, body, label, cls) {
+    return '<a class="' + (cls || "btn btn-ghost btn-sm") + '" href="' + esc(gmailUrl(to, subject, body)) + '" target="_blank" rel="noopener" data-gmail>' + icon("mail", 13) + " " + esc(label || "Email via Gmail") + "</a>";
+  }
+  function emailSignature() {
+    const sc = state.siteContact || {};
+    return "\n\nRegards,\n" + (((currentUser && currentUser.name) || "").trim() || "SEA ESTATES") + "\nSEA ESTATES" + (sc.phone ? "\n" + sc.phone : "");
+  }
+  function leadReplyEmail(l) {
+    const first = String(l.name || "").trim().split(/\s+/)[0] || "";
+    const about = l.listingTitle || l.propertyInterest || "";
+    return {
+      subject: "Your inquiry with SEA ESTATES" + (about ? ": " + about : ""),
+      body: "Hi " + first + ",\n\nThank you for getting in touch with SEA ESTATES" + (about ? " about " + about : "") + ". " +
+        "I'm your contact for this and I'd be glad to help.\n\nWhen is a good time to call you? You can also reply here with any questions." + emailSignature()
+    };
+  }
   function phoneChatLinks(phone) {
     const p = String(phone || "").trim();
     if (!p) return "";
@@ -15564,10 +15594,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       html += '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' +
         (st === "awaiting-call" ? phoneChatLinks(l.phone) + '<button class="btn btn-primary btn-sm" data-vg-verify="' + esc(l.id) + '">' + icon("check", 13) + " Called &amp; verified</button>" : "") +
         (can("appraisal.view") ? '<button class="btn ' + (st === "verified" ? "btn-primary" : "btn-ghost") + ' btn-sm" data-vg-prepare="' + esc(l.id) + '">' + icon("doc", 13) + " Prepare report</button>" : "") +
-        (st !== "awaiting-call" && mailto ? '<a class="btn btn-ghost btn-sm" href="' + esc(mailto) + '">' + icon("mail", 13) + " Email draft</a>" : "") +
+        (st !== "awaiting-call" && l.email ? gmailLink(l.email, "Your SEA ESTATES property value report", mailBody, "Email via Gmail") + '<a class="btn btn-ghost btn-sm" href="' + esc(mailto) + '">Other mail app</a>' : "") +
         (st === "verified" ? '<button class="btn btn-ghost btn-sm" data-vg-sent="' + esc(l.id) + '">' + icon("check", 13) + " Mark report sent</button>" : "") +
         "</div>" +
-        (st === "verified" ? '<p class="dim tiny mt-8">Prepare report opens the Value Guide with these inputs. Download the PDF there, attach it to the email draft, then mark it sent.</p>' : "");
+        (st === "verified" ? '<p class="dim tiny mt-8">Prepare report opens the Value Guide with these inputs. Download the PDF there, attach it to the Gmail message, send it, then mark it sent.</p>' : "");
     }
     return html + "</div>";
   }
@@ -15658,7 +15688,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       leadDetailRow("Requested Service", l.serviceRequested || (l.channel === "professional-appraisal-request" ? "Appraisal consultation" : l.channel === "broker-consultation" ? "Broker consultation" : l.channel === "location-analysis" ? "Location analysis report" : "—")) +
       (l.serviceTransacted ? leadDetailRow("Service Transacted", "Yes — " + esc(l.serviceTransacted.service) + " by " + esc(l.serviceTransacted.by) + " (" + esc(l.serviceTransacted.byRole) + ")") : "") +
       leadDetailRow("Status", leadStatusCfg(l.status) ? leadStatusCfg(l.status)[1] : "—") +
-      leadDetailRow("Email", l.email) +
+      (l.email ? leadDetailRowRaw("Email", esc(l.email) + ' <span style="display:inline-flex;gap:6px;margin-left:6px;vertical-align:middle">' + gmailLink(l.email, leadReplyEmail(l).subject, leadReplyEmail(l).body, "Email via Gmail", "badge blue") + "</span>") : leadDetailRow("Email", l.email)) +
       leadDetailRowRaw("Phone", phoneChatLinks(l.phone)) +
       leadDetailRow("Source", leadSourceLabel(l.source)) +
       leadDetailRow("Assigned Agent", l.assignedTo) +
@@ -16031,47 +16061,27 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         d.upcoming.map(u => "<tr><td>" + esc(u.when.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })) + "</td><td>" + esc(u.what) + "</td><td>" + esc(u.who || "—") + "</td></tr>").join("") + "</table>"
         : "<p class='dim tiny'>No scheduled events this week.</p>") +
       '<div class="actions mt-16"><button class="btn btn-primary" data-digest-print>' + icon("doc", 14) + " Print / Save PDF</button>" +
-      '<button class="btn btn-ghost" data-digest-email>' + icon("check", 14) + " Email me this</button></div>" +
+      '<button class="btn btn-ghost" data-digest-email>' + icon("mail", 14) + " Email me this (Gmail)</button></div>" +
       "</div></div>";
     document.body.appendChild(ov);
   }
   function closeLeadDigest() { const m = $("#digest-modal"); if (m) m.remove(); }
+  // "Email me this": opens Gmail addressed to the signed-in person with the digest as text
+  // (no email service is set up; owner decision 21 Oct).
   async function emailLeadDigest() {
-    const cfg = window.ESREALTY_SUPABASE || {};
     const to = currentUser && currentUser.email;
-    if (!cfg.supabaseUrl || !to) { toast("Email delivery needs Supabase config and a signed-in account with an email", "err"); return; }
-    let token = "";
-    try { const sess = SB && SB.auth ? await SB.auth.getSession() : null; token = (sess && sess.data && sess.data.session && sess.data.session.access_token) || ""; } catch (e) { token = ""; }
-    if (!token) { toast("Sign in first — digest email uses your account session", "err"); return; }
-    const d = leadDigestData();
-    const rows = d.overdue.map(x => "<li>" + esc(x.l.ref + " " + (x.l.name || "")) + " (" + esc((leadStatusCfg(x.l.status) || [0, x.l.status])[1]) + ") — " + esc(x.s.label) + "</li>").join("");
-    const html = "<h2>Weekly Broker Digest — week of " + d.weekStart.toLocaleDateString() + "</h2>" +
-      "<p>New leads: <b>" + d.newThisWeek.length + "</b> · Stage moves: <b>" + d.movements + "</b> · Won: <b>" + d.closedThisWeek.length + "</b> (" + C.money(d.wonValue) + ") · Lost: <b>" + d.lostThisWeek + "</b> · Win rate: <b>" + d.conv + "</b></p>" +
-      "<h3>Overdue follow-ups (" + d.overdue.length + ")</h3><ul>" + (rows || "<li>None</li>") + "</ul>";
-    try {
-      const res = await fetch(cfg.supabaseUrl + "/functions/v1/notify-dispatch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token, apikey: cfg.supabaseKey || "" },
-        body: JSON.stringify({ to: to, subject: "SEA ESTATES weekly broker digest", html: html })
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || out.ok === false) throw new Error(out.error || ("HTTP " + res.status));
-      toastHtml("Digest emailed to <b>" + esc(to) + "</b>", "ok");
-    } catch (e) {
-      // Fallback: pre-filled mailto so the digest always goes out, no infra needed.
-      const d2 = leadDigestData();
-      const txt =
-        "Weekly Broker Digest — week of " + d2.weekStart.toLocaleDateString() + "\n\n" +
-        "New leads: " + d2.newThisWeek.length + " · Stage moves: " + d2.movements +
-        " · Won: " + d2.closedThisWeek.length + " (" + C.money(d2.wonValue) + ")" +
-        " · Lost: " + d2.lostThisWeek + " · Win rate: " + d2.conv + "\n\n" +
-        "Overdue follow-ups (" + d2.overdue.length + "):\n" +
-        (d2.overdue.map(x => " • " + x.l.ref + " " + (x.l.name || "") + " — " + x.s.label).join("\n") || " • None") + "\n\n" +
-        "(Sent via mailto fallback — edge dispatch unavailable: " + String(e && e.message || e) + ")";
-      const mailto = "mailto:" + encodeURIComponent(to) + "?subject=" + encodeURIComponent("SEA ESTATES weekly broker digest") + "&body=" + encodeURIComponent(txt);
-      toast("Edge email failed (" + esc(String(e && e.message || e)) + ") — opening your mail app instead", "info");
-      setTimeout(() => { window.location.href = mailto; }, 600);
-    }
+    if (!to) { toast("Your account has no email address to send the digest to", "err"); return; }
+    const d2 = leadDigestData();
+    const txt =
+      "Weekly Broker Digest - week of " + d2.weekStart.toLocaleDateString() + "\n\n" +
+      "New leads: " + d2.newThisWeek.length + ", stage moves: " + d2.movements +
+      ", won: " + d2.closedThisWeek.length + " (" + C.money(d2.wonValue) + ")" +
+      ", lost: " + d2.lostThisWeek + ", win rate: " + d2.conv + "\n\n" +
+      "Overdue follow-ups (" + d2.overdue.length + "):\n" +
+      (d2.overdue.slice(0, 25).map(x => " - " + x.l.ref + " " + (x.l.name || "") + ": " + x.s.label).join("\n") || " - None") +
+      (d2.overdue.length > 25 ? "\n ...and " + (d2.overdue.length - 25) + " more (open Leads)" : "");
+    openGmail(to, "SEA ESTATES weekly broker digest", txt);
+    toastHtml("Gmail opened with the digest for <b>" + esc(to) + "</b>. Press Send to keep a copy.");
   }
   /* ---- Bulk lead actions and CSV import (F6) ---- */
   function leadModal(id, title, body, okLabel) {
@@ -18147,7 +18157,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     for (let i = 0; i < (len || 12); i++) out += chars[Math.floor(Math.random() * chars.length)];
     return out;
   }
-  function showTempPasswordModal(name, temp) {
+  function showTempPasswordModal(name, temp, email) {
     const existing = $("#rp-modal");
     if (existing) existing.remove();
     const ov = document.createElement("div");
@@ -18155,7 +18165,9 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     ov.innerHTML = '<div class="modal-card" style="max-width:420px"><div class="modal-head"><h3>' + icon("key", 15) + ' Password Reset</h3><button class="icon-btn" data-rp-close title="Close">&times;</button></div>' +
       '<div class="modal-body"><p class="dim">Temporary password generated for <b>' + esc(name) + '</b>. Share it with the user - it replaces their current password.</p>' +
       '<div class="row mt-8" style="gap:8px"><input class="input" id="rp-pass" type="text" readonly value="' + esc(temp) + '" style="font-family:monospace;letter-spacing:1px">' +
-      '<button class="btn btn-primary" data-rp-copy>' + icon("copy", 15) + ' Copy</button></div></div>' +
+      '<button class="btn btn-primary" data-rp-copy>' + icon("copy", 15) + ' Copy</button></div>' +
+      (email ? '<div class="mt-8">' + gmailLink(email, "Your new SEA ESTATES password", "Hi " + (String(name || "").split(/\s+/)[0] || "") + ",\n\nYour SEA ESTATES password was reset.\n\nEmail: " + email + "\nTemporary password: " + temp + "\n\nSign in at https://esrealty.tradersgag6.workers.dev and you will be asked to choose a new password straight away. If you did not ask for this, reply to this email." + emailSignature(), "Email it via Gmail") + '<p class="dim tiny mt-8">Opens Gmail with the message ready. Delete it from your Sent folder afterwards if you prefer.</p></div>' : "") +
+      '</div>' +
       '<div class="modal-foot"><button class="btn btn-ghost" data-rp-close>Done</button></div></div>';
     document.body.appendChild(ov);
     ov.addEventListener("click", e => { if (e.target === ov) closeRpModal(); });
@@ -18176,7 +18188,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     if (!(await confirmModal({ title: "Reset password", message: "Reset the password for " + name + "? A new temporary password will be generated — give it to the user in person.", confirmLabel: "Reset password" }))) return;
     if (currentUser.demo) {
       const temp = randomTempPassword();
-      showTempPasswordModal(name, temp);
+      showTempPasswordModal(name, temp, p && p.email);
       demoResetRequests = demoResetRequests.filter(r => r.user_id !== id);
       passwordResetRequests = [];
       toast("Temporary password generated");
@@ -18188,7 +18200,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     try {
       const res = await SB.rpc("admin_reset_password", { target_id: id });
       if (res.error) throw res.error;
-      showTempPasswordModal(name, String(res.data || ""));
+      showTempPasswordModal(name, String(res.data || ""), p && p.email);
       toast("Password reset successfully");
     } catch (err) {
       toast("Could not reset password: " + esc(friendlyErr(err.message || err)), "err");
