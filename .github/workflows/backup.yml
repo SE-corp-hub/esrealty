@@ -1,0 +1,103 @@
+name: Database backup - nightly
+
+# Every night: copies every table, the account list and the list of stored files from the live
+# database, compresses and ENCRYPTS it with the passphrase in the BACKUP_PASSPHRASE secret, proves
+# it can be restored (restore drill into a fresh database built from supabase/migrations), and keeps
+# it as a run artifact for 30 days. This repository is public: artifacts can be downloaded by other
+# GitHub users, which is why the copy is never stored unencrypted. Keep the passphrase somewhere safe
+# outside GitHub; without it a backup cannot be opened.
+#
+# Not set up until the BACKUP_PASSPHRASE secret exists (12+ characters); until then each run says so.
+# Photos and documents themselves are not copied (only their names and sizes).
+# How to restore: the comment at the top of tools/backup.js (and docs/runbook/README.md once the
+# backend pull requests are merged).
+
+on:
+  schedule:
+    - cron: "23 18 * * *"   # 02:23 Philippine time
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      PROJECT_REF: mrngaqtbaseewzcsogqi
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Export and encrypt
+        id: export
+        run: |
+          mkdir -p out
+          node tools/backup.js export --out "out/sea-backup-$(date -u +%F).bin" | tee export.log
+          if ls out/*.bin >/dev/null 2>&1; then echo "made=yes" >> "$GITHUB_OUTPUT"; fi
+
+      # Kept first, so a backup is saved even if the drill below finds a problem.
+      - name: Keep the encrypted backup for 30 days
+        if: steps.export.outputs.made == 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sea-backup
+          path: out/*.bin
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Restore drill (fresh database built from the migrations)
+        if: steps.export.outputs.made == 'yes'
+        run: |
+          psql -v ON_ERROR_STOP=1 -q -d postgres -c "create database drill"
+          export PGDATABASE=drill
+          psql -v ON_ERROR_STOP=1 -q -f tests/db/00_supabase_stub.sql > /dev/null 2>&1 || true
+          psql -v ON_ERROR_STOP=1 -q -f supabase/migrations/0000_baseline.sql > /dev/null
+          for m in $(ls supabase/migrations/*.sql | grep -v 0000_baseline.sql); do psql -v ON_ERROR_STOP=1 -q -f "$m" > /dev/null 2>&1; done
+          psql -v ON_ERROR_STOP=1 -q -c "set client_min_messages = warning; set session_replication_role = replica; do \$\$ declare r record; begin for r in select tablename from pg_tables where schemaname = 'public' loop execute format('truncate public.%I cascade', r.tablename); end loop; truncate auth.users cascade; end \$\$;" > /dev/null
+          f=$(ls out/*.bin | head -1)
+          node tools/backup.js restore "$f" --sql restore.sql > /dev/null
+          psql -v ON_ERROR_STOP=1 -q -f restore.sql > /dev/null
+          echo "Restore drill: the backup loads into a fresh database."
+          rm -f restore.sql
+
+      # A failed scheduled run used to be seen only by whoever opened the Actions tab.
+      # This opens one issue (found again by its title) so the failure reaches the owner.
+      - name: Open an issue when this run fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Scheduled job failed: Database backup"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body "Failed again. Run: $RUN_URL"; exit 0; fi
+          gh issue create --title "$title" --body "A scheduled run failed. Run log: $RUN_URL
+
+          Close this issue once it is fixed; the next failure opens a new one."
