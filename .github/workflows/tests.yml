@@ -337,6 +337,8 @@ jobs:
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test audit_log_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test audit_log_e2e
       - name: e2e audit_log_e2e (mobile)
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test audit_log_e2e -Mobile -Touch || pwsh -NoProfile -File tests/run_all.ps1 -Test audit_log_e2e -Mobile -Touch
+      - name: e2e phase3_app_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test phase3_app_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test phase3_app_e2e
       - name: e2e market_filters_mobile_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test market_filters_mobile_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test market_filters_mobile_e2e
       - name: e2e market_index_e2e

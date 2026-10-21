@@ -34,7 +34,14 @@
     var lostB=document.querySelector("[data-lead-lost]");
     checks.push({name:"mark-lost btn", ok:!!lostB, detail:""});
     if(lostB) lostB.click(); await wait(400);
+    // Marking a lead lost asks why (F5): the button stays off until a reason is chosen.
+    var lostOk=document.querySelector("#lost-ok");
+    checks.push({name:"lost asks for a reason first", ok:!!lostOk && lostOk.disabled, detail:""});
+    var lostSel=document.querySelector("#lost-reason");
+    if(lostSel){ lostSel.value="financing"; lostSel.dispatchEvent(new Event("change",{bubbles:true})); }
+    if(lostOk) lostOk.click(); await wait(500);
     html=document.querySelector("#content").innerHTML;
+    checks.push({name:"lost reason is recorded", ok:/Lost \(Financing fell through\)/.test(html), detail:(html.match(/Status changed:[^<]*/)||["?"])[0].slice(0,80)});
     checks.push({name:"status lost logged", ok:/→ Lost|Lost</.test(html), detail:(html.match(/Status changed:[^<]*/)||["?"])[0].slice(0,50)});
     checks.push({name:"lost btn hidden after", ok:!document.querySelector("[data-lead-lost]"), detail:""});
     // mobile re-check of new elements
