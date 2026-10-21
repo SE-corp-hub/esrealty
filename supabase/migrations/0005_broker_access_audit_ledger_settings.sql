@@ -27,6 +27,7 @@
 --    published listing has not been touched for 75 days. Run by a daily job that
 --    is off until switched on. It does not unpublish anything.
 -- 7. Two unused functions are removed (N6): agent_cancel(), my_full_name().
+-- 8. One lead per Value Guide submit (D8): unique index on the idempotency key.
 
 -- 1a. "Is the creator on my team" and "is the assignee my agent": only for an approved broker.
 create or replace function public.crm_lead_broker_of(p_created_by uuid)
@@ -409,6 +410,17 @@ grant execute on function public.listing_stale_sweep(integer, boolean) to servic
 -- 7. Unused functions (N6). Nothing in the app, the functions or the policies calls these.
 drop function if exists public.agent_cancel(uuid);
 drop function if exists public.my_full_name();
+
+-- 8. One lead per Value Guide submit (D8). The website function checks the idempotency key
+-- before saving; this makes the database refuse a second lead with the same key when two taps
+-- arrive together. If duplicates already exist the index is skipped with a warning.
+do $$
+begin
+  create unique index if not exists crm_leads_idempotency_key_idx on public.crm_leads ((payload ->> 'idempotencyKey'))
+    where coalesce(payload ->> 'idempotencyKey', '') <> '';
+exception when unique_violation then
+  raise warning 'crm_leads_idempotency_key_idx not created: duplicate idempotency keys exist';
+end $$;
 
 -- Check: audit_triggers 3, ledger_lock 1, site_settings 1, new_indexes 25, dropped_functions 0.
 select

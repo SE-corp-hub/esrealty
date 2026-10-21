@@ -56,14 +56,34 @@ const U = ctx.window.ESREALTY_UTIL;
     setVapidDetails: (s, p, v) => calls.push({ vapid: [s, p, v] }),
     sendNotification: async (sub, payload, opts) => { calls.push({ sub, payload, opts }); if (sub.endpoint.endsWith("/gone")) { const e = new Error("gone"); e.statusCode = 410; throw e; } if (sub.endpoint.endsWith("/flaky")) { const e = new Error("busy"); e.statusCode = 500; throw e; } },
   };
-  r = await main({ VAPID_PRIVATE_KEY: " " + k.privateKey + "\n" }, { run, webpush, out });
+  r = await main({ VAPID_PRIVATE_KEY: " " + k.privateKey + "\n" }, { run, webpush, out, wait: async () => {} });
   ok("VAPID set with the site, the stored public key and the secret (spaces trimmed)", calls[0].vapid[0] === "https://esrealty.tradersgag6.workers.dev" && calls[0].vapid[1] === k.publicKey && calls[0].vapid[2] === k.privateKey);
   const sends = calls.filter(c => c.sub);
-  ok("each notification goes to each of the person's phones", sends.length === 3 && sends[0].sub.endpoint === "https://push.example/a" && sends[0].sub.keys.p256dh === "P1" && JSON.parse(sends[0].payload).url === "./index.html?open=leads" && sends[0].opts.TTL === 21600, JSON.stringify(sends.map(s => s.sub.endpoint)));
+  ok("each notification goes to each of the person's phones", sends.length === 5 && sends[0].sub.endpoint === "https://push.example/a" && sends[0].sub.keys.p256dh === "P1" && JSON.parse(sends[0].payload).url === "./index.html?open=leads" && sends[0].opts.TTL === 21600, JSON.stringify(sends.map(s => s.sub.endpoint)));
   ok("a phone the push service says is gone isn't tried again in the same run", !sends.some((s, i) => i > 1 && s.sub.endpoint.endsWith("/gone")));
-  ok("all fetched notifications are marked pushed", queries.some(q => /update public\.notifications set pushed_at = now\(\)/.test(q) && q.indexOf("11111111-0000-0000-0000-000000000002") > 0 && q.indexOf("11111111-0000-0000-0000-000000000003") > 0));
+  ok("a busy phone is tried three times in all", sends.filter(s => s.sub.endpoint.endsWith("/flaky")).length === 3);
+  ok("notifications that reached a phone, or had none left to reach, are marked pushed; the one that failed everywhere is not (tried again next run)", queries.some(q => /update public\.notifications set pushed_at = now\(\)/.test(q) && q.indexOf("11111111-0000-0000-0000-000000000001") > 0 && q.indexOf("11111111-0000-0000-0000-000000000002") > 0 && q.indexOf("11111111-0000-0000-0000-000000000003") < 0));
   ok("gone phones are removed, others kept", queries.some(q => /delete from public\.push_subscriptions/.test(q) && q.indexOf("https://push.example/gone") > 0 && q.indexOf("flaky") < 0));
-  ok("result and log: counts only, no titles or amounts", r.sent === 1 && r.failed === 1 && r.gone === 1 && r.marked === 3 && !/Maria|Rent|₱|push\.example/.test(logs.join(" ")), logs.join(" | "));
+  ok("result and log: counts only, no titles or amounts", r.sent === 1 && r.failed === 1 && r.gone === 1 && r.marked === 2 && r.retry === 1 && /1 notifications will be tried again/.test(logs.join(" ")) && !/Maria|Rent|₱|push\.example/.test(logs.join(" ")), logs.join(" | "));
+
+  // A failure that clears on the second try counts as sent.
+  const { sendWithRetry } = require("../tools/send_push.js");
+  let tries = 0;
+  const waits = [];
+  const sometimes = { sendNotification: async () => { tries++; if (tries < 2) { const e = new Error("busy"); e.statusCode = 503; throw e; } } };
+  const second = await sendWithRetry(sometimes, {}, "{}", {}, async ms => waits.push(ms));
+  ok("a push service that is busy once: sent on the second try, after a short wait", second.ok === true && tries === 2 && waits.length === 1 && waits[0] >= 1000);
+  tries = 0;
+  const badRequest = { sendNotification: async () => { tries++; const e = new Error("bad"); e.statusCode = 400; throw e; } };
+  const bad = await sendWithRetry(badRequest, {}, "{}", {}, async () => {});
+  ok("a bad request is not retried (it would fail the same way)", bad.failed === true && tries === 1);
+  tries = 0;
+  const timeout = { sendNotification: async () => { tries++; throw new Error("timeout"); } };
+  const to = await sendWithRetry(timeout, {}, "{}", {}, async () => {});
+  ok("a network error is tried three times, then reported failed", to.failed === true && tries === 3);
+  const sentAll = fs.readFileSync(path.join(root, "tools/send_push.js"), "utf8");
+  ok("the job turns red when nothing could be sent", /r\.failed > 0 && r\.sent === 0\) \{ console\.error\("::error::/.test(sentAll) && /process\.exit\(1\)/.test(sentAll));
+  ok("each send gives up after 10 seconds", /timeout: 10000/.test(sentAll));
 
   const sw = read("sw.js");
   ok("service worker: shows the alert", /addEventListener\("push"/.test(sw) && /showNotification\(title/.test(sw));

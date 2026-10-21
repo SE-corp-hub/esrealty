@@ -69,6 +69,7 @@ Deno.serve(async (req) => {
       const base = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
       const gotrue = await fetch(base + "/auth/v1/user", {
         headers: { Authorization: authHeader, apikey: SERVICE_KEY },
+        signal: AbortSignal.timeout(8000),
       });
       if (gotrue.ok) {
         const ud = await gotrue.json();
@@ -109,11 +110,13 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: { Authorization: "Bearer " + RESEND_API_KEY, "Content-Type": "application/json" },
           body: JSON.stringify({ from: MAIL_FROM, to: [email], subject: String(body.subject).slice(0, 200), html: String(body.html || "").slice(0, 200000) }),
+          signal: AbortSignal.timeout(15000),
         });
         if (!r.ok) return json({ ok: false, error: "Resend error " + r.status }, 502);
         return json({ ok: true, sent: true, to: email });
       } catch (e) {
-        return json({ ok: false, error: String(e) }, 502);
+        console.error("notify-dispatch self-send failed", String(e));
+        return json({ ok: false, error: "The email service did not answer" }, 502);
       }
     }
   }
@@ -133,12 +136,18 @@ Deno.serve(async (req) => {
   );
 
   const pending = await supabase.from("notifications")
-    .select("id,user_id,type,title,body")
+    .select("id,user_id,type,title,body,emailed_at,sms_sent_at")
     .or("emailed_at.is.null,sms_sent_at.is.null")
     .order("created_at", { ascending: false })
     .limit(BATCH);
 
-  if (pending.error) return json({ ok: false, error: pending.error.message }, 500);
+  // The notifications table has no emailed_at / sms_sent_at columns today (that migration was
+  // never applied), so this bulk mode cannot run. Say so, rather than send the same rows again
+  // every time it is called. The self-send mode above does not use them.
+  if (pending.error) {
+    console.error("notify-dispatch bulk mode unavailable", pending.error.message);
+    return json({ ok: false, error: "Bulk sending is not set up. Only the email-me-this mode is available." }, 501);
+  }
 
   let emails = 0, sms = 0, errors = 0;
 
@@ -160,6 +169,7 @@ Deno.serve(async (req) => {
             subject: "SEA ESTATES — " + (n.title ?? "Notification"),
             html: emailHtml(n.title ?? "", n.body ?? ""),
           }),
+          signal: AbortSignal.timeout(15000),
         });
         if (r.ok) {
           await supabase.from("notifications").update({ emailed_at: new Date().toISOString() }).eq("id", n.id);
@@ -176,6 +186,7 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ apikey: SEMAPHORE_API_KEY, number: phone, message: msg.slice(0, 300), sendername: SEMAPHORE_SENDER }),
+          signal: AbortSignal.timeout(15000),
         });
         if (r.ok) {
           await supabase.from("notifications").update({ sms_sent_at: new Date().toISOString() }).eq("id", n.id);

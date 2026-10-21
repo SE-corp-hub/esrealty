@@ -99,7 +99,7 @@ const server = http.createServer(async (req, res) => {
     }
     send(404, { ok: false, error: "Not found: " + url.pathname });
   } catch (err) {
-    send(500, { ok: false, error: String(err && err.message || err) });
+    send(err && err.status === 400 ? 400 : 500, { ok: false, error: String(err && err.message || err) });
   }
 });
 

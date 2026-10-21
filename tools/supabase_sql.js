@@ -30,6 +30,8 @@ async function runSql(query, opts = {}) {
     method: "POST",
     headers: { authorization: "Bearer " + s.token, "content-type": "application/json" },
     body: JSON.stringify({ query }),
+    // A stuck request must not hold a scheduled job for its whole time limit.
+    signal: AbortSignal.timeout(opts.timeoutMs || 60000),
   });
   const text = await res.text();
   let body = null;

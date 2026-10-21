@@ -241,6 +241,20 @@ set local role anon;
 insert into results select 'not callable by visitors', pg_temp.fails($q$select * from public.listing_stale_sweep(75, true)$q$) = 'refused', '';
 reset role;
 
+-- ===== Web-form lead idempotency key (location-report double tap) =====
+insert into public.crm_leads (id, name, payload, created_by) values ('lead-k1', 'Web 1', '{"idempotencyKey":"key-1"}', '11111111-1111-1111-1111-111111111111');
+insert into results select 'the same web-form key twice: the second is refused (23505)',
+  pg_temp.fails($q$insert into public.crm_leads (id, name, payload, created_by) values ('lead-k2', 'Web 2', '{"idempotencyKey":"key-1"}', '11111111-1111-1111-1111-111111111111')$q$) like 'error: duplicate key value%', pg_temp.fails($q$insert into public.crm_leads (id, name, payload, created_by) values ('lead-k2b', 'Web 2', '{"idempotencyKey":"key-1"}', '11111111-1111-1111-1111-111111111111')$q$);
+insert into public.crm_leads (id, name, payload, created_by) values ('lead-k3', 'Web 3', '{"idempotencyKey":"key-2"}', '11111111-1111-1111-1111-111111111111');
+insert into results select 'a different key is fine', (select count(*) from public.crm_leads where id in ('lead-k1', 'lead-k3')) = 2, '';
+insert into public.crm_leads (id, name, payload, created_by) values
+  ('lead-k4', 'App 1', '{}', '11111111-1111-1111-1111-111111111111'),
+  ('lead-k5', 'App 2', '{}', '11111111-1111-1111-1111-111111111111'),
+  ('lead-k6', 'App 3', '{"idempotencyKey":""}', '11111111-1111-1111-1111-111111111111'),
+  ('lead-k7', 'App 4', '{"idempotencyKey":""}', '11111111-1111-1111-1111-111111111111'),
+  ('lead-k8', 'App 5', '{"status":"new"}', '11111111-1111-1111-1111-111111111111');
+insert into results select 'leads made in the app (no key, or an empty key) can repeat', (select count(*) from public.crm_leads where id between 'lead-k4' and 'lead-k8') = 5, '';
+
 -- ===== Removed functions (N6) =====
 insert into results select 'unused functions are gone',
   (select count(*) from pg_proc where pronamespace = 'public'::regnamespace and proname in ('agent_cancel', 'my_full_name')) = 0, '';

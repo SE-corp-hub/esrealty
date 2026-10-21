@@ -264,7 +264,10 @@ Deno.serve(async (req) => {
     p_limit: 10,
     p_window_seconds: 3600,
   });
-  if (rateError) return json({ error: rateError.message }, 500);
+  if (rateError) {
+    console.error("location-report rate limit", rateError.message);
+    return json({ error: "Could not process the request. Please try again" }, 500);
+  }
   if (!permitted) return json({ error: "Too many requests. Please try again later" }, 429);
 
   const now = new Date().toISOString();
@@ -314,7 +317,8 @@ Deno.serve(async (req) => {
   try {
     adminId = (await requireAdmin(admin)).id;
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : "No super-admin account is configured" }, 500);
+    console.error("location-report admin lookup", e instanceof Error ? e.message : e);
+    return json({ error: "Could not save your request. Please try again" }, 500);
   }
 
   const leadId = "lead-" + crypto.randomUUID();
@@ -359,7 +363,16 @@ Deno.serve(async (req) => {
     },
   };
   const { error: leadError } = await admin.from("crm_leads").insert(lead);
-  if (leadError) return json({ error: leadError.message }, 500);
+  if (leadError) {
+    // Two taps of the same submit at once: the other one saved it (unique index on
+    // the idempotency key, migration 0005). Answer with the saved lead.
+    if (leadError.code === "23505" && idempotencyKey) {
+      const { data: saved } = await admin.from("crm_leads").select("id,ref").eq("payload->>idempotencyKey", idempotencyKey).maybeSingle();
+      if (saved && saved.id) return json({ ok: true, id: saved.id, ref: saved.ref, duplicated: true });
+    }
+    console.error("location-report lead insert", leadError.message);
+    return json({ error: "Could not save your request. Please try again" }, 500);
+  }
 
   // Archive copy for super-admins. Best-effort: the lead is already saved.
   try {

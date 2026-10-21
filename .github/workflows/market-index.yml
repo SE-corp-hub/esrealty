@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 # This job pushes straight to the branch it checks out, so two overlapping runs
 # would race on the same ref and one would fail on a non-fast-forward. The daily
@@ -54,3 +55,19 @@ jobs:
           fi
           git commit -m "Market Price Index snapshot $(date -u +%F)"
           git push
+
+      # A failed scheduled run used to be seen only by whoever opened the Actions tab.
+      # This opens one issue (found again by its title) so the failure reaches the owner.
+      - name: Open an issue when this run fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Scheduled job failed: Market price index"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body "Failed again. Run: $RUN_URL"; exit 0; fi
+          gh issue create --title "$title" --body "A scheduled run failed. Run log: $RUN_URL
+
+          Close this issue once it is fixed; the next failure opens a new one."

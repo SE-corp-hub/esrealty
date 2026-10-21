@@ -79,12 +79,13 @@ module.exports = async function handler(req, res) {
   try {
     const headers = { Accept: "application/json" };
     if (AD_PERF_SOURCE_TOKEN) headers.Authorization = "Bearer " + AD_PERF_SOURCE_TOKEN;
-    const r = await fetch(AD_PERF_SOURCE_URL, { headers });
+    const r = await fetch(AD_PERF_SOURCE_URL, { headers, signal: AbortSignal.timeout(10000) });
     if (!r.ok) throw new Error("upstream HTTP " + r.status);
     const data = await r.json().catch(() => null);
     res.status(200).json({ ok: true, ads: normalize(data), syncedAt: new Date().toISOString() });
   } catch (e) {
-    res.status(502).json({ ok: false, error: String((e && e.message) || e) });
+    console.error("ad-perf source failed:", String((e && e.message) || e));
+    res.status(502).json({ ok: false, error: "The ad report source did not answer" });
   }
 };
 

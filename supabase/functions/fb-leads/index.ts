@@ -104,6 +104,7 @@ Deno.serve(async (req) => {
   }
 
   const results: Array<{ leadgen_id: string; action: string }> = [];
+  let failed = 0;
 
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
@@ -126,6 +127,7 @@ Deno.serve(async (req) => {
         try {
           const gr = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(leadgenId)}`, {
             headers: { Authorization: "Bearer " + PAGE_TOKEN },
+            signal: AbortSignal.timeout(8000),
           });
           const gj = await gr.json().catch(() => ({}));
           if (!gr.ok) fetchProblem = "Graph API " + gr.status + (gj?.error?.message ? ": " + String(gj.error.message).slice(0, 160) : "");
@@ -162,8 +164,11 @@ Deno.serve(async (req) => {
       });
 
       if (insert.error) {
+        // Meta delivered it twice at once: the other copy saved it. Not a failure.
+        if (insert.error.code === "23505") { results.push({ leadgen_id: leadgenId, action: "duplicate" }); continue; }
         console.error("fb-leads insert", leadgenId, insert.error.message);
-        results.push({ leadgen_id: leadgenId, action: "error:" + insert.error.message });
+        results.push({ leadgen_id: leadgenId, action: "insert-failed" });
+        failed++;
         continue; // no "new lead" notice for a lead that wasn't saved
       }
       results.push({ leadgen_id: leadgenId, action: fetchProblem ? "created-without-answers" : "created" });
@@ -179,5 +184,9 @@ Deno.serve(async (req) => {
     }
   }
 
+  // A lead that could not be saved must not be answered with 200: Meta only
+  // sends the webhook again when it gets an error. Saved leads are skipped on
+  // the retry (the id check above), so a retry cannot double them.
+  if (failed > 0) return json({ ok: false, error: "Some leads could not be saved", results }, 500);
   return json({ ok: true, results });
 });

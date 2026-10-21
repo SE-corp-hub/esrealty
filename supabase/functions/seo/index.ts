@@ -34,8 +34,8 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-function html(body: string) {
-  return new Response(body, { status: 200, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8" } });
+function html(body: string, status = 200, cache = "public, max-age=300") {
+  return new Response(body, { status, headers: { ...corsHeaders, "Content-Type": "text/html; charset=utf-8", "Cache-Control": cache } });
 }
 
 // The catalog's images are objects ({ url, altText, ... }); older rows may
@@ -92,22 +92,26 @@ Deno.serve(async (req) => {
       `  <url><loc>${EDGE_ORIGIN}/seo/property/${esc(x.id)}</loc><lastmod>${String(x.updated_at || today).slice(0, 10)}</lastmod><changefreq>daily</changefreq></url>`
     ).join("\n");
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`;
-    return new Response(xml, { status: 200, headers: { ...corsHeaders, "Content-Type": "application/xml" } });
+    return new Response(xml, { status: 200, headers: { ...corsHeaders, "Content-Type": "application/xml", "Cache-Control": "public, max-age=3600" } });
   }
 
   // ── /robots.txt ────────────────────────────────────────────────────
   if (url.pathname.endsWith("/robots.txt")) {
     const txt = `User-agent: *\nAllow: /\nSitemap: ${EDGE_ORIGIN}/seo/sitemap.xml\n`;
-    return new Response(txt, { status: 200, headers: { ...corsHeaders, "Content-Type": "text/plain" } });
+    return new Response(txt, { status: 200, headers: { ...corsHeaders, "Content-Type": "text/plain", "Cache-Control": "public, max-age=86400" } });
   }
 
   // ── /property/<id> → meta-rich HTML that redirects into the SPA ────
   const m = url.pathname.match(/\/property\/([^/?#]+)$/);
   if (m) {
-    const id = decodeURIComponent(m[1]);
-    const r = await supabase.from("public_listing_catalog")
-      .select(PUBLIC_COLUMNS).eq("id", id).eq("status", "available").maybeSingle();
-    if (!r.data) return html(`<!doctype html><title>Listing not found</title><meta http-equiv="refresh" content="1;url=${SITE_URL}/">`);
+    // A path that is not valid percent-encoding ("/property/%E0") is a missing page, not a crash.
+    let id = "";
+    try { id = decodeURIComponent(m[1]); } catch { id = ""; }
+    const r = id
+      ? await supabase.from("public_listing_catalog").select(PUBLIC_COLUMNS).eq("id", id).eq("status", "available").maybeSingle()
+      : { data: null };
+    // 404 (not 200) so search engines drop a listing that is gone; people are sent to the home page.
+    if (!r.data) return html(`<!doctype html><title>Listing not found</title><meta http-equiv="refresh" content="1;url=${SITE_URL}/">`, 404, "public, max-age=60");
     const l: any = r.data;
     const spaUrl = `${SITE_URL}/#/listing/${encodeURIComponent(id)}`;
     const canonicalUrl = `${EDGE_ORIGIN}/seo/property/${id}`;

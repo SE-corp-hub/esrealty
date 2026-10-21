@@ -35,7 +35,7 @@ const notify = read("supabase/functions/notify-dispatch/index.ts");
 ok("self-send email: approved accounts only, 20 an hour", /registration_status !== "approved"/.test(notify) && /p_limit: 20/.test(notify));
 ok("dispatch secrets are compared safely", /sameSecret\(secretHeader, DISPATCH_SECRET\)/.test(notify));
 // 9
-ok("Vercel cron: needs CRON_SECRET when it is set", /CRON_SECRET && !sameSecret\(req\.headers\.authorization/.test(read("market-scan/vercel/api/agent-dispatch.js")));
+ok("Vercel cron: refuses every call unless CRON_SECRET is set and matches", /!CRON_SECRET \|\| !sameSecret\(req\.headers\.authorization/.test(read("market-scan/vercel/api/agent-dispatch.js")));
 ok("ad-perf: approved staff only", /if \(!role\) \{[\s\S]*401/.test(read("market-scan/vercel/api/ad-perf.js")));
 ok("app: sends the sign-in token to ad-perf", /fetch\(MS_CLOUD \+ "\/api\/ad-perf", \{ headers: Object\.assign\(\{ "Content-Type": "application\/json" \}, token \? \{ Authorization: "Bearer " \+ token \}/.test(read("js/app.js")));
 ok("local worker: listens on this computer only by default", /const HOST = process\.env\.HOST \|\| "127\.0\.0\.1";\s*server\.listen\(PORT, HOST/.test(read("market-scan/worker/server.js")));

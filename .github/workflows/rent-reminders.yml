@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: rent-reminders
@@ -36,3 +37,19 @@ jobs:
       - name: Remind
         run: |
           if [ "$SENDING" = "on" ]; then node tools/rent_reminders.js --send; else node tools/rent_reminders.js; fi
+
+      # A failed scheduled run used to be seen only by whoever opened the Actions tab.
+      # This opens one issue (found again by its title) so the failure reaches the owner.
+      - name: Open an issue when this run fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Scheduled job failed: Rent reminders"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body "Failed again. Run: $RUN_URL"; exit 0; fi
+          gh issue create --title "$title" --body "A scheduled run failed. Run log: $RUN_URL
+
+          Close this issue once it is fixed; the next failure opens a new one."

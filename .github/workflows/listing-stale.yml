@@ -1,0 +1,58 @@
+name: Listings - still available?
+
+# Every morning: an agent whose published listing has not been saved for 75
+# days gets a notification in the app (the bell) asking "Still available?",
+# then again every 14 days while it stays untouched. Nothing is unpublished.
+# Sending is OFF until the repository variable LISTING_STALE_ALERTS is set to
+# "on" (Settings -> Secrets and variables -> Actions -> Variables). Until then
+# each run only works it out and logs counts. The log never shows listing
+# names or people (this repository is public).
+#
+# Needs migration 0005 (public.listing_stale_sweep). Before it is applied the
+# run says so in its log and stops without an alarm.
+
+on:
+  schedule:
+    - cron: "37 0 * * *"   # 08:37 Philippine time
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: listing-stale
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: mrngaqtbaseewzcsogqi
+      SENDING: ${{ vars.LISTING_STALE_ALERTS }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Sweep
+        run: |
+          if [ "$SENDING" = "on" ]; then node tools/listing_stale_sweep.js --send; else node tools/listing_stale_sweep.js; fi
+
+      # A failed scheduled run used to be seen only by whoever opened the Actions tab.
+      # This opens one issue (found again by its title) so the failure reaches the owner.
+      - name: Open an issue when this run fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Scheduled job failed: Still-available reminders"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body "Failed again. Run: $RUN_URL"; exit 0; fi
+          gh issue create --title "$title" --body "A scheduled run failed. Run log: $RUN_URL
+
+          Close this issue once it is fixed; the next failure opens a new one."
