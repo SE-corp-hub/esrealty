@@ -22,7 +22,9 @@
 --    and draft entries can still be changed or deleted. The Supabase SQL editor
 --    and server code (service role) are not blocked.
 -- 5. site_settings (K1): one table for website settings, so they no longer live
---    in one super-admin's private data. Nothing reads it yet; see the app change.
+--    in one super-admin's private data. The app copies the Contact Us details and
+--    Value Guide factors into it when a super-admin saves (and once after sign-in);
+--    the listing-api function reads it first and falls back to the old place.
 -- 6. listing_stale_sweep() (A6): tells an agent "Still available?" when a
 --    published listing has not been touched for 75 days. Run by a daily job that
 --    is off until switched on. It does not unpublish anything.
