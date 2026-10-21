@@ -76,8 +76,9 @@ const FUNCTIONS = [
   },
   {
     name: "location-report",
-    // Value Guide report emails. Until it is deployed the app saves the lead
-    // through listing-api instead, so a miss is reported but not blocking.
+    // Value Guide report requests: saves the request as a CRM lead (it sends no email; the team
+    // sends the report by hand). Until it is deployed the app saves the lead through listing-api
+    // instead, so a miss is reported but not blocking.
     skipBlocking: true,
     deployHint: "Run the Deploy edge functions workflow (needs the SUPABASE_ACCESS_TOKEN repo secret), or: supabase functions deploy location-report --no-verify-jwt --project-ref " + REF,
     probes: [
@@ -250,8 +251,8 @@ const KNOWN_VARS = new Map(Object.entries({
   META_PAGE_TOKEN: "fb-leads: Meta page access token (Graph API)",
   META_APP_SECRET: "fb-leads: Meta app secret (signature verification)",
   FB_LEADS_DEFAULT_BROKER_EMAIL: "fb-leads: default broker to auto-assign Facebook leads",
-  RESEND_API_KEY: "notify-dispatch, location-report: Resend API key for email",
-  MAIL_FROM: "notify-dispatch, location-report: from address on a domain verified in Resend (defaults to onboarding@resend.dev, which can only email the Resend account owner)",
+  RESEND_API_KEY: "notify-dispatch: Resend API key for email (only the \"email me this\" mode sends today)",
+  MAIL_FROM: "notify-dispatch: from address on a domain verified in Resend (defaults to onboarding@resend.dev, which can only email the Resend account owner)",
   SEMAPHORE_API_KEY: "notify-dispatch: Semaphore API key for PH SMS",
   SEMAPHORE_SENDER: "notify-dispatch: Semaphore sender name (defaults ESRealty)",
   NOTIFY_DISPATCH_SECRET: "notify-dispatch: shared secret authorizing /notify-dispatch POSTs",

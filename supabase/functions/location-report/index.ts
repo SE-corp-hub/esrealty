@@ -29,6 +29,13 @@ function str(v: unknown, max: number) {
   return String(v ?? "").trim().slice(0, max);
 }
 
+// A phone number as people type it: at least seven digits and not one digit repeated ("0000000").
+// Landlines and two numbers are fine. Same rule as listing-api.
+function looksLikePhone(text: string) {
+  const digits = text.replace(/\D/g, "");
+  return digits.length >= 7 && !/^(\d)\1+$/.test(digits);
+}
+
 function num(v: unknown) {
   const n = Number(v);
   return isFinite(n) && n >= 0 ? n : 0;
@@ -242,7 +249,7 @@ Deno.serve(async (req) => {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return json({ error: "email is invalid" }, 400);
   if (!fullName) return json({ error: "full_name is required" }, 400);
   // The team calls to confirm details before sending any report.
-  if (!str(body.phone, 50)) return json({ error: "phone is required" }, 400);
+  if (!looksLikePhone(str(body.phone, 50))) return json({ error: "phone is invalid" }, 400);
   if (body.consent !== true) return json({ error: "consent is required" }, 400);
 
   const idempotencyKey = str(req.headers.get("idempotency-key") || "", 200);

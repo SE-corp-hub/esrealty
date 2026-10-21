@@ -86,6 +86,17 @@ ok("relay: times out and hides the cause", /AbortSignal\.timeout\(20000\)/.test(
 const adp = read("market-scan/vercel/api/ad-perf.js");
 ok("ad report: times out and hides the cause", /AbortSignal\.timeout\(10000\)/.test(adp) && /The ad report source did not answer/.test(adp) && !/error: String\(\(e && e\.message\) \|\| e\)/.test(adp));
 
+// ---- market scan: sources that cannot be scanned (N9) --------------------------------------------
+const lib = read("market-scan/vercel/lib/_lib.js");
+ok("market-scan: Facebook, Instagram, TikTok and Lamudi pages are no longer fetched on every scan", !/fetchHtml\("https:\/\/www\.(facebook|instagram|tiktok)\.com/.test(lib) && !/lamudi\.com\.ph\/for-sale/.test(lib) && !/invoke(Facebook|Instagram|TikTok|Lamudi)\(/.test(lib));
+ok("market-scan: they are still listed as chips, with the reason", ["lamudi", "facebook", "instagram", "tiktok"].every(n => new RegExp('unscannable\\("' + n + '"\\)').test(lib)) && /const UNSCANNABLE = \{/.test(lib));
+ok("market-scan: each reports no listings", /const unscannable = \(name\) => Object\.assign\(\{ name, count: 0 \}, UNSCANNABLE\[name\]\);/.test(lib));
+{
+  const names = ["lamudi", "facebook", "instagram", "tiktok"];
+  const table = new Function(/const UNSCANNABLE = \{[\s\S]*?\n\};/.exec(lib)[0] + "\nreturn UNSCANNABLE;")();
+  ok("market-scan: every entry has a label, a status the screen understands and a reason", names.every(n => table[n] && table[n].label && /^(blocked|js-only)$/.test(table[n].status) && table[n].error.length > 10));
+}
+
 // ---- jobs --------------------------------------------------------------------------------------
 ok("supabase_sql: a stuck request times out (default 60 s)", /signal: AbortSignal\.timeout\(opts\.timeoutMs \|\| 60000\)/.test(read("tools/supabase_sql.js")));
 const cb = read("supabase/check-backend.js");
@@ -103,5 +114,15 @@ withNotice.forEach(f => {
   ok(f + ": one issue per workflow, found by title", /gh issue list --state open --search/.test(t));
 });
 ok("the notice workflows are all scheduled ones", withNotice.every(f => scheduled.includes(f)), scheduled.join(","));
+
+// ---- runbook and update bot (L6, L7) -------------------------------------------------------------
+const runbook = read("docs/runbook/README.md");
+scheduled.forEach(f => ok("runbook lists the scheduled workflow " + f, runbook.indexOf("`" + f.replace(/\.ya?ml$/, "") + "`") !== -1));
+ok("runbook mentions the Vercel cron and its secret", /Vercel cron/.test(runbook) && /CRON_SECRET/.test(runbook));
+ok("runbook names the switches the jobs read", ["PUSH_ALERTS", "RENT_REMINDERS", "LISTING_STALE_ALERTS"].every(v => runbook.indexOf(v) !== -1));
+const dep = read(".github/dependabot.yml");
+ok("dependabot: actions and both market-scan packages, monthly", /package-ecosystem: github-actions/.test(dep) && /directory: \/market-scan\/vercel/.test(dep) && /directory: \/market-scan\/worker/.test(dep) && (dep.match(/interval: monthly/g) || []).length === 3);
+ok("stale claims are gone: no email from location-report, in the PDF notes or the health check", !/emails the PDF via Resend/.test(read("js/value_guide_pdf.js")) && !/location-report: Resend/.test(read("supabase/check-backend.js")) && !/Value Guide report emails/.test(read("supabase/check-backend.js")));
+ok("location-report checks the phone like the other public form", /looksLikePhone\(str\(body\.phone, 50\)\)/.test(lr) && /phone is invalid/.test(lr));
 
 console.log("\nphase2_edge_node: " + passed + " checks passed");
