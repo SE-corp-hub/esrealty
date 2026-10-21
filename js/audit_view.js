@@ -25,7 +25,9 @@
     cash_posted: "money", cash_voided: "money", cash_status: "money", cash_deleted: "money",
     listing_created: "listings", listing_price: "listings", listing_published: "listings", listing_status: "listings", listing_deleted: "listings",
     role_changed: "people", registration_approved: "people", registration_rejected: "people", assign_broker: "people",
-    manual_create: "people", reset_password: "people", cancel_password_reset: "people", pms_find_login: "people", pms_transfer_book: "people"
+    manual_create: "people", reset_password: "people", cancel_password_reset: "people", pms_find_login: "people", pms_transfer_book: "people",
+    deal_created: "money", deal_stage: "money", deal_deleted: "money", pms_payment_added: "money", pms_payment_changed: "money",
+    cobroke_proposed: "listings", cobroke_status: "listings"
   };
 
   function typesInGroup(key) {
@@ -44,6 +46,8 @@
   function cap(s) { s = String(s == null ? "" : s); return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
   function word(s) { return String(s == null ? "" : s).replace(/_/g, " ").trim(); }
   function short(id) { id = String(id == null ? "" : id); return id.length > 8 ? id.slice(0, 8) : id; }
+  var STAGES = { reservation: "Reservation", cts: "Contract to Sell", doas: "Deed of Absolute Sale", done: "Completed" };
+  function stage(v) { return STAGES[v] || word(v) || "no stage"; }
   function dir(d) { return d === "in" ? "money in" : d === "out" ? "money out" : "money"; }
 
   // ctx.name(id) -> a person's name or "" (unknown); ctx.money(n) -> "₱1,000".
@@ -100,11 +104,25 @@
         text = "Looked up a " + (word(d.role) || "property management") + " login" + (d.found === false ? " (none found)" : ""); break;
       case "pms_transfer_book":
         text = "Moved a property management book from " + name(target) + (d.to ? " to " + name(d.to) : ""); break;
+      case "deal_created":
+        text = "Opened a deal" + (d.price ? " at " + money(d.price) : "") + (d.stage ? " (" + stage(d.stage) + ")" : ""); break;
+      case "deal_stage":
+        text = "Moved a deal from " + stage(d.from) + " to " + stage(d.to) + (d.price ? " (" + money(d.price) + ")" : ""); break;
+      case "deal_deleted":
+        text = "Deleted a deal" + (d.stage ? " at " + stage(d.stage) : ""); break;
+      case "pms_payment_added":
+        text = "Recorded a " + money(d.amount) + " rent payment" + (d.month ? " for " + d.month : "") + (d.status ? " (" + word(d.status) + ")" : ""); break;
+      case "pms_payment_changed":
+        text = "Changed a rent payment" + (d.month ? " for " + d.month : "") + " from " + money(d.from_amount) + " " + (word(d.from_status) || "?") + " to " + money(d.to_amount) + " " + (word(d.to_status) || "?"); break;
+      case "cobroke_proposed":
+        text = "Proposed a co-broke" + (d.split_selling_pct != null ? " with " + d.split_selling_pct + "% to the selling broker" : ""); break;
+      case "cobroke_status":
+        text = "Changed a co-broke from " + (word(d.from) || "?") + " to " + (word(d.to) || "?"); break;
       default:
         text = cap(word(type)) || "Unknown change";
     }
     var record = "";
-    if (type.indexOf("lead_") === 0 || type.indexOf("cash_") === 0 || type.indexOf("listing_") === 0) record = short(target);
+    if (/^(lead|cash|listing|deal|pms_payment|cobroke)_/.test(type)) record = short(target);
     return {
       id: row ? row.id : null,
       when: row ? row.created_at : "",

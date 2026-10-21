@@ -19038,6 +19038,9 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (!listingId) { toast("Choose a listing first", "err"); return; }
     if (!email) { toast("Pick a partner broker or enter their email", "err"); return; }
     if (!(lp >= 0 && lp <= 100) || !(sp >= 0 && sp <= 100) || lp + sp !== 100) { toast("Split must total exactly 100%", "err"); return; }
+    // One open (proposed or accepted) agreement per listing and partner (J6; the database enforces it too).
+    const openSame = (state.cobrokeAgreements || []).some(a => a && a.listing_id === listingId && String(a.partner_email || "").toLowerCase() === email.toLowerCase() && (a.status === "proposed" || a.status === "accepted"));
+    if (openSame) { toast("This partner already has an open co-broke on this listing. Wait for their answer or cancel it first.", "err"); return; }
     closeCbModal();
     const rec = { listing_id: listingId, listing_broker_id: currentUser.id, partner_email: email.toLowerCase(), split_listing_pct: lp, split_selling_pct: sp, status: "proposed", notes: g("cbf-notes"), responded_at: null, completed_at: null };
     const local = Object.assign({ id: "cb-" + Date.now(), selling_broker_id: partnerId || null }, rec);
@@ -19046,6 +19049,11 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (psCloud()) {
       delete local.id; delete local.selling_broker_id;
       const r = await SB.from("cobroke_agreements").insert(rec).select("*").single();
+      if (r.error && r.error.code === "23505") {
+        state.cobrokeAgreements = state.cobrokeAgreements.filter(a => a !== local); save(); render();
+        toast("This partner already has an open co-broke on this listing. Wait for their answer or cancel it first.", "err");
+        return;
+      }
       if (r.error) toast("Cloud save failed: " + esc(friendlyErr(r.error.message)), "err");
       else Object.assign(local, r.data);
     }

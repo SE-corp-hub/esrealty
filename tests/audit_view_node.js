@@ -72,6 +72,15 @@ c("login lookup", x.text === "Looked up a tenant login (none found)", x.text);
 x = d({ owner_id: "u1", event_type: "pms_transfer_book", entity_id: "u2", detail: { to: "u3", moved: {} } });
 c("book transfer", x.text === "Moved a property management book from Ben Reyes to Carla Dizon", x.text);
 
+x = d({ owner_id: "u1", event_type: "deal_stage", entity_id: "tx-1", detail: { from: "reservation", to: "cts", price: "5000000" } });
+c("deal stage uses the screen's stage names", x.text === "Moved a deal from Reservation to Contract to Sell (\u20B15,000,000)" && x.group === "money" && x.record === "tx-1", x.text);
+x = d({ owner_id: "u1", event_type: "pms_payment_changed", entity_id: "pay-1", detail: { from_amount: "10000", to_amount: "10000", from_status: "submitted", to_status: "paid", month: "Oct 2026" } });
+c("payment change", x.text === "Changed a rent payment for Oct 2026 from \u20B110,000 submitted to \u20B110,000 paid", x.text);
+x = d({ owner_id: "u1", event_type: "cobroke_proposed", entity_id: "c1", detail: { listing_id: "S1", split_selling_pct: 40 } });
+c("co-broke proposal", x.text === "Proposed a co-broke with 40% to the selling broker" && x.group === "listings", x.text);
+x = d({ owner_id: "u1", event_type: "cobroke_status", entity_id: "c1", detail: { from: "proposed", to: "accepted" } });
+c("co-broke decision", x.text === "Changed a co-broke from proposed to accepted", x.text);
+
 // 2. Unknown people and unknown events
 x = d({ owner_id: "ffffffff-1111-2222", event_type: "lead_status", entity_id: "L", detail: { from: "a", to: "b" } });
 c("an unknown actor shows a short account id", x.who === "account ffffffff", x.who);
@@ -86,11 +95,11 @@ c("a missing row does not throw", typeof x.text === "string", x.text);
 c("groups: everything, leads, money, listings, people", A.GROUPS.map(g => g.key).join() === "all,leads,money,listings,people", A.GROUPS.map(g => g.key).join());
 c("everything means no filter", A.typesInGroup("all").length === 0);
 c("leads group has the four lead events", A.typesInGroup("leads").sort().join() === "lead_assigned,lead_created,lead_deleted,lead_status", A.typesInGroup("leads").join());
-c("money group has the four cash events", A.typesInGroup("money").length === 4);
+c("money group has cash, deal and rent payment events", A.typesInGroup("money").length === 9, String(A.typesInGroup("money").length));
 c("every known event belongs to a listed group", Object.keys(A.EVENT_GROUP).every(t => A.GROUPS.some(g => g.key === A.EVENT_GROUP[t])));
 
 // 4. Coverage: every event type written by the database or the listing function is known here
-const sql = ["0000_baseline.sql", "0004_alerts_and_access_fixes.sql", "0005_broker_access_audit_ledger_settings.sql"]
+const sql = ["0000_baseline.sql", "0004_alerts_and_access_fixes.sql", "0005_broker_access_audit_ledger_settings.sql", "0006_storage_rules_more_audit_cobroke.sql"]
   .map(f => fs.readFileSync(path.join(ROOT, "supabase/migrations", f), "utf8")).join("\n");
 const written = new Set();
 let m;
@@ -132,13 +141,13 @@ A.query(fc, "all", null, 50);
 c("first page: newest first, 50 rows, no filter, no cursor", JSON.stringify(fc.calls.map(x => x[0])) === JSON.stringify(["from", "select", "order", "limit"]) && fc.calls[0][1] === "audit_events" && fc.calls[2][1] === "id" && fc.calls[2][2].ascending === false && fc.calls[3][1] === 50, JSON.stringify(fc.calls.map(x => x[0])));
 fc = fakeClient();
 A.query(fc, "money", 120, 50);
-c("an area filter and a cursor are applied", fc.calls.some(x => x[0] === "in" && x[1] === "event_type" && x[2].length === 4) && fc.calls.some(x => x[0] === "lt" && x[1] === "id" && x[2] === 120), JSON.stringify(fc.calls.map(x => x[0])));
+c("an area filter and a cursor are applied", fc.calls.some(x => x[0] === "in" && x[1] === "event_type" && x[2].length === A.typesInGroup("money").length) && fc.calls.some(x => x[0] === "lt" && x[1] === "id" && x[2] === 120), JSON.stringify(fc.calls.map(x => x[0])));
 c("the columns read are exactly the ones the wording uses", A.COLUMNS === "id, owner_id, event_type, entity_type, entity_id, detail, created_at");
 fc = fakeClient();
 A.query(fc, "leads", 0, 10);
 c("a cursor of 0 is still a cursor", fc.calls.some(x => x[0] === "lt" && x[2] === 0) && fc.calls.some(x => x[0] === "limit" && x[1] === 10));
 
-const ok = checks.every(x => x.ok) && checks.length >= 45;
+const ok = checks.every(x => x.ok) && checks.length >= 49;
 console.log("\n[audit_view_node] " + checks.length + " checks");
 checks.forEach(x => console.log("  [" + (x.ok ? "PASS" : "FAIL") + "] " + x.name + (x.ok ? "" : "  " + x.detail)));
 console.log(ok ? "ALL PASS" : "FAILURES PRESENT");
