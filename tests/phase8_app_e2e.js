@@ -38,7 +38,13 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
       chk("the message holds the temporary password and says to change it", ru.searchParams.get("body").indexOf(q("#rp-pass").value) > 0 && /choose a new password/.test(ru.searchParams.get("body")), "");
     }
     // H8: listing performance for the owner.
+    qa(".modal-backdrop, #rp-modal").forEach(m => m.remove());
     q('#nav [data-view="listings"]').click(); await wait(900);
+    if (!q("[data-ls-open]")) {
+      q("[data-ls-new]").click(); await wait(600);
+      q("#ls-title").value = "Test 3BR House and Lot, Silang"; q("#ls-price").value = "5600000";
+      q("[data-ls-save]").click(); await wait(1200);
+    }
     const lc = q("[data-ls-open]");
     chk("a listing card exists", !!lc, "");
     lc.click(); await wait(900);
