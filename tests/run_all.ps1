@@ -3,7 +3,9 @@ param(
     [string]$BaseUrl = "http://127.0.0.1:8931/index.html",
     [int]$NavDelayMs = 4500,
     [string]$WindowSize = "1400,900",
-    [switch]$Mobile              # shorthand for -WindowSize "390,844"
+    [switch]$Mobile,             # shorthand for -WindowSize "390,844"
+    [switch]$ReducedMotion,      # run the browser tests with prefers-reduced-motion: reduce
+    [switch]$Touch               # run the browser tests as a touch phone (coarse pointer, no hover)
 )
 
 # SEA ESTATES regression runner (Chrome DevTools Protocol, headless Chrome)
@@ -12,6 +14,8 @@ param(
 #   powershell -File tests\run_all.ps1              # run every *_e2e.js
 #   powershell -File tests\run_all.ps1 -Test appraisal_b2_e2e
 #   powershell -File tests\run_all.ps1 -Mobile      # mobile viewport pass
+#   powershell -File tests\run_all.ps1 -Test services_funnel_e2e -ReducedMotion
+#   powershell -File tests\run_all.ps1 -Test services_funnel_e2e -Mobile -Touch
 
 $ErrorActionPreference = "Continue"
 # Re-launch the PowerShell that is running this script: "powershell" on
@@ -65,7 +69,10 @@ foreach ($name in $browser) {
     $t = Join-Path $PSScriptRoot "$name.js"
     Write-Host "== $name ==" -ForegroundColor Cyan
     $waitFlag = if ($shellStableTests -contains $name) { "-WaitShellStable" } else { "" }
-    $out = & $ps -NoProfile -ExecutionPolicy Bypass -File $driver -TestFile $t -Url $BaseUrl -NavDelayMs $NavDelayMs -WindowSize $WindowSize $waitFlag 2>&1
+    $emulation = @()
+    if ($ReducedMotion) { $emulation += "-ReducedMotion" }
+    if ($Touch) { $emulation += "-Touch" }
+    $out = & $ps -NoProfile -ExecutionPolicy Bypass -File $driver -TestFile $t -Url $BaseUrl -NavDelayMs $NavDelayMs -WindowSize $WindowSize $waitFlag @emulation 2>&1
     try { $json = ($out -join "") | ConvertFrom-Json } catch { $json = $null }
     $pass = $json -and $json.ok
     $results += [pscustomobject]@{ Test = $name; Pass = [bool]$pass }

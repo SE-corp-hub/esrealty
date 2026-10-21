@@ -92,6 +92,123 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     chk("faq-answers-objections", /free/i.test(faqText) && /no obligation/i.test(faqText) && /one business day/i.test(faqText) && /never sold/i.test(faqText), "faq=" + faqText.slice(0, 120));
     chk("faq-no-fabricated-stats", !/\d+\s*(clients|properties sold|homes sold|years|happy families)/i.test(faqText), "stat found");
     chk("faq-privacy-link", !!q(".sf-pv-faq a[href='#/privacy']"), "no privacy link");
+
+    /* ---- service explorer: one house, nine services ----
+       The list is rendered from the same SERVICES array as the Services menu,
+       so these checks compare it with the menu instead of repeating labels.
+       Auto-advance only exists for a mouse user who allows motion, so the
+       timing checks branch on the same media queries the page uses. Run the
+       file again with -reduced-motion and -touch to cover the other branch. */
+    const xReduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const xAuto = matchMedia("(hover: hover) and (pointer: fine)").matches && !xReduced;
+    const xRoot = () => q("[data-sf-explorer]");
+    const xBtns = () => Array.from(document.querySelectorAll("[data-sf-explorer] [data-sf-x-btn]"));
+    const xDetails = () => Array.from(document.querySelectorAll("[data-sf-explorer] [data-sf-x-detail]"));
+    const xActive = () => { const b = xBtns().find(el => el.getAttribute("aria-current") === "true"); return b ? Number(b.getAttribute("data-sf-x-btn")) : 0; };
+    const menuHrefs = items.map(a => a.getAttribute("href"));
+    const inView = el => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < window.innerHeight; };
+
+    await go("#/property-value", 2200);
+    chk("x-present", !!xRoot() && xBtns().length === 9, "buttons=" + xBtns().length);
+    chk("x-ctas-match-menu", xDetails().length === 9 && JSON.stringify(xDetails().map(d => (d.querySelector("a") || {}).getAttribute && d.querySelector("a").getAttribute("href"))) === JSON.stringify(menuHrefs), JSON.stringify(xDetails().map(d => d.querySelector("a") && d.querySelector("a").getAttribute("href"))));
+    chk("x-default-selling", xActive() === 2, "active=" + xActive());
+    chk("x-one-detail-open", xDetails().filter(d => !d.hidden).length === 1 && !xDetails()[1].hidden, "open=" + xDetails().filter(d => !d.hidden).length);
+    chk("x-roving-tabindex", xBtns().filter(b => b.tabIndex === 0).length === 1 && xBtns()[1].tabIndex === 0, "tabbable=" + xBtns().filter(b => b.tabIndex === 0).length);
+    chk("x-no-calculator", !q(".sf-pv [data-est-root]"), "calculator on the landing");
+    chk("x-no-h-scroll", document.documentElement.scrollWidth <= window.innerWidth + 2, "sw=" + document.documentElement.scrollWidth + " vw=" + window.innerWidth);
+
+    /* Clicking a service changes the view in place: no navigation, its own CTA. */
+    const hashBefore = location.hash;
+    xBtns()[2].click();
+    await wait(120);
+    chk("x-click-selects-in-place", xActive() === 3 && location.hash === hashBefore, "active=" + xActive() + " hash=" + location.hash);
+    chk("x-click-opens-its-cta", !xDetails()[2].hidden && xDetails()[1].hidden && xDetails()[2].querySelector("a").getAttribute("href") === "#/search?offer_type=rent", "href=" + xDetails()[2].querySelector("a").getAttribute("href"));
+
+    /* Arrow keys move the selection and wrap at the ends. */
+    xBtns()[2].focus();
+    xBtns()[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    await wait(80);
+    chk("x-arrow-down", xActive() === 4 && document.activeElement === xBtns()[3], "active=" + xActive());
+    xBtns()[3].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+    await wait(80);
+    xBtns()[8].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    await wait(80);
+    chk("x-arrow-wraps", xActive() === 1, "active=" + xActive());
+    xBtns()[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    await wait(80);
+    chk("x-arrow-up-wraps-back", xActive() === 9, "active=" + xActive());
+
+    /* ?service=... opens the matching service. */
+    const xMap = [["sell", 2], ["pre-selling", 4], ["appraisal", 5], ["broker", 6], ["manage", 7], ["title", 8], ["finance", 9]];
+    const xBad = [];
+    for (const [key, n] of xMap) {
+      await go("#/property-value?service=" + key, 1500);
+      if (xActive() !== n) xBad.push(key + "=" + xActive());
+    }
+    chk("x-service-param-opens-item", xBad.length === 0, xBad.join(", ") || "all seven match");
+
+    /* The service that is already open must not become a dead link. */
+    await go("#/property-value?service=finance", 1800);
+    const sameCta = q("[data-sf-explorer] [data-sf-x-detail='9'] a");
+    const hashFinance = location.hash;
+    if (sameCta) sameCta.click();
+    await wait(1300);
+    chk("x-same-service-cta-scrolls-to-form", !!sameCta && location.hash === hashFinance && inView(q("#sf-pv-form")), "hash=" + location.hash + " formInView=" + inView(q("#sf-pv-form")));
+
+    /* Timing rules. */
+    await go("#/home", 1200);
+    await go("#/property-value", 2000);
+    xRoot().scrollIntoView({ block: "center" });
+    await wait(700);
+    const pauseBtn = () => q("[data-sf-explorer] [data-sf-x-pause]");
+    chk("x-auto-flag", xRoot().getAttribute("data-auto") === (xAuto ? "on" : "off"), "data-auto=" + xRoot().getAttribute("data-auto") + " expected=" + (xAuto ? "on" : "off"));
+    if (xAuto) {
+      chk("x-pause-visible", !!pauseBtn() && getComputedStyle(pauseBtn()).display !== "none" && pauseBtn().getBoundingClientRect().height >= 44, "pause missing or under 44px");
+      const before = xActive();
+      await wait(4800);
+      chk("x-auto-advances", xActive() === before + 1, "before=" + before + " after=" + xActive());
+      pauseBtn().click();
+      await wait(120);
+      const held = xActive();
+      chk("x-pause-toggles-label", /^Play$/i.test(pauseBtn().textContent.trim()) && xRoot().getAttribute("data-paused") === "true", "label=" + pauseBtn().textContent.trim());
+      await wait(4800);
+      chk("x-paused-holds", xActive() === held, "held=" + held + " now=" + xActive());
+      pauseBtn().click();
+      await wait(120);
+      chk("x-play-resumes-label", /^Pause$/i.test(pauseBtn().textContent.trim()) && xRoot().getAttribute("data-paused") === "false", "label=" + pauseBtn().textContent.trim());
+
+      await go("#/home", 1200);
+      await go("#/property-value", 2000);
+      xRoot().scrollIntoView({ block: "center" });
+      await wait(700);
+      xBtns()[4].click();
+      await wait(150);
+      chk("x-manual-pick-stops-auto", xRoot().getAttribute("data-paused") === "true", "paused=" + xRoot().getAttribute("data-paused"));
+      await wait(4800);
+      chk("x-manual-pick-stays", xActive() === 5, "active=" + xActive());
+    } else {
+      chk("x-no-pause-control", !pauseBtn() || getComputedStyle(pauseBtn()).display === "none", "pause control is showing");
+      const before = xActive();
+      await wait(4800);
+      chk("x-no-auto-advance", xActive() === before, "before=" + before + " after=" + xActive());
+      if (xReduced) {
+        const running = xRoot().getAnimations({ subtree: true }).filter(a => a.playState === "running").length;
+        chk("x-reduced-motion-nothing-runs", running === 0, "running animations=" + running);
+      }
+    }
+
+    /* ---- steps: three quiet cards, no sticky stage ---- */
+    chk("steps-three-cards-with-vignettes", document.querySelectorAll(".sf-pv-steps-list > li .sf-pv-vig").length === 3, "vignettes=" + document.querySelectorAll(".sf-pv-steps-list > li .sf-pv-vig").length);
+    chk("steps-no-sticky-stage", !q(".sf-pv-stage") && !q("[data-sf-journey]"), "old stage still present");
+
+    /* ---- closing band: contact details come from the shared contact setting ---- */
+    const bandText = () => { const el = q("#sf-contact .sf-contact-details"); return el ? el.textContent.replace(/\s+/g, " ").trim() : ""; };
+    const pvBand = bandText();
+    chk("band-has-tel-and-mail", !!q("#sf-contact .sf-contact-details a[href^='tel:']") && !!q("#sf-contact .sf-contact-details a[href^='mailto:']"), "band=" + pvBand);
+    chk("band-cta-scrolls-to-form", (q("#sf-contact .sf-cta-go") || {}).getAttribute && q("#sf-contact .sf-cta-go").getAttribute("data-sf-scroll") === "sf-pv-form", "cta target missing");
+    await go("#/home", 2200);
+    chk("band-matches-home", pvBand !== "" && pvBand === bandText(), "property-value=" + pvBand + " | home=" + bandText());
+    await go("#/property-value", 1500);
   } catch (e) {
     window.__msChecks.push({ name: "runner", ok: false, detail: (e && e.message || e) });
   }
