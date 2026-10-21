@@ -108,6 +108,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run the database tests
         run: bash tests/db/run.sh
+      - name: Backup round trip (export, encrypt, restore, compare)
+        run: bash tests/db/backup_roundtrip.sh
 
   e2e-tests:
     name: Browser e2e (headless Chromium)

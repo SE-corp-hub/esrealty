@@ -22,6 +22,7 @@ Pushing to `main` changes the live website. Work happens on a branch and a pull 
 | Still-available reminders (`listing-stale`) | 08:37 daily | asks an agent "Still available?" for a published listing not saved in 75 days; again every 14 days | variable `LISTING_STALE_ALERTS` = on (until then it only counts). Needs migration 0005 |
 | Keep-alive (`keepalive`) | 11:00 daily | pings Supabase and the Market Scan so the free project is not paused | none |
 | Lead response alerts (`lead-response`) | every hour at :17 | "Not contacted yet" to the assigned person after 24 hours (Super Admins when unassigned), the broker after 48; once per lead; leads older than 14 days ignored | `LEAD_RESPONSE_ALERTS` = on (off: counts only); `LEAD_RESPONSE_HOURS` changes 24 |
+| Database backup (`backup`) | 02:23 daily | copies every table, accounts and the file list; encrypts it; keeps it 30 days as a run artifact; proves it restores | `BACKUP_PASSPHRASE` secret (12+ characters; keep a copy outside GitHub) |
 | Backend health check (`backend-check`) | 13:00 daily, and after each push to `main` | probes every function, table and endpoint a visitor could reach; fails if something is open that should be closed, or if a function's newer code has waited more than 3 days for **Deploy edge functions**; lists secret names the functions read but that are not set | `SUPABASE_ACCESS_TOKEN` (for the deploy and secret-name part only) |
 | Market price index (`market-index`) | 02:30 daily | writes `data/market-index.json` to `main` | variable `MS_API_URL` (optional) |
 | Market scan nightly check (`market-scan-nightly`) | 03:23 daily | runs two real scans and opens one issue if a source stops returning listings | none |
@@ -34,7 +35,7 @@ Secrets live in **Settings > Secrets and variables > Actions**. The job log neve
 
 ## When a job fails
 
-Phone alerts, rent reminders, still-available reminders, lead response alerts, keep-alive, the backend health check and the market price index open **one issue** titled `Scheduled job failed: <name>` when a run fails (phone alerts opens it once; the others add a comment on each later failure). Open the run link in the issue, read the red step, fix it, close the issue. If you close it and the job fails again, a new issue opens.
+Phone alerts, rent reminders, still-available reminders, lead response alerts, the database backup, keep-alive, the backend health check and the market price index open **one issue** titled `Scheduled job failed: <name>` when a run fails (phone alerts opens it once; the others add a comment on each later failure). Open the run link in the issue, read the red step, fix it, close the issue. If you close it and the job fails again, a new issue opens.
 
 The market scan check, the comparables refresh and the data review keep their own "needs attention" or "review due" issues and update them themselves. The tests show on the pull request. The Vercel cron has no alert yet.
 
@@ -61,3 +62,14 @@ There is no automatic backup today. This is an open decision (Supabase plan, roa
 ## Updates
 
 Dependabot opens a grouped pull request once a month for the GitHub Actions and the two Market Scan packages. Merge when the checks are green. `web-push` is pinned to one version in `push-alerts.yml`.
+
+## Restore from a backup
+
+The nightly **Database backup** run keeps an encrypted copy for 30 days (Actions > Database backup - nightly > a run > Artifacts > `sea-backup`). Photos and documents are not in it; only their names and sizes.
+
+1. Download the artifact and unzip it: you get `sea-backup-YYYY-MM-DD.bin`.
+2. On a computer with Node 20+: `BACKUP_PASSPHRASE='your passphrase' node tools/backup.js check sea-backup-YYYY-MM-DD.bin` lists the tables and row counts.
+3. `BACKUP_PASSPHRASE='your passphrase' node tools/backup.js restore sea-backup-YYYY-MM-DD.bin --sql restore.sql` writes the SQL.
+4. Load it into an empty database built from `supabase/migrations` (a new Supabase project, or the same one after clearing the damaged tables): run each migration in order, then `restore.sql`. The nightly run does exactly this as its restore drill, so a green run means the steps work.
+5. Restoring over live data replaces it: ask before doing this on the real project.
+
