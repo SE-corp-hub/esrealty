@@ -17224,14 +17224,35 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   function listingIsPresell(l) {
     return l.status === "pre-selling" || l.rfo === "pre-selling" || l.rfo === "preselling" || l.rfo === "pre-sell";
   }
+  /* Who the ad names. RA 9646 asks real estate ads to carry the broker's name and PRC licence
+   * number (and a salesperson's accreditation). The BIZ_* constants were never filled in, so ads
+   * said "SEA ESTATES Brokerage" twice with no licence; they now come from the accounts: the
+   * signed-in broker, or an agent's linked broker plus the agent's own PRC number. */
+  function listingAdPeople(l) {
+    const me = currentUser || {};
+    const role = typeof userRole === "function" ? userRole() : "";
+    let broker = null, agent = null;
+    if (role === "broker" || (role === "super-admin" && me.prc)) broker = { name: me.name || "", prc: me.prc || "", agency: me.agency || "" };
+    else if (role === "agent") {
+      const lb = agentLinkedBroker();
+      if (lb) broker = { name: lb.name || "", prc: lb.prc || "", agency: lb.agency || "" };
+      agent = { name: me.name || "", prc: me.prc || "" };
+    }
+    return {
+      firm: BIZ_FIRM || (broker && broker.agency) || me.agency || "SEA ESTATES",
+      brokerName: l.brokerName || BIZ_BROKER_NAME || (broker && broker.name) || "",
+      brokerLic: l.brokerLicense || BIZ_BROKER_LICENSE || (broker && broker.prc) || "",
+      agent: agent && agent.name ? agent : null
+    };
+  }
   function listingDisclosure(l) {
-    const firm = BIZ_FIRM || "SEA ESTATES Brokerage";
-    const brokerName = l.brokerName || BIZ_BROKER_NAME || firm;
-    const brokerLic = l.brokerLicense || BIZ_BROKER_LICENSE || "";
+    const who = listingAdPeople(l);
     const presell = listingIsPresell(l);
-    let s = "Listed by " + firm + " · " + brokerName + (brokerLic ? " · Licensed Real Estate Broker (PRC " + brokerLic + ")" : "");
+    let s = "Listed by " + who.firm + (who.brokerName && who.brokerName !== who.firm ? " · " + who.brokerName : "") +
+      (who.brokerLic ? " · Licensed Real Estate Broker (PRC " + who.brokerLic + ")" : "") +
+      (who.agent ? " · Salesperson " + who.agent.name + (who.agent.prc ? " (PRC " + who.agent.prc + ")" : "") : "");
     if (l.licenseToSell || presell) s += " · DHSUD License-to-Sell " + (l.licenseToSell || "(pending)");
-    s += ". Pre-selling shown for information only; not an offer to sell. Verify zoning, title, and financing with your broker before transacting.";
+    s += ". " + (presell ? "Pre-selling shown for information only; not an offer to sell. " : "") + "Verify zoning, title, and financing with your broker before transacting.";
     return s;
   }
   function listingAdCaption(l, style) {
@@ -17246,7 +17267,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   }
   function listingContactHtml(l) {
     const wa = l.businessWhatsApp || BIZ_WHATSAPP || state.businessWhatsApp || (IS_LOCAL_DEV ? "639171234567" : "") || "";
-    const tel = l.businessPhone || BIZ_PHONE || state.businessPhone || (IS_LOCAL_DEV ? "+63 917 123 4567" : "") || "";
+    const tel = l.businessPhone || BIZ_PHONE || state.businessPhone || siteContactData().phone || "";
     const prefill = encodeURIComponent("Hi! I'm interested in " + (l.title || "this listing") + " (" + (l.ref || "") + "). Please send me details.");
     return '<div class="mt-16" style="display:flex;gap:8px;flex-wrap:wrap">' +
       (wa ? '<a class="btn btn-primary btn-sm" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(wa).replace(/\D/g, "")) + '?text=' + prefill + '" data-listing-contact="whatsapp" data-listing-id="' + esc(l.id) + '">' + icon("chat", 13) + " WhatsApp</a>" : "") +
@@ -21164,6 +21185,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     teamTargets: function () { return { cfg: targetsCfg, state: targetsState, rows: teamTargetsRows() }; },
     listingPerformance: function (l, now) { return listingPerformance(l, now); },
     listingToApi: function (rec) { return listingToApi(rec); },
+    listingDisclosure: function (l) { return listingDisclosure(l); },
     listingOwnerSummary: listingOwnerSummary,
     txClosingMissing: txClosingMissing,
     roleMatrixCard: function () { return roleMatrixCard(); },

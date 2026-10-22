@@ -55,6 +55,27 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     if (ed) { ed.click(); await wait(600); }
     else { const op = rec && q('[data-ls-open="' + rec.id + '"]'); if (op) { op.click(); await wait(600); const e2 = q('[data-ls-edit="' + rec.id + '"]'); if (e2) { e2.click(); await wait(600); } } }
     chk("opening it again shows them ticked", !!q("#ls-exclusive") && q("#ls-exclusive").checked && q("#ls-docs-checked").checked);
+    const closeBtn = q(".modal-close, [data-modal-close]"); if (closeBtn) { closeBtn.click(); await wait(300); }
+
+    // Ad disclosure (RA 9646): names the broker and licence from the accounts, not empty constants.
+    const sale = { id: "d1", title: "House", status: "available", rfo: "rfo" };
+    const dSa = H.listingDisclosure(sale);
+    chk("the ad line no longer repeats the firm with no licence", /^Listed by /.test(dSa) && !/SEA ESTATES Brokerage · SEA ESTATES Brokerage/.test(dSa), dSa);
+    chk("a listing for sale is not called pre-selling", !/Pre-selling shown/.test(dSa) && /Verify zoning, title, and financing/.test(dSa), dSa);
+    chk("a pre-selling listing keeps its DHSUD line and notice", /DHSUD License-to-Sell LTS-1\. Pre-selling shown for information only/.test(H.listingDisclosure({ id: "d2", status: "pre-selling", licenseToSell: "LTS-1" })));
+    const loginAs = async role => {
+      const out = q("#btn-signout");
+      if (out && !q("#auth-test")) { out.click(); await wait(700); }
+      localStorage.removeItem("esrealty_v1"); localStorage.removeItem("esrealty_user");
+      q("#auth-role").value = role; q("#auth-test").click(); await wait(900);
+    };
+    await loginAs("agent");
+    const dAg = window.__ESREALTY_TEST_HELPERS.listingDisclosure(sale);
+    window.__msLog = (window.__msLog || []).concat(["agent: " + dAg]);
+    chk("an agent's ad names their broker with PRC licence and the agent as salesperson", /Licensed Real Estate Broker \(PRC [^)]+\)/.test(dAg) && / · Salesperson \S/.test(dAg), dAg);
+    await loginAs("broker");
+    const dBr = window.__ESREALTY_TEST_HELPERS.listingDisclosure(sale);
+    chk("a broker's ad names them", !/Salesperson/.test(dBr) && /^Listed by .+ · .+/.test(dBr), dBr);
   } catch (e) { window.__msChecks.push({ name: "runner", ok: false, detail: (e && e.stack || e.message || e) + "" }); }
   window.fetch = realFetch;
   window.__msOk = window.__msChecks.every(c => c.ok);
