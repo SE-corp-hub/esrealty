@@ -19448,7 +19448,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const ltLink = lt && t.listingId ? (state.listings || []).find(x => x.id === t.listingId) : null;
     let html = '<div class="hero"><div><button class="btn btn-ghost btn-sm" data-tx-back>' + icon("back", 13) + " Back to transactions</button>" +
       '<h1 class="mt-8">' + esc(t.title || "Transaction") + "</h1><div class='row mt-8' style='gap:8px'>" + txStatusBadge(t.stage) + (t.feePaid ? '<span class="badge green">Fee received</span>' : "") + '<span class="badge blue">' + esc(t.ref || "") + "</span></div></div>" +
-      '<div class="actions"><button class="btn btn-ghost btn-sm" data-tx-print="' + esc(t.id) + '">' + icon("print", 14) + ' Print Transaction</button>' + (canManageTx ? '<button class="btn btn-ghost btn-sm" data-tx-edit="' + esc(t.id) + '">' + icon("edit", 14) + " Edit</button>" +
+      '<div class="actions"><button class="btn btn-ghost btn-sm" data-tx-print="' + esc(t.id) + '">' + icon("print", 14) + ' Print Transaction</button>' +
+      (window.ESREALTY_DOCS ? '<button class="btn btn-ghost btn-sm" data-tx-docs="' + esc(t.id) + '">' + icon("doc", 14) + " Documents</button>" : "") + (canManageTx ? '<button class="btn btn-ghost btn-sm" data-tx-edit="' + esc(t.id) + '">' + icon("edit", 14) + " Edit</button>" +
       (t.stage !== "done" ? '<button class="btn btn-primary" data-tx-advance="' + esc(t.id) + '">' + icon("arrow", 14) + " Advance to " + esc((txStageCfg(TX_STAGE_ORDER[Math.min(TX_STAGE_ORDER.indexOf(t.stage) + 1, TX_STAGE_ORDER.length - 1)]).label)) + "</button>" : "") +
       '<button class="btn btn-ghost btn-sm" data-tx-del="' + esc(t.id) + '">' + icon("trash", 14) + " Delete</button>" : "") + "</div></div>";
     if (t.voided) {
@@ -19500,6 +19501,75 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       (canManageTx ? '<button class="btn btn-primary btn-sm" data-tx-vault="' + esc(t.id) + '">' + icon("folder", 14) + " Manage Documents</button>" : "") + '</div><div class="vault-list tx-vault-list">' +
       (txDocs.length ? txDocs.map(d => vaultDocRow(d, !canManageTx)).join("") : '<div class="vault-empty compact">' + icon("folder", 28) + '<b>No transaction documents</b><span>Upload the reservation agreement, contracts, title and closing records.</span></div>') + "</div></div>";
     return html;
+  }
+  /* Deal documents (J5): offer to buy, reservation agreement, exclusive authority to sell, filled
+   * from the deal, its listing and the signed-in broker (js/doc_templates.js). Starting points,
+   * not legal advice: the dialog says to have a lawyer review them. */
+  function txDocData(t) {
+    const ls = t.listingId ? (state.listings || []).find(x => x.id === t.listingId) : null;
+    const PLx = window.ESPMSLEDGER;
+    const price = C.num(t.price, 0);
+    const cs = commissionFor(t);
+    const dp = C.num(t.dpPct, 0), dpm = C.num(t.dpMonths, 0);
+    return {
+      date: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
+      buyer_name: t.buyerName || "", seller_name: t.sellerName || "",
+      property: t.title || (ls && ls.title) || "",
+      property_address: ls ? [ls.address, ls.barangay, ls.city, ls.province].filter(Boolean).join(", ") : "",
+      title_no: (ls && ls.titleNo) || "", lot_area: ls && C.num(ls.lotArea, 0) ? String(C.num(ls.lotArea, 0)) : "", floor_area: ls && C.num(ls.floorArea, 0) ? String(C.num(ls.floorArea, 0)) : "",
+      price: price ? C.money(price) : "", price_words: price && PLx ? PLx.amountInWords(price) : "",
+      reservation_fee: C.num(t.reservationFee, 0) ? C.money(C.num(t.reservationFee, 0)) : "", reservation_date: t.reservationDate || "",
+      payment_terms: dp ? dp + "% down payment" + (dpm ? " in " + dpm + " monthly payments" : "") + "; the balance as agreed" : "",
+      offer_valid_days: "7", authority_days: "90",
+      commission_pct: cs && cs.split ? String(cs.split.grossPct) : String(commissionSettings().grossPct),
+      broker_name: (currentUser && currentUser.name) || "", broker_prc: (currentUser && currentUser.prc) || "", agency: (currentUser && currentUser.agency) || "SEA ESTATES",
+      agent_name: t.agentName || ""
+    };
+  }
+  function closeDocsModal() { const m = $("#docs-modal"); if (m) m.remove(); }
+  function openTxDocs(id, tplId) {
+    const D = window.ESREALTY_DOCS;
+    const t = transactionScope().find(x => x.id === id);
+    if (!D || !t) return;
+    const tpl = D.find(tplId || state.txDocTpl || "offer") || D.TEMPLATES[0];
+    const data = Object.assign(txDocData(t), (t.docFields || {}));
+    closeDocsModal();
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "docs-modal";
+    ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-labelledby", "docs-title");
+    ov.innerHTML = '<div class="modal-card modal-card-wide"><div class="modal-head"><h3 id="docs-title">Deal documents</h3><button class="icon-btn" data-docs-close title="Close">&times;</button></div>' +
+      '<div class="modal-body">' +
+      '<div class="notice-banner warn">' + icon("alert", 14) + " <span>A starting point written for this office, not legal advice. Have your lawyer review it before anyone signs.</span></div>" +
+      '<div class="field mt-8"><label for="docs-tpl">Document</label><select class="input" id="docs-tpl">' + D.TEMPLATES.map(x => '<option value="' + x.id + '"' + (x.id === tpl.id ? " selected" : "") + ">" + esc(x.title) + "</option>").join("") + "</select></div>" +
+      '<details class="docs-fields mt-8"' + (D.missing(tpl.id, data).length ? " open" : "") + '><summary>Details (' + D.missing(tpl.id, data).length + " to fill in)</summary>" +
+      '<div class="docs-grid">' + tpl.uses.map(k => '<div class="field"><label for="docf-' + k + '">' + esc(D.LABEL[k] || k) + '</label><input class="input" id="docf-' + k + '" data-docf="' + k + '" value="' + esc(data[k] || "") + '"></div>').join("") + "</div></details>" +
+      '<div class="print-root docs-print" id="docs-print-root"><pre class="docs-text" id="docs-text"></pre></div>' +
+      "</div>" +
+      '<div class="modal-foot"><button class="btn btn-ghost" data-docs-close>Close</button><button class="btn btn-ghost" data-docs-copy>' + icon("copy", 14) + ' Copy text</button><button class="btn btn-primary" data-docs-print>' + icon("print", 15) + " Print / Save as PDF</button></div></div>";
+    document.body.appendChild(ov);
+    const read = () => { const d = Object.assign({}, data); $$("#docs-modal [data-docf]").forEach(i => { d[i.getAttribute("data-docf")] = i.value; }); return d; };
+    const draw = () => { const el = $("#docs-text"); if (el) el.textContent = D.fill(tpl.id, read()); };
+    draw();
+    ov.addEventListener("input", e => { if (e.target.closest("[data-docf]")) draw(); });
+    ov.addEventListener("change", e => {
+      if (e.target.id === "docs-tpl") { rememberDocFields(t, read()); state.txDocTpl = e.target.value; openTxDocs(id, e.target.value); }
+    });
+    ov.addEventListener("click", async e => {
+      if (e.target === ov || e.target.closest("[data-docs-close]")) { rememberDocFields(t, read()); closeDocsModal(); return; }
+      if (e.target.closest("[data-docs-print]")) { rememberDocFields(t, read()); window.print(); return; }
+      if (e.target.closest("[data-docs-copy]")) {
+        const text = D.fill(tpl.id, read());
+        try { await navigator.clipboard.writeText(text); toast("Copied"); } catch (err) { toast("Select the text and copy it", "err"); }
+      }
+    });
+  }
+  // What was typed in is kept on the deal, so it is there next time (and on other devices).
+  function rememberDocFields(t, d) {
+    const auto = txDocData(t), keep = {};
+    Object.keys(d).forEach(k => { if (k !== "date" && String(d[k] || "") !== String(auto[k] || "")) keep[k] = d[k]; });
+    const before = JSON.stringify(t.docFields || {});
+    if (Object.keys(keep).length) t.docFields = keep; else delete t.docFields;
+    if (JSON.stringify(t.docFields || {}) !== before && txCanManage()) { t.updatedAt = new Date().toISOString(); save(); persistTransactionToCloud(t); }
   }
   function printTransaction(id) {
     const t = transactionScope().find(x => x.id === id);
@@ -19672,6 +19742,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (!txHooked) {
       txHooked = true;
       document.addEventListener("click", e => {
+        const dcs = e.target.closest("[data-tx-docs]");
+        if (dcs) { e.stopPropagation(); openTxDocs(dcs.getAttribute("data-tx-docs")); return; }
         const pr = e.target.closest("[data-tx-print]");
         if (pr) { e.stopPropagation(); printTransaction(pr.getAttribute("data-tx-print")); return; }
         const gol = e.target.closest("[data-tx-goto-listing]");

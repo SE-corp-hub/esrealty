@@ -2521,3 +2521,11 @@ a.btn, a.btn:hover { text-decoration: none; }
 .modal-body .print-root.com-st { display: block !important; }
 #com-modal .modal-body { display: block; }
 #com-modal .modal-body .field { margin-bottom: 12px; } #com-modal .modal-body .row .field { margin-bottom: 0; }
+/* Deal documents (J5) */
+#docs-modal .modal-body { display: block; }
+.docs-fields { border: 1px solid var(--stroke); border-radius: 10px; padding: 8px 12px; }
+.docs-fields > summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.docs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 12px; margin: 8px 0; }
+.modal-body .print-root.docs-print { display: block !important; margin-top: 12px; border: 1px solid var(--stroke); border-radius: 10px; padding: 16px; background: #fff; color: #16202E; max-height: 50vh; overflow: auto; }
+.docs-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: Georgia, "Times New Roman", serif; font-size: 14px; line-height: 1.55; margin: 0; }
+@media print { .print-root.docs-print { max-height: none !important; overflow: visible !important; border: 0 !important; padding: 0 !important; } .docs-text { font-size: 12pt; } }
