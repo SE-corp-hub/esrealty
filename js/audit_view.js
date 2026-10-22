@@ -27,7 +27,8 @@
     role_changed: "people", registration_approved: "people", registration_rejected: "people", assign_broker: "people",
     manual_create: "people", reset_password: "people", cancel_password_reset: "people", pms_find_login: "people", pms_transfer_book: "people",
     deal_created: "money", deal_stage: "money", deal_deleted: "money", pms_payment_added: "money", pms_payment_changed: "money",
-    cobroke_proposed: "listings", cobroke_status: "listings"
+    cobroke_proposed: "listings", cobroke_status: "listings",
+    announcement_sent: "people"
   };
 
   function typesInGroup(key) {
@@ -118,6 +119,8 @@
         text = "Proposed a co-broke" + (d.split_selling_pct != null ? " with " + d.split_selling_pct + "% to the selling broker" : ""); break;
       case "cobroke_status":
         text = "Changed a co-broke from " + (word(d.from) || "?") + " to " + (word(d.to) || "?"); break;
+      case "announcement_sent":
+        text = "Sent an announcement to " + (Array.isArray(d.roles) && d.roles.length ? d.roles.map(word).join(", ") : "staff") + (d.recipients != null ? " (" + d.recipients + " people)" : ""); break;
       default:
         text = cap(word(type)) || "Unknown change";
     }

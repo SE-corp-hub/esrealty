@@ -196,6 +196,7 @@ const REST_RPCS = [
   { fn: "pms_tenant_request_repair", note: "tenant repair request (migrations/0001)", body: { p_lease: "x", p_title: "x", p_details: "", p_category: "Other" } },
   { fn: "pms_my_repair_requests", note: "tenant's own requests (migrations/0001)" },
   { fn: "listing_stale_sweep", note: "stale-listing alerts, server only (migrations/0005)", pending: "0005" },
+  { fn: "admin_announce", note: "staff announcements, Super Admin only (migrations/0007)", pending: "0007" },
 ];
 async function probeRpc(entry) {
   try {

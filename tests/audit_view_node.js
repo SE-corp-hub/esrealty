@@ -81,6 +81,10 @@ c("co-broke proposal", x.text === "Proposed a co-broke with 40% to the selling b
 x = d({ owner_id: "u1", event_type: "cobroke_status", entity_id: "c1", detail: { from: "proposed", to: "accepted" } });
 c("co-broke decision", x.text === "Changed a co-broke from proposed to accepted", x.text);
 
+x = d({ owner_id: "u1", event_type: "announcement_sent", entity_id: "", detail: { roles: ["broker", "agent"], recipients: 4 } });
+c("announcement", x.text === "Sent an announcement to broker, agent (4 people)" && x.group === "people", x.text);
+const re5 = /values \(auth\.uid\(\), '([a-z_]+)', 'announcement'/;
+
 // 2. Unknown people and unknown events
 x = d({ owner_id: "ffffffff-1111-2222", event_type: "lead_status", entity_id: "L", detail: { from: "a", to: "b" } });
 c("an unknown actor shows a short account id", x.who === "account ffffffff", x.who);
@@ -99,7 +103,7 @@ c("money group has cash, deal and rent payment events", A.typesInGroup("money").
 c("every known event belongs to a listed group", Object.keys(A.EVENT_GROUP).every(t => A.GROUPS.some(g => g.key === A.EVENT_GROUP[t])));
 
 // 4. Coverage: every event type written by the database or the listing function is known here
-const sql = ["0000_baseline.sql", "0004_alerts_and_access_fixes.sql", "0005_broker_access_audit_ledger_settings.sql", "0006_storage_rules_more_audit_cobroke.sql"]
+const sql = ["0000_baseline.sql", "0004_alerts_and_access_fixes.sql", "0005_broker_access_audit_ledger_settings.sql", "0006_storage_rules_more_audit_cobroke.sql", "0007_announcements.sql"]
   .map(f => fs.readFileSync(path.join(ROOT, "supabase/migrations", f), "utf8")).join("\n");
 const written = new Set();
 let m;
@@ -114,6 +118,7 @@ const re4 = /logListingChange\(admin, auth\.id, "([a-z_]+)"/g;
 while ((m = re4.exec(fn))) written.add(m[1]);
 written.add("registration_approved"); written.add("registration_rejected"); // built as 'registration_' || status
 written.delete("registration_");
+if ((m = re5.exec(sql))) written.add(m[1]);
 const missing = [...written].filter(t => !A.EVENT_GROUP[t]);
 c("every event written by the backend is known to the screen (" + written.size + ")", written.size >= 20 && missing.length === 0, "missing: " + missing.join());
 
@@ -147,7 +152,7 @@ fc = fakeClient();
 A.query(fc, "leads", 0, 10);
 c("a cursor of 0 is still a cursor", fc.calls.some(x => x[0] === "lt" && x[2] === 0) && fc.calls.some(x => x[0] === "limit" && x[1] === 10));
 
-const ok = checks.every(x => x.ok) && checks.length >= 49;
+const ok = checks.every(x => x.ok) && checks.length >= 50;
 console.log("\n[audit_view_node] " + checks.length + " checks");
 checks.forEach(x => console.log("  [" + (x.ok ? "PASS" : "FAIL") + "] " + x.name + (x.ok ? "" : "  " + x.detail)));
 console.log(ok ? "ALL PASS" : "FAILURES PRESENT");

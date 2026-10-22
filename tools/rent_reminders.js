@@ -11,6 +11,10 @@
 //   node tools/rent_reminders.js           work it out only (nothing is sent)
 //   node tools/rent_reminders.js --send    send the notifications
 //
+// Lease renewals (I3): 60, 30 and 7 days before a lease ends, the manager gets one "leases ending"
+// summary and a tenant with a login gets a note to talk about renewing. A terminated lease, or one
+// the same tenant already has a newer lease for on the same unit, is left alone.
+//
 // The repository is public, so the log shows counts only: no names, no amounts.
 // Email or SMS copies come later from notify-dispatch, once a provider is set up.
 "use strict";
@@ -82,6 +86,40 @@ function plan(data, today) {
   return { toTenants, summaries };
 }
 
+const RENEWAL_DAYS = [60, 30, 7];
+function renewalPlan(data, today) {
+  const tenants = {}, props = {}, units = {};
+  (data.tenants || []).forEach(t => { tenants[t.id] = t; });
+  (data.properties || []).forEach(p => { props[p.id] = p; });
+  (data.units || []).forEach(u => { units[u.id] = u; });
+  const leases = (data.leases || []).filter(l => l && !l.archived);
+  const toTenants = [], byBook = {};
+  leases.forEach(l => {
+    const end = String(l.end || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(end) || l.status === "terminated") return;
+    const left = daysFrom(today, end);
+    if (RENEWAL_DAYS.indexOf(left) < 0) return;
+    const renewed = leases.some(o => o !== l && o.tenant_id === l.tenant_id && o.unit_id === l.unit_id && String(o.start || "").slice(0, 10) > String(l.start || "").slice(0, 10));
+    if (renewed) return;
+    const t = tenants[l.tenant_id] || {};
+    const unitNo = units[l.unit_id] && (units[l.unit_id].unit_number || units[l.unit_id].name);
+    const place = ((props[l.property_id] || {}).title || "the unit") + (unitNo ? " " + unitNo : "");
+    const b = byBook[l.book_id || ""] || (byBook[l.book_id || ""] = []);
+    b.push({ tenant: t.name || "A tenant", place, end, left });
+    if (t.authUserId && left !== 7) {
+      toTenants.push({ user_id: t.authUserId, type: "system", link_view: "pms",
+        title: ("Your lease ends " + shortDate(end) + " (" + left + " days)").slice(0, 200),
+        body: ("Your lease at " + place + " ends on " + shortDate(end) + ". If you want to stay, talk to your property manager about renewing.").slice(0, 1000) });
+    }
+  });
+  const summaries = Object.keys(byBook).filter(Boolean).map(book => {
+    const list = byBook[book].sort((a, b) => a.left - b.left);
+    return { book, title: ("Leases ending (" + shortDate(today) + "): " + list.length + (list.length === 1 ? " lease" : " leases")).slice(0, 200),
+      body: list.map(x => x.tenant + " at " + x.place + ": ends " + shortDate(x.end) + " (" + x.left + " days)").join("; ").slice(0, 1000) };
+  });
+  return { toTenants, summaries };
+}
+
 async function load(run) {
   const q = t => run("select id, archived, data" + (t === "pms_leases" ? ", book_id" : "") + (t === "pms_tenants" ? ", auth_user_id" : "") + " from public." + t + " where not archived");
   const [leases, payments, tenants, properties, units] = await Promise.all(["pms_leases", "pms_payments", "pms_tenants", "pms_properties", "pms_units"].map(q));
@@ -109,19 +147,25 @@ async function main(argv, run = runSql, out = console.log) {
   const send = argv.indexOf("--send") !== -1;
   // The workflow runs with TZ=Asia/Manila, so this is the Philippine date.
   const today = process.env.REMINDERS_TODAY || L.today();
-  const p = plan(await load(run), today);
+  const data = await load(run);
+  const p = plan(data, today);
+  const r = renewalPlan(data, today);
   const counts = { soon: 0, today: 0, overdue: 0 };
   p.toTenants.forEach(n => { counts[/^Due in/.test(n.title) ? "soon" : /^Due today/.test(n.title) ? "today" : "overdue"]++; });
   out("Rent reminders for " + today + ": " + p.toTenants.length + " for tenants (" + counts.soon + " due in 3 days, " + counts.today + " due today, " + counts.overdue + " overdue), " + p.summaries.length + " manager summaries.");
+  out("Lease renewals: " + r.toTenants.length + " tenant notes, " + r.summaries.length + " manager summaries (leases ending in 60, 30 or 7 days).");
   if (!send) { out("Worked out only: nothing was sent. (Turn sending on with the repository variable RENT_REMINDERS = on.)"); return { plan: p, sent: 0 }; }
   let sent = 0, sumSent = 0;
   if (p.toTenants.length) sent = ((await run(insertSql(p.toTenants)))[0] || {}).sent || 0;
   if (p.summaries.length) sumSent = ((await run(summarySql(p.summaries)))[0] || {}).sent || 0;
-  out("Sent " + sent + " tenant notifications (the rest were sent before) and " + sumSent + " manager summaries.");
-  return { plan: p, sent, sumSent };
+  let renSent = 0, renSum = 0;
+  if (r.toTenants.length) renSent = ((await run(insertSql(r.toTenants)))[0] || {}).sent || 0;
+  if (r.summaries.length) renSum = ((await run(summarySql(r.summaries)))[0] || {}).sent || 0;
+  out("Sent " + sent + " tenant notifications (the rest were sent before) and " + sumSent + " manager summaries; renewals: " + renSent + " tenant notes, " + renSum + " manager summaries.");
+  return { plan: p, renewals: r, sent, sumSent, renSent, renSum };
 }
 
 if (require.main === module) {
   main(process.argv.slice(2)).then(() => process.exit(0), e => { console.error("::error::" + (e && e.message || e)); process.exit(1); });
 }
-module.exports = { plan, kindFor, insertSql, summarySql, main, load };
+module.exports = { plan, renewalPlan, RENEWAL_DAYS, kindFor, insertSql, summarySql, main, load };
