@@ -36,6 +36,24 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     chk("each section has a visible heading, note and button", chaps.every(s => { const h = s.querySelector("h2"), b = s.querySelector("a.btn"); return h && h.offsetHeight > 0 && s.querySelector(".note").offsetHeight > 0 && b && b.offsetHeight >= 44; }), "min button height " + Math.min.apply(null, chaps.map(s => s.querySelector("a.btn").offsetHeight)));
     chk("no horizontal scroll", root.scrollWidth <= w.innerWidth + 1, root.scrollWidth + " vs " + w.innerWidth);
 
+    // Phone: logo and a menu button in the header; the tour bar waits until the hero's buttons scroll away.
+    const phone = w.innerWidth < 1000, mb = q("#menuBtn"), mp = q("#menuPanel");
+    if (phone) {
+      w.scrollTo(0, 0); await wait(600);
+      const hudBox = q("#hud").getBoundingClientRect(), cta = q(".hero .actions .btn").getBoundingClientRect();
+      const hudShown = w.getComputedStyle(q("#hud")).visibility !== "hidden";
+      chk("phone: the tour bar never covers Talk to our team", !hudShown || hudBox.top >= cta.bottom || cta.top >= w.innerHeight, "hud shown=" + hudShown + " hud top " + Math.round(hudBox.top) + " cta bottom " + Math.round(cta.bottom));
+      chk("phone: a menu button in the header", !!mb && mb.offsetWidth >= 44 && mb.offsetHeight >= 44 && mb.getAttribute("aria-expanded") === "false" && mp.hidden);
+      mb.click(); await wait(300);
+      const links = Array.from(mp.querySelectorAll("a")).map(a => a.textContent.trim());
+      chk("phone: the menu opens with every page and the Value Guide", mb.getAttribute("aria-expanded") === "true" && !mp.hidden && ["Home", "Properties", "Services", "Project B.T", "Free Value Guide"].every(t => links.indexOf(t) !== -1), links.join(", "));
+      chk("phone: menu links are easy to tap", Array.from(mp.querySelectorAll("a")).every(a => a.getBoundingClientRect().height >= 44));
+      d.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await wait(200);
+      chk("phone: Escape closes the menu and returns to the button", mp.hidden && mb.getAttribute("aria-expanded") === "false" && d.activeElement === mb);
+    } else {
+      chk("computer: the full menu shows and the menu button is hidden", !!mb && w.getComputedStyle(mb).display === "none" && q(".top nav").offsetWidth > 0);
+    }
+
     // buttons lead into the real site
     const hrefs = chaps.map(s => s.querySelector("a.btn").getAttribute("href"));
     chk("buttons lead into the site, not to a dead end", hrefs.every(h => /^\.\/#\/(search|property-value)/.test(h)), hrefs.join(" "));

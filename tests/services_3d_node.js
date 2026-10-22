@@ -88,6 +88,12 @@ c("every chapter has a heading and tags the reader can read as text", (html.matc
 // --- served by the existing service worker rules
 c("vendor files are cache-first in the service worker", /pathname\.startsWith\(SCOPE_PATH \+ "vendor\/"\)/.test(sw));
 
+// --- phones: a menu (logo + menu button), and the tour bar stays off the hero's buttons
+c("phone menu button says what it does and what it opens", /<button type="button" class="menu-btn" id="menuBtn" aria-expanded="false" aria-controls="menuPanel" aria-label="Open menu">/.test(html));
+c("phone menu lists every page and the Value Guide", /<nav class="menu-panel" id="menuPanel" aria-label="Menu" hidden>[\s\S]*Home[\s\S]*Properties[\s\S]*Services[\s\S]*Project B\.T[\s\S]*Free Value Guide[\s\S]*?<\/nav>/.test(html));
+c("the tour bar hides on phones while the hero's buttons show", /\.cta-visible \.hud\{opacity:0;/.test(html) && /root\.classList\.toggle\('cta-visible'/.test(html));
+c("the menu closes with Escape", /e\.key === 'Escape' && !panel\.hidden/.test(html));
+
 const ok = checks.every(x => x.ok) && checks.length >= 35;
 console.log("\n[services_3d_node] " + checks.length + " checks");
 checks.forEach(x => console.log("  [" + (x.ok ? "PASS" : "FAIL") + "] " + x.name + (x.ok ? "" : "  " + x.detail)));
