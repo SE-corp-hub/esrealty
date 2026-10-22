@@ -380,6 +380,10 @@ jobs:
 
       - name: e2e services_funnel_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test services_funnel_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test services_funnel_e2e
+      - name: e2e services_3d_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test services_3d_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test services_3d_e2e
+      - name: e2e services_3d_e2e (mobile)
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test services_3d_e2e -Mobile -Touch || pwsh -NoProfile -File tests/run_all.ps1 -Test services_3d_e2e -Mobile -Touch
 
 # Gate: the list above was hand-maintained, which is how 35 suites came
       # to be skipped without anyone noticing. Assert coverage so a new suite
