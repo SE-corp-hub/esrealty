@@ -293,6 +293,8 @@ const listingInput = (body: JsonRecord, existing: JsonRecord | null, ownerId: st
     turnoverDate: stringValue(details.turnover_date ?? oldPayload.turnoverDate, 120, "details.turnover_date"),
     developer: stringValue(details.developer ?? oldPayload.developer, 180, "details.developer"),
     licenseToSell: stringValue(details.license_to_sell ?? oldPayload.licenseToSell, 180, "details.license_to_sell"),
+    // The Property Management unit a rental listing was made from ("List for rent", roadmap I9).
+    pmsUnitId: stringValue(details.pms_unit_id ?? oldPayload.pmsUnitId, 80, "details.pms_unit_id"),
     hoaDues: numberValue(details.hoa_dues, "details.hoa_dues", 0, 99_999_999.99, Number(oldPayload.hoaDues || 0)),
     condoDues: numberValue(details.condo_dues, "details.condo_dues", 0, 99_999_999.99, Number(oldPayload.condoDues || 0)),
     videoUrl,
