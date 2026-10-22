@@ -1,7 +1,7 @@
 {
   "version": 3,
   "validated": "2026-09-22",
-  "nextReview": "2026-10-22",
+  "nextReview": "2026-11-21",
   "datasets": [
     "data/bir-batangas/manifest.json",
     "data/bir-batangas/locations.json",
@@ -32,7 +32,7 @@
         "effectiveDate": "2022-07-23",
         "revision": "4th",
         "status": "applicability-unverified",
-        "currencyNote": "Imported 2022 schedule. Live metadata verification attempted 2026-10-03 was blocked; latest revision and certified/effective SMV replacement remain unconfirmed. RA 12001 transition requires locality-specific confirmation."
+        "currencyNote": "Checked 2026-10-21: no newer BIR Department Order for this district was found. Public trackers updated in October 2026 (ren.ph, the UP Law Center's NARO register, Lawphil's BIR list) still list this 2022 schedule as the latest. BIR's own site could not be reached from the check, so this is not yet confirmed with BIR. RA 12001 schedules of market values for Batangas are still proposed. Shown as the current schedule, labelled not yet confirmed (owner decision 2026-10-21)."
       },
       {
         "id": "bir-d034-2022",
@@ -42,7 +42,7 @@
         "effectiveDate": "2022-07-10",
         "revision": "5th",
         "status": "applicability-unverified",
-        "currencyNote": "Imported 2022 schedule. Live metadata verification attempted 2026-10-03 was blocked; latest revision and certified/effective SMV replacement remain unconfirmed. RA 12001 transition requires locality-specific confirmation."
+        "currencyNote": "Checked 2026-10-21: no newer BIR Department Order for this district was found. Public trackers updated in October 2026 (ren.ph, the UP Law Center's NARO register, Lawphil's BIR list) still list this 2022 schedule as the latest. BIR's own site could not be reached from the check, so this is not yet confirmed with BIR. RA 12001 schedules of market values for Batangas are still proposed. Shown as the current schedule, labelled not yet confirmed (owner decision 2026-10-21)."
       },
       {
         "id": "esrcn-2026",
@@ -56,9 +56,9 @@
     ],
     "currencyCheckedOn": "",
     "previousRecordedCheck": "2026-09-30 (not independently substantiated)",
-    "lastAttemptedCheck": "2026-10-03",
+    "lastAttemptedCheck": "2026-10-21",
     "successfullyVerifiedOn": null,
-    "nextCurrencyReview": "2026-10-30"
+    "nextCurrencyReview": "2026-11-21"
   },
 
   "valuation": {

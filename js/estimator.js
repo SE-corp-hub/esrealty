@@ -1914,13 +1914,15 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       '<p class="sf-est-result-for">For a ' + fmt(r.area) + ' sqm ' + esc(typeWord) + ' in ' + esc(titleCase(r.barangay)) + ', ' + esc(titleCase(r.municipality)) + ' · ' + esc(r.classificationLabel || r.classification) + '</p></div>';
     out += resultSummaryHtml(r);
     var nextScheduleCheck = manifest() && manifest().provenance && manifest().provenance.nextCurrencyReview;
+    var lastScheduleCheck = manifest() && manifest().provenance && manifest().provenance.lastAttemptedCheck;
     /* The schedule date is years old by design: zonal values stay in force
        until a newer Department Order supersedes them, so the date is framed as
        the start of an ongoing effectivity and the active re-check cycle is
        stated beside it. Without this the raw 2022 date reads as stale data. */
     out += '<details class="sf-est-result-sources"><summary>Where the numbers come from</summary>' +
       '<div class="sf-est-result-data"><div><b>BIR source match</b><small>' + esc(r.source.label) + '</small></div><div><b>BIR schedule in effect since</b><small>' + esc(r.effectivityDate) + '</small></div><div><b>Dataset version</b><small>' + esc(r.dataVersion) + '</small></div></div>' +
-      '<p class="sf-est-result-data-note">BIR zonal values remain in force until a newer Department Order supersedes them.' + (nextScheduleCheck ? ' Batangas schedules are re-checked every 30 days; next review ' + esc(nextScheduleCheck) + '.' : '') + '</p></details>';
+      '<p class="sf-est-result-data-note">BIR zonal values remain in force until a newer Department Order supersedes them.' +
+      (lastScheduleCheck ? ' This is the latest schedule we could find (checked ' + esc(lastScheduleCheck) + ') but it is not yet confirmed with BIR.' : '') + (nextScheduleCheck ? ' Batangas schedules are re-checked every 30 days; next review ' + esc(nextScheduleCheck) + '.' : '') + '</p></details>';
     /* Placed here, not at the foot of the page: the user has just seen their
      * number and the evidence behind it, which is when the next-step question
      * forms. The bottom CTA still exists for people who read to the end.
