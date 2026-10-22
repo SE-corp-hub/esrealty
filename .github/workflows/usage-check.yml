@@ -1,0 +1,52 @@
+name: Storage use check
+
+# Nightly: how much of the plan's database and file storage is used (roadmap D2).
+# Read-only. The free plan allows 500 MB of database and 1 GB of stored files; at 80% the run
+# fails and opens one issue, so there is time to act before Supabase restricts the project.
+# On a paid plan set the repository variables USAGE_DB_LIMIT_MB and USAGE_STORAGE_LIMIT_MB.
+# Bandwidth is not measured here: see Usage in the Supabase dashboard.
+# The numbers show on the run's page (Summary) as notes.
+
+on:
+  schedule:
+    - cron: "23 21 * * *"   # 05:23 Philippine time
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: usage-check
+  cancel-in-progress: false
+
+jobs:
+  usage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: mrngaqtbaseewzcsogqi
+      USAGE_DB_LIMIT_MB: ${{ vars.USAGE_DB_LIMIT_MB }}
+      USAGE_STORAGE_LIMIT_MB: ${{ vars.USAGE_STORAGE_LIMIT_MB }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Check database and file storage use
+        run: node supabase/check-usage.js
+
+      - name: Open an issue when this run fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Scheduled job failed: Storage use check"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body "Still failing. Run: $RUN_URL"; exit 0; fi
+          gh issue create --title "$title" --body "The database or stored files are above 80% of the plan's limit, or the check could not run. Run log (the numbers are on its Summary page): $RUN_URL
+
+          Delete what is not needed (old photos and files), or move to a bigger plan and set USAGE_DB_LIMIT_MB / USAGE_STORAGE_LIMIT_MB. Close this issue once it is fixed."

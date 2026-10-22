@@ -26,7 +26,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     /* ---- Services dropdown: broker item, real destinations, no bounce ---- */
     const svc = Array.from(document.querySelectorAll(".sf-nav [data-sf-drop]"))
       .find(d => (d.querySelector("summary").textContent || "").indexOf("Services") === 0);
-    const items = svc ? Array.from(svc.querySelectorAll(".sf-drop-panel a")) : [];
+    const items = svc ? Array.from(svc.querySelectorAll(".sf-drop-panel a:not(.sf-drop-all)")) : [];
     chk("services-nine-items", items.length === 9, "items=" + items.length);
     chk("services-no-homepage-bounce", items.every(a => (a.getAttribute("href") || "").indexOf("#/home?section=services") === -1), JSON.stringify(items.map(a => a.getAttribute("href"))));
     const broker = items.find(a => /Talk to a licensed broker/.test(a.textContent));
