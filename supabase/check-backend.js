@@ -373,6 +373,16 @@ async function probe(base, p, fnName, optional) {
   if (vercelOpen.length) console.log("  FIX: set CRON_SECRET in Vercel (market-scan) and redeploy; make sure the latest market-scan code is deployed.");
   console.log("");
 
+  // 4b) Deployed versus repository, and secret names (D5). Needs SUPABASE_ACCESS_TOKEN.
+  console.log("=== DEPLOYED VERSUS REPOSITORY, SECRETS ===\n");
+  let deployStale = false;
+  try {
+    const dep = await require("./check-deployed.js").report(REF, FUNCTIONS.map(f => f.name), [...envMap.keys()], process.env.SUPABASE_ACCESS_TOKEN || "");
+    dep.lines.forEach(l => console.log(l));
+    deployStale = dep.blocking;
+  } catch (e) { console.log("  INFO  skipped (" + (e && e.message || e) + ")"); }
+  console.log("");
+
   // 5) Status summary
   const total = out.length, passed = out.filter(r => r.ok).length;
   const failed = out.filter(r => !r.ok);
@@ -424,5 +434,6 @@ async function probe(base, p, fnName, optional) {
   console.log("  - '404' = function not deployed; '401' on a public route = deploy with --no-verify-jwt.");
   console.log("  - Tables answering 200 with no rows are fine: row security hides them from an anonymous check.");
   console.log("  - 'ERR' (no HTTP status) usually means the function is NOT deployed at BASE.");
-  if (failed.some(r => !r.optional) || missingTables.length || vercelOpen.length) { process.exit(1); }
+  if (deployStale) console.log("\nA function in the repository has waited more than 3 days for its deployment: run Actions > Deploy edge functions.");
+  if (failed.some(r => !r.optional) || missingTables.length || vercelOpen.length || deployStale) { process.exit(1); }
 })();

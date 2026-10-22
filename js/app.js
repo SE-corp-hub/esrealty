@@ -16,6 +16,8 @@
   /* Compliance expiry-window math (js/compliance_due.js) — falls back inline
    * so the raw harness and cold loads never depend on the script. */
   const DUE = window.ESREALTY_DUE || null;
+  /* Change log wording (js/audit_view.js): turns audit_events rows into sentences and CSV. */
+  const AUDIT = window.ESREALTY_AUDIT || null;
   /* CRM Autopilot "What next" reasoning (js/agent_next.js) — falls back inline
    * so the raw harness and cold loads never depend on the script. */
   const NEXT = window.ESREALTY_NEXT || null;
@@ -296,6 +298,9 @@
   let leadColExpanded = {};
   let userFiltQ = "";
   let userFiltRole = "";
+  // Change log (K3): rows of public.audit_events, newest first. Super Admins only (RLS).
+  const AUDIT_PAGE = 50;
+  let auditRows = [], auditLoaded = false, auditLoading = false, auditError = "", auditGroup = "all", auditMore = false;
 
   function temporaryPassword() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$";
@@ -1590,8 +1595,12 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
   let notifItems = [];
   let notifChannel = null;
   let notifLoadedAt = 0;
+  // Bell history (E7): the panel shows 20 at a time with "Show older"; the badge counts every
+  // unread notification, not only the 20 on screen.
+  const NOTIF_PAGE = 20;
+  let notifUnreadTotal = 0, notifMore = false, notifLoadingMore = false;
   function notifIsCloud() { return !!(SB && currentUser && currentUser.id && !currentUser.demo); }
-  function notifUnreadCount() { return notifItems.filter(n => !n.read_at).length; }
+  function notifUnreadCount() { return Math.max(notifUnreadTotal, notifItems.filter(n => !n.read_at).length); }
   function timeAgo(iso) {
     const s = Math.max(1, (Date.now() - new Date(iso).getTime()) / 1000);
     if (s < 60) return "just now";
@@ -1602,9 +1611,14 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
   async function refreshNotifications() {
     if (!notifIsCloud()) { notifReset(); return; }
     try {
-      const res = await SB.from("notifications").select("id,type,title,body,link_view,read_at,created_at").order("created_at", { ascending: false }).limit(20);
+      const res = await SB.from("notifications").select("id,type,title,body,link_view,read_at,created_at").order("created_at", { ascending: false }).limit(NOTIF_PAGE);
       if (res.error) throw res.error;
       notifItems = res.data || [];
+      notifMore = notifItems.length === NOTIF_PAGE;
+      try {
+        const cnt = await SB.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null);
+        if (!cnt.error && typeof cnt.count === "number") notifUnreadTotal = cnt.count;
+      } catch (e) {}
       notifLoadedAt = Date.now();
       notifUpdateChrome();
       if (document.getElementById("notif-panel") && !document.getElementById("notif-panel").classList.contains("hidden")) renderNotifPanel();
@@ -1620,7 +1634,22 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     badge.textContent = n > 9 ? "9+" : String(n);
     badge.classList.toggle("hidden", n === 0);
   }
+  async function notifLoadOlder() {
+    if (!notifIsCloud() || notifLoadingMore || !notifItems.length) return;
+    notifLoadingMore = true;
+    try {
+      const last = notifItems[notifItems.length - 1];
+      const res = await SB.from("notifications").select("id,type,title,body,link_view,read_at,created_at").order("created_at", { ascending: false }).lt("created_at", last.created_at).limit(NOTIF_PAGE);
+      if (res.error) throw res.error;
+      const rows = (res.data || []).filter(r => !notifItems.some(n => n.id === r.id));
+      notifItems = notifItems.concat(rows);
+      notifMore = (res.data || []).length === NOTIF_PAGE;
+    } catch (e) { toast("Could not load older notifications", "err"); }
+    notifLoadingMore = false;
+    renderNotifPanel();
+  }
   function notifReset() {
+    notifUnreadTotal = 0; notifMore = false;
     notifItems = [];
     notifLoadedAt = 0;
     if (notifChannel && SB) { try { SB.removeChannel(notifChannel); } catch (e) {} notifChannel = null; }
@@ -1635,6 +1664,7 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
         const row = payload.new || {};
         if (notifItems.some(n => n.id === row.id)) return;
         notifItems.unshift(row);
+        if (!row.read_at) notifUnreadTotal += 1;
         notifUpdateChrome();
         toastHtml("<b>" + esc(row.title || "Notification") + "</b>", "info");
         const pnl = document.getElementById("notif-panel");
@@ -1655,19 +1685,22 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
         (n.body ? '<span class="ntf-body">' + esc(n.body) + "</span>" : "") +
         '<span class="ntf-time">' + esc(timeAgo(n.created_at)) + "</span></span></button>";
     }).join("");
-    pnl.innerHTML = '<div class="ntf-head"><b>Notifications</b><button type="button" class="link-btn" id="ntf-markall">Mark all read</button></div>' + items + phoneLink;
+    const older = notifMore ? '<div class="ntf-foot"><button type="button" class="link-btn" id="ntf-older"' + (notifLoadingMore ? " disabled" : "") + ">" + (notifLoadingMore ? "Loading…" : "Show older") + "</button></div>" : "";
+    pnl.innerHTML = '<div class="ntf-head"><b>Notifications</b><button type="button" class="link-btn" id="ntf-markall">Mark all read</button></div>' + items + older + phoneLink;
   }
   async function notifMarkRead(id) {
     const local = notifItems.find(n => n.id === id);
-    if (local && !local.read_at) { local.read_at = new Date().toISOString(); notifUpdateChrome(); }
+    if (local && !local.read_at) { local.read_at = new Date().toISOString(); notifUnreadTotal = Math.max(0, notifUnreadTotal - 1); notifUpdateChrome(); }
     if (SB) { try { await SB.from("notifications").update({ read_at: new Date().toISOString() }).eq("id", id); } catch (e) {} }
     renderNotifPanel();
   }
   async function notifMarkAllRead() {
-    const ids = notifItems.filter(n => !n.read_at).map(n => n.id);
+    const hadUnread = notifUnreadCount() > 0;
     notifItems.forEach(n => { if (!n.read_at) n.read_at = new Date().toISOString(); });
+    notifUnreadTotal = 0;
     notifUpdateChrome(); renderNotifPanel();
-    if (ids.length && SB) { try { await SB.from("notifications").update({ read_at: new Date().toISOString() }).in("id", ids); } catch (e) {} }
+    // Every unread notification of this person, including the ones not loaded yet (the row rules keep it to their own).
+    if (hadUnread && SB && currentUser && currentUser.id) { try { await SB.from("notifications").update({ read_at: new Date().toISOString() }).eq("user_id", currentUser.id).is("read_at", null); } catch (e) {} }
   }
   function bindNotifications() {
     const bell = document.getElementById("notif-bell");
@@ -1688,6 +1721,7 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     pnl.addEventListener("click", async ev => {
       const markAll = ev.target.closest("#ntf-markall");
       if (markAll) { ev.stopPropagation(); await notifMarkAllRead(); return; }
+      if (ev.target.closest("#ntf-older")) { ev.stopPropagation(); await notifLoadOlder(); return; }
       if (ev.target.closest("#ntf-phone")) { pnl.classList.add("hidden"); navigate("settings"); setTimeout(() => { const c = document.getElementById("st-push"); if (c) c.scrollIntoView({ block: "start" }); }, 300); return; }
       const item = ev.target.closest("[data-ntf]");
       if (!item) return;
@@ -13944,6 +13978,18 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     initMapPicker("ls-map", l.lat, l.lng, (la, lo) => { const el1 = $("#ls-lat"); const el2 = $("#ls-lng"); if (el1 && el2) { el1.value = la; el2.value = lo; } }, l.address || [l.city, l.province].filter(Boolean).join(", "));
   }
   function closeLstModal() { const m = $("#ls-modal"); if (m) m.remove(); }
+  /* Listing quality (H4): what a buyer will miss on the public page. It never blocks a save;
+     publishing with gaps says what to add. */
+  function listingQualityGaps(l) {
+    const gaps = [];
+    const photos = (l.photos || []).filter(Boolean).length;
+    if (!photos) gaps.push("photos"); else if (photos < 3) gaps.push("at least 3 photos");
+    if (l.dealType === "rent" ? !(C.num(l.rent, 0) > 0 || C.num(l.price, 0) > 0) : !(C.num(l.price, 0) > 0)) gaps.push("a price");
+    if (!String(l.city || "").trim()) gaps.push("the city");
+    if (String(l.description || "").trim().length < 80) gaps.push("a description of a few sentences");
+    if (!(C.num(l.lotArea, 0) > 0 || C.num(l.floorArea, 0) > 0)) gaps.push("the lot or floor area");
+    return gaps;
+  }
   async function lsSaveForm() {
     if (!listingCanManage()) { toast("You don't have permission to manage listings", "err"); return; }
     const $v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
@@ -14017,7 +14063,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       cloudMyListings.unshift(rec);
       syncTransactionsToListings();
       closeLstModal(); save(); render();
-      toast(rec.isPublished ? (editId ? "Listing updated and published" : "Listing published") : "Draft saved");
+      const gaps = rec.isPublished ? listingQualityGaps(rec) : [];
+      if (gaps.length) toast((editId ? "Listing updated and published" : "Listing published") + ". To help it sell, add " + gaps.join(", ") + ".", "info");
+      else toast(rec.isPublished ? (editId ? "Listing updated and published" : "Listing published") : "Draft saved");
     } catch (e) {
       if (saveButton) { saveButton.disabled = false; saveButton.innerHTML = icon("check", 15) + " Save Listing"; }
       toast("Could not save listing: " + esc(friendlyErr(e.message)), "err");
@@ -14282,6 +14330,40 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   const BIZ_PHONE = "";
   const LEAD_PIPELINE = ["new", "contacted", "site-visit", "offer", "negotiation", "closed"];
   function leadStatusCfg(v) { return LEAD_STATUSES.find(x => x[0] === v); }
+  /* Stage rules (F5). A lead marked lost says why, so the reasons can be counted; a lead moved
+     past "Contacted" (viewing, offer, negotiation, won) needs a phone number or an email. */
+  const LEAD_LOST_REASONS = [["price", "Price or budget"], ["financing", "Financing fell through"], ["other-property", "Chose another property"], ["other-agent", "Went with another agent"], ["no-response", "Stopped responding"], ["not-ready", "Not ready / just looking"], ["unavailable", "Property no longer available"], ["other", "Other"]];
+  const LEAD_NEEDS_CONTACT = ["site-visit", "offer", "negotiation", "closed"];
+  function leadLostLabel(v) { const r = LEAD_LOST_REASONS.find(x => x[0] === v); return r ? r[1] : (v ? String(v) : ""); }
+  function leadStageProblem(lead, status, contact) {
+    const c = contact || lead || {};
+    if (LEAD_NEEDS_CONTACT.indexOf(status) >= 0 && (lead || {}).status !== status && !String(c.phone || "").trim() && !String(c.email || "").trim())
+      return "Add a phone number or an email before moving the lead to " + ((leadStatusCfg(status) || [0, status])[1]) + ".";
+    return "";
+  }
+  function askLostReason(lead) {
+    return new Promise(resolve => {
+      const old = document.getElementById("lost-modal"); if (old) old.remove();
+      const prevFocus = document.activeElement;
+      const ov = document.createElement("div");
+      ov.className = "modal-overlay"; ov.id = "lost-modal";
+      ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-labelledby", "lost-title");
+      ov.innerHTML = '<div class="modal-card"><div class="modal-head"><h3 id="lost-title">Why was this lead lost?</h3><button class="icon-btn" data-lost-cancel aria-label="Close">&times;</button></div>' +
+        '<div class="modal-body"><p class="dim">' + esc((lead && lead.name) || "This lead") + ' moves to Lost. The reason is counted in the lead report.</p>' +
+        '<div class="field mt-8"><label for="lost-reason">Reason</label><select class="input" id="lost-reason"><option value="">Choose a reason</option>' + LEAD_LOST_REASONS.map(r => '<option value="' + r[0] + '">' + esc(r[1]) + "</option>").join("") + "</select></div>" +
+        '<div class="field mt-8"><label for="lost-note">Note (optional)</label><input class="input" id="lost-note" type="text" maxlength="200" placeholder="e.g. Bought in Lipa through a relative"></div></div>' +
+        '<div class="modal-foot"><button class="btn btn-ghost" data-lost-cancel>Cancel</button><button class="btn btn-danger" id="lost-ok" disabled>Mark as lost</button></div></div>';
+      document.body.appendChild(ov);
+      const sel = ov.querySelector("#lost-reason"), ok = ov.querySelector("#lost-ok");
+      const done = val => { ov.remove(); document.removeEventListener("keydown", onKey, true); try { if (prevFocus && prevFocus.focus) prevFocus.focus(); } catch (e) {} resolve(val); };
+      function onKey(e) { if (e.key === "Escape") { e.preventDefault(); done(null); } }
+      document.addEventListener("keydown", onKey, true);
+      sel.addEventListener("change", () => { ok.disabled = !sel.value; });
+      ok.addEventListener("click", () => { if (sel.value) done({ reason: sel.value, note: String(ov.querySelector("#lost-note").value || "").trim() }); });
+      ov.addEventListener("click", e => { if (e.target === ov || e.target.closest("[data-lost-cancel]")) done(null); });
+      sel.focus();
+    });
+  }
   function leadTypeLabel(v) { const f = LEAD_TYPES.find(x => x[0] === v); return f ? f[1] : (v || "—"); }
   function leadSourceLabel(v) { const f = LEAD_SOURCES.find(x => x[0] === v); return f ? f[1] : (v || "—"); }
   function leadStatusBadge(v) { const c = leadStatusCfg(v) || ["", v, "blue"]; return '<span class="badge ' + c[2] + '">' + esc(c[1]) + "</span>"; }
@@ -14611,11 +14693,26 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (state.view === "leads" || state.view === "transactions") render({ keepScroll: true });
     toast("Someone else also changed this on another device. Both sets of notes were kept.");
   }
+  /* Read every row, a page at a time (F7). The API answers at most 1,000 rows per request, so
+   * one plain select silently stopped at the 1,000th lead. makeQuery() builds the ordered query;
+   * the order must be stable (a unique last key) so pages neither skip nor repeat rows. */
+  const SELECT_PAGE = 1000, SELECT_MAX_ROWS = 50000;
+  async function selectAllPages(makeQuery) {
+    const rows = [];
+    for (let from = 0; from < SELECT_MAX_ROWS; from += SELECT_PAGE) {
+      const { data, error } = await makeQuery().range(from, from + SELECT_PAGE - 1);
+      if (error) return { data: rows, error };
+      const page = Array.isArray(data) ? data : [];
+      rows.push.apply(rows, page);
+      if (page.length < SELECT_PAGE) break;
+    }
+    return { data: rows, error: null };
+  }
   let cloudLeadsReady = null;
   async function loadCloudLeads() {
     if (!SB || !currentUser || !currentUser.id) return;
     try {
-      const { data, error } = await SB.from("crm_leads").select("id,payload,assigned_to_id,created_by,updated_at").order("updated_at", { ascending: false });
+      const { data, error } = await selectAllPages(() => SB.from("crm_leads").select("id,payload,assigned_to_id,created_by,updated_at").order("updated_at", { ascending: false }).order("id", { ascending: true }));
       if (error) {
         if (String(error.message || "").match(/does not exist|schema cache|querying schema|relation "public.crm_leads"/i)) {
           cloudLeadsReady = "missing";
@@ -15151,6 +15248,11 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       '<div class="ls-stat"><div class="ls-stat-v"' + (followupDue > 0 ? ' style="color:var(--red,#e05252)"' : "") + '>' + followupDue + '</div><div class="ls-stat-l dim">Follow-ups due</div></div>' +
       '<div class="ls-stat"><div class="ls-stat-v">' + conv + '</div><div class="ls-stat-l dim">Conversion</div></div>' +
       "</div>";
+    if (lostCount) {
+      const why = {};
+      leads.filter(l => l.status === "lost").forEach(l => { const k = leadLostLabel(l.lostReason) || "No reason given"; why[k] = (why[k] || 0) + 1; });
+      html += '<p class="dim tiny mt-8 lead-lost-why">Why leads were lost: ' + Object.keys(why).sort((a, b) => why[b] - why[a]).map(k => esc(k) + " " + why[k]).join(", ") + "</p>";
+    }
     html += leadBrokerPanel();
     html += leadTeamPanel();
     if (mode === "calendar") html += '<div id="lead-results">' + leadCalendarHTML() + "</div>";
@@ -15604,6 +15706,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         leadFld("Email", leadTxt("ld-email", l.email, "name@email.com", "email")) +
         leadFld("Phone", leadTxt("ld-phone", l.phone, "+63 9xx xxx xxxx", "tel")) +
         leadFld("Status", '<select class="input" id="ld-status">' + leadSelOpt(LEAD_STATUSES, l.status || "new") + "</select>") +
+        '<div id="ld-lost-wrap"' + (l.status === "lost" ? "" : " hidden") + ">" + leadFld("Why it was lost", '<select class="input" id="ld-lost">' + leadSelOpt([["", "Choose a reason"]].concat(LEAD_LOST_REASONS), l.lostReason || "") + "</select>") + "</div>" +
         leadFld("Source", '<select class="input" id="ld-source">' + leadSelOpt(LEAD_SOURCES, l.source || (state.utmLanded && state.utmLanded.source) || "listing") + "</select>" + (state.utmLanded && state.utmLanded.source ? '<div class="field-hint">UTM source "' + esc(state.utmLanded.source) + '" from "' + esc(state.utmLanded.campaign || "campaign") + '" — keep to attribute accurately.</div>' : "")) +
         leadFld("Assigned agent", '<select class="input" id="ld-agent">' + agentOpts + "</select>") +
         leadFld("Interested in", leadTxt("ld-interest", l.propertyInterest, "e.g. 3BR house & lot, Cavite")) +
@@ -15629,6 +15732,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       '<div class="modal-foot"><button class="btn btn-ghost" data-lead-cancel>Cancel</button><button class="btn btn-primary" data-lead-save>' + icon("check", 15) + " Save Lead</button></div></div>";
     document.body.appendChild(ov);
     ov.addEventListener("click", e => { if (e.target === ov) closeLeadModal(); });
+    const stSel = ov.querySelector("#ld-status"), lostWrap = ov.querySelector("#ld-lost-wrap");
+    if (stSel && lostWrap) stSel.addEventListener("change", () => { lostWrap.hidden = stSel.value !== "lost"; });
   }
   function closeLeadModal() { const m = $("#ld-modal"); if (m) m.remove(); }
   function leadSaveForm() {
@@ -15639,6 +15744,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const m = $("#ld-modal");
     const editId = m ? (m.getAttribute("data-edit-id") || "") : "";
     const rec = editId ? ((state.leads || []).find(x => x.id === editId) || {}) : {};
+    const nextStatus = $v("ld-status") || "new";
+    const stageProblem = leadStageProblem(editId ? rec : {}, nextStatus, { phone: $v("ld-phone"), email: $v("ld-email") });
+    if (stageProblem) { fieldInErr("ld-phone", stageProblem); return; }
+    if (nextStatus === "lost" && !$v("ld-lost")) { fieldInErr("ld-lost", "Choose why the lead was lost"); return; }
     const agentPrr = editId ? JSON.parse(JSON.stringify(rec)) : {};
     rec.id = rec.id || ("lead-" + Date.now() + "-" + Math.floor(Math.random() * 1000));
     rec.ref = rec.ref || "LD-" + String((state.leads || []).length + 1).padStart(4, "0");
@@ -15646,7 +15755,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     rec.type = $v("ld-type") || "buyer";
     rec.email = $v("ld-email");
     rec.phone = phNormalizeMobile($v("ld-phone"));
-    rec.status = $v("ld-status") || "new";
+    if (editId && agentPrr.status !== nextStatus && nextStatus === "lost") { rec.activity = rec.activity || []; rec.activity.push({ date: new Date().toISOString(), text: "Status changed: " + ((leadStatusCfg(agentPrr.status) || [0, agentPrr.status])[1]) + " → Lost (" + leadLostLabel($v("ld-lost")) + ")" }); }
+    rec.status = nextStatus;
+    if (rec.status === "lost") rec.lostReason = $v("ld-lost"); else { delete rec.lostReason; delete rec.lostNote; }
     rec.source = $v("ld-source") || "listing";
     const agentField = document.getElementById("ld-agent");
     const agentOption = agentField && agentField.options[agentField.selectedIndex];
@@ -15728,6 +15839,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const i = LEAD_PIPELINE.indexOf(l.status);
     if (i < 0) { toast("Lead is already finished", "err"); return; }
     const next = LEAD_PIPELINE[Math.min(i + 1, LEAD_PIPELINE.length - 1)];
+    const problem = leadStageProblem(l, next);
+    if (problem) { toast(problem, "err"); return; }
     const prevLabel = (leadStatusCfg(l.status) || [0, l.status])[1];
     l.status = next;
     l.updatedAt = new Date().toISOString();
@@ -15737,15 +15850,19 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     syncLead(l);
     toastHtml("Lead → <b>" + esc((leadStatusCfg(next) || [0, next])[1]) + "</b>");
   }
-  function leadSetStatus(id, status) {
+  async function leadSetStatus(id, status, lost) {
     const l = (state.leads || []).find(x => x.id === id);
     if (!l) return;
     if (!leadCanEdit(l)) { toast("You can only edit leads you created", "err"); return; }
+    const problem = leadStageProblem(l, status);
+    if (problem) { toast(problem, "err"); return; }
+    if (status === "lost" && !lost) { lost = await askLostReason(l); if (!lost) return; }
     const prevLabel = (leadStatusCfg(l.status) || [0, l.status])[1];
     l.status = status;
+    if (status === "lost") { l.lostReason = lost.reason; l.lostNote = lost.note || ""; } else { delete l.lostReason; delete l.lostNote; }
     l.updatedAt = new Date().toISOString();
     l.activity = l.activity || [];
-    l.activity.push({ date: l.updatedAt, text: "Status changed: " + prevLabel + " → " + (leadStatusCfg(status) || [0, status])[1] });
+    l.activity.push({ date: l.updatedAt, text: "Status changed: " + prevLabel + " → " + (leadStatusCfg(status) || [0, status])[1] + (status === "lost" ? " (" + leadLostLabel(lost.reason) + (lost.note ? ": " + lost.note : "") + ")" : "") });
     save(); render();
     syncLead(l);
     toast("Lead status updated");
@@ -15908,13 +16025,13 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const rows = leadFiltered();
     if (!rows.length) { toast("No leads match the current filters", "err"); return; }
     const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
-    const head = ["Ref", "Name", "Type", "Status", "Source", "Phone", "Email", "Financing", "Interest", "Budget", "Assigned", "Next Follow-up", "Created"];
+    const head = ["Ref", "Name", "Type", "Status", "Source", "Phone", "Email", "Financing", "Interest", "Budget", "Assigned", "Next Follow-up", "Created", "Lost reason"];
     const lines = [head.map(q).join(",")];
     rows.forEach(l => {
       lines.push([l.ref, l.name, leadTypeLabel(l.type), (leadStatusCfg(l.status) || [0, l.status])[1], leadSourceLabel(l.source),
         l.phone, l.email, l.finMode ? ({ pagibig: "Pag-IBIG", bank: "Bank Loan", inhouse: "In-house", cash: "Cash" })[l.finMode] || l.finMode : "",
         l.propertyInterest, l.budget || l.askingPrice || l.rentBudget || 0, l.assignedTo, l.nextFollowUp,
-        new Date(l.createdAt).toISOString().slice(0, 10)].map(q).join(","));
+        new Date(l.createdAt).toISOString().slice(0, 10), l.status === "lost" ? leadLostLabel(l.lostReason) + (l.lostNote ? ": " + l.lostNote : "") : ""].map(q).join(","));
     });
     const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -16102,7 +16219,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       mk({ name: "Paolo Torres", type: "investor", status: "offer", source: "listing", email: "paolo.t@example.com", phone: "+63 917 555 0126", propertyInterest: "Townhouse with rental upside, QC", budget: 5000000, assignedTo: "Joshua Reyes", listingId: list(4), listingTitle: titleOf(list(4)), nextFollowUp: fuDay(6), activity: [{ date: new Date(Date.now() - 6 * 86400000).toISOString(), text: "Submitted letter of intent on the QC townhouse." }] }, 4),
       mk({ name: "Sofia Ramirez", type: "buyer", status: "negotiation", source: "listing", email: "sofia.r@example.com", phone: "+63 917 555 0127", propertyInterest: "RFO condo, BGC", budget: 9800000, assignedTo: "Anna Dela Cruz", listingId: list(5), listingTitle: titleOf(list(5)), nextFollowUp: fuDay(7), notes: "Negotiating on price; asked for seller concession on condo dues.", activity: [{ date: new Date(Date.now() - 8 * 86400000).toISOString(), text: "Counter-offer received — reviewing with seller." }] }, 5),
       mk({ name: "Miguel Lopez", type: "buyer", status: "closed", source: "website", email: "miguel.lopez@example.com", phone: "+63 917 555 0128", propertyInterest: "House & lot, Cebu", budget: 7000000, assignedTo: "Joshua Reyes", listingId: list(6), listingTitle: titleOf(list(6)), nextFollowUp: "", notes: "Closed on the Banilad property. Referred two friends.", activity: [{ date: new Date(Date.now() - 12 * 86400000).toISOString(), text: "Deal closed — keys handed over." }] }, 6),
-      mk({ name: "Carla Aquino", type: "buyer", status: "lost", source: "listing", email: "carla.a@yahoo.com", phone: "+63 917 555 0129", propertyInterest: "Foreclosed house, Manila", budget: 2500000, assignedTo: "Anna Dela Cruz", listingId: list(7), listingTitle: titleOf(list(7)), nextFollowUp: "", notes: "Chose a different bank property.", activity: [{ date: new Date(Date.now() - 13 * 86400000).toISOString(), text: "Went with another listing; marked lost." }] }, 7),
+      mk({ name: "Carla Aquino", type: "buyer", status: "lost", lostReason: "price", source: "listing", email: "carla.a@yahoo.com", phone: "+63 917 555 0129", propertyInterest: "Foreclosed house, Manila", budget: 2500000, assignedTo: "Anna Dela Cruz", listingId: list(7), listingTitle: titleOf(list(7)), nextFollowUp: "", notes: "Chose a different bank property.", activity: [{ date: new Date(Date.now() - 13 * 86400000).toISOString(), text: "Went with another listing; marked lost." }] }, 7),
       mk({ name: "Dexter Lim", type: "renter", status: "contacted", source: "listing", email: "dex.lim@example.com", phone: "+63 917 555 0130", propertyInterest: "3BR townhouse for rent, Bacoor", budget: 0, rentBudget: 15000, assignedTo: "", listingId: list(12), listingTitle: titleOf(list(12)), nextFollowUp: fuDay(8), activity: [{ date: new Date(Date.now() - 2 * 86400000).toISOString(), text: "Asked about lease terms and pet policy." }] }, 8),
       mk({ name: "Nina Reyes", type: "investor", status: "new", source: "market", email: "nina.reyes@example.com", phone: "+63 917 555 0131", propertyInterest: "Agricultural land, Nueva Ecija", budget: 3000000, assignedTo: "", listingId: list(9), listingTitle: titleOf(list(9)), notes: "Saw the listing on Market Scan; wants due diligence on irrigation.", activity: [] }, 9),
       mk({ name: "Kevin Tan", type: "buyer", status: "site-visit", source: "referral", email: "kevin.tan@example.com", phone: "+63 917 555 0132", propertyInterest: "Pre-selling studio condo, Pasig", budget: 4500000, assignedTo: "Joshua Reyes", listingId: list(11), listingTitle: titleOf(list(11)), nextFollowUp: fuDay(9), activity: [{ date: new Date(Date.now() - 4 * 86400000).toISOString(), text: "Site visit to the model unit arranged." }] }, 10),
@@ -17402,6 +17519,69 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       loadCloudProfiles(true);
     })();
   }
+  /* ---- Change log (K3) ---- */
+  function auditCtx() {
+    return {
+      name: id => {
+        const p = remoteProfiles.find(x => String(x.id) === String(id));
+        if (p) return p.full_name || p.email || "";
+        return currentUser && String(currentUser.id) === String(id) ? (currentUser.name || currentUser.email || "") : "";
+      }
+    };
+  }
+  function demoAuditRows() {
+    const me = currentUser && currentUser.id, ago = m => new Date(Date.now() - m * 60000).toISOString();
+    return [
+      { id: 5, owner_id: me, event_type: "cash_posted", entity_type: "cash_entry", entity_id: "demo-entry-0005", detail: { direction: "in", amount: 25000 }, created_at: ago(12) },
+      { id: 4, owner_id: me, event_type: "lead_status", entity_type: "crm_lead", entity_id: "demo-lead-0003", detail: { from: "new", to: "contacted" }, created_at: ago(95) },
+      { id: 3, owner_id: me, event_type: "listing_price", entity_type: "shared_listing", entity_id: "demo-listing-0002", detail: { from: 5200000, to: 4950000 }, created_at: ago(300) },
+      { id: 2, owner_id: me, event_type: "role_changed", entity_type: "profile", entity_id: me, detail: { from: "agent", to: "broker" }, created_at: ago(1500) },
+      { id: 1, owner_id: me, event_type: "lead_created", entity_type: "crm_lead", entity_id: "demo-lead-0003", detail: { source: "website" }, created_at: ago(2900) }
+    ].filter(r => auditGroup === "all" || (AUDIT && AUDIT.typesInGroup(auditGroup).indexOf(r.event_type) >= 0));
+  }
+  async function loadAuditLog(more) {
+    if (auditLoading || !canManageUsers() || !AUDIT) return;
+    if (!currentUser || (!currentUser.demo && !(SB && currentUser.id))) return;
+    auditLoading = true; auditError = "";
+    try {
+      if (currentUser.demo) {
+        auditRows = demoAuditRows(); auditMore = false;
+      } else {
+        const res = await AUDIT.query(SB, auditGroup, more && auditRows.length ? auditRows[auditRows.length - 1].id : null, AUDIT_PAGE);
+        if (res.error) throw res.error;
+        const rows = Array.isArray(res.data) ? res.data : [];
+        auditRows = more ? auditRows.concat(rows) : rows;
+        auditMore = rows.length === AUDIT_PAGE;
+      }
+      auditLoaded = true;
+    } catch (e) { auditError = friendlyErr(String((e && e.message) || e)); }
+    auditLoading = false;
+    if (state.view === "users" && state.usersTab === "log") render();
+  }
+  function auditLogCard() {
+    if (!AUDIT) return '<div class="card card-pad empty"><h3>Change log unavailable</h3><p class="dim">The change log script did not load. Reload the page.</p></div>';
+    if (!auditLoaded && !auditLoading && !auditError) loadAuditLog(false);
+    const ctx = auditCtx();
+    let html = '<div class="card card-pad audit-log"><div class="row spread" style="flex-wrap:wrap;gap:8px"><div><h3>Change log</h3><p class="dim tiny">Who changed leads, money, listings and roles, newest first. Only Super Admins can see this.</p></div>' +
+      '<button class="btn btn-ghost btn-sm" data-audit-csv' + (auditRows.length ? "" : " disabled") + '>' + icon("download", 13) + ' Download CSV</button></div>';
+    html += '<div class="row mt-8" role="group" aria-label="Filter the change log" style="gap:6px;flex-wrap:wrap">' + AUDIT.GROUPS.map(g =>
+      '<button class="btn btn-sm ' + (g.key === auditGroup ? "btn-primary" : "btn-ghost") + '" data-audit-group="' + esc(g.key) + '" aria-pressed="' + (g.key === auditGroup ? "true" : "false") + '">' + esc(g.label) + "</button>").join("") + "</div>";
+    if (auditError) {
+      html += '<div class="notice-banner mt-8">' + icon("shield", 14) + "<span>Could not load the change log: " + esc(auditError) + '</span></div><button class="btn btn-ghost btn-sm mt-8" data-audit-retry>' + icon("refresh", 13) + " Try again</button>";
+    } else if (!auditLoaded) {
+      html += '<p class="dim mt-8">Loading the change log…</p>';
+    } else if (!auditRows.length) {
+      html += '<p class="dim mt-8">Nothing has been logged for this filter yet. If you expect entries, check that database update 0005 has been applied.</p>';
+    } else {
+      html += '<div class="table-wrap mt-8"><table class="data"><thead><tr><th>When</th><th>Who</th><th>What happened</th><th>Record</th></tr></thead><tbody>' +
+        auditRows.map(r => { const x = AUDIT.describe(r, ctx); return "<tr><td>" + esc(x.when ? new Date(x.when).toLocaleString() : "") + "</td><td>" + esc(x.who) + "</td><td>" + esc(x.text) + '</td><td class="dim tiny">' + esc(x.record) + "</td></tr>"; }).join("") +
+        "</tbody></table></div>" +
+        '<p class="dim tiny mt-8">Showing ' + auditRows.length + " entr" + (auditRows.length === 1 ? "y" : "ies") + (auditMore ? "." : ", all of them.") + "</p>" +
+        (auditMore ? '<button class="btn btn-ghost btn-sm mt-8" data-audit-more' + (auditLoading ? " disabled" : "") + ">Show older entries</button>" : "");
+    }
+    return html + "</div>";
+  }
+
   function renderUsers() {
     if (!canManageUsers()) return '<section class="users-access"><div class="hero"><div><h1>Users & Access</h1></div></div><div class="card card-pad empty">' + icon("shield", 40) + "<h3>Super Admin only</h3><p>User management is limited to the Super Admin role.</p></div></section>";
     const cloudMode = (SB && currentUser && currentUser.id) || (currentUser && currentUser.demo);
@@ -17410,7 +17590,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       const pending = statusCount("pending");
       const approved = statusCount("approved");
       const rejected = statusCount("rejected");
-      const tab = (["pending", "approved", "rejected", "all"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
+      const tab = (["pending", "approved", "rejected", "all", "log"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
       const srcBadge = currentUser.demo ? '<span class="chip">Demo data</span>' : (roleIs("super-admin") ? '<span class="chip">Live Supabase</span>' : "");
       const shown = tab === "all" ? remoteProfiles : remoteProfiles.filter(u => u.registration_status === tab);
       const filteredShown = shown.filter(u => (!userFiltQ || [u.full_name, u.email, u.agency].join(" ").toLowerCase().indexOf(userFiltQ) >= 0) && (!userFiltRole || u.role === userFiltRole));
@@ -17418,14 +17598,15 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         '<button class="tab' + (tab === "pending" ? " active" : "") + '" data-users-tab="pending">Pending (' + pending + ")</button>" +
         '<button class="tab' + (tab === "approved" ? " active" : "") + '" data-users-tab="approved">Approved (' + approved + ")</button>" +
         '<button class="tab' + (tab === "rejected" ? " active" : "") + '" data-users-tab="rejected">Rejected (' + rejected + ")</button>" +
-        '<button class="tab' + (tab === "all" ? " active" : "") + '" data-users-tab="all">All (' + remoteProfiles.length + ")</button></div>";
+        '<button class="tab' + (tab === "all" ? " active" : "") + '" data-users-tab="all">All (' + remoteProfiles.length + ")</button>" +
+        '<button class="tab' + (tab === "log" ? " active" : "") + '" data-users-tab="log">Change log</button></div>';
       const roleFilterOpts = '<option value="">All roles</option>' + ROLES.map(r => '<option value="' + esc(r.value) + '">' + esc(r.label) + '</option>').join("");
       const toolsHtml = '<div class="users-tools"><div class="users-search">' + icon("search", 15) + '<input id="users-search" type="search" placeholder="Search name, email, agency..." autocomplete="off"></div><select class="input" id="users-role-filter">' + roleFilterOpts + '</select><span class="dim tiny" id="users-visible-count">' + shown.length + ' account' + (shown.length === 1 ? "" : "s") + '</span></div>';
       let cloudHtml = '<section class="users-access"><div class="hero"><div><h1>Users &amp; Access</h1><p>Approve registrations and assign server-enforced roles. ' + srcBadge + '</p></div>' +
         '<div class="actions"><button class="btn btn-primary" data-cloud-user-new>' + icon("plus", 15) + " Add Account</button></div></div>" +
         '<div class="ls-stat-row">' + lsStat("Registrations", remoteProfiles.length) + lsStat("Pending approval", pending) + lsStat("Approved", approved) + lsStat("Rejected", rejected) + '</div>' +
         '<div class="notice-banner mt-16">' + icon("shield", 14) + ' <span>New accounts cannot access SEA ESTATES until a Super Admin assigns a role and approves the registration.</span></div>';
-      cloudHtml += '<div class="users-directory card">' + tabsHtml + toolsHtml + '</div>';
+      cloudHtml += '<div class="users-directory card">' + tabsHtml + (tab === "log" ? "" : toolsHtml) + '</div>';
       let gridHtml;
       if (remoteProfilesError) {
         const low = String(remoteProfilesError).toLowerCase();
@@ -17443,9 +17624,10 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       } else {
         gridHtml = '<div class="card card-pad empty"><h3>No ' + (tab === "all" ? "registered accounts" : tab + " accounts") + '</h3><p class="dim">Nothing to show here yet. New sign-ups appear under Pending once they register.</p></div>';
       }
-      cloudHtml += '<div class="user-grid mt-16" id="users-grid">' + gridHtml + '</div><div class="card card-pad empty mt-16" id="users-filter-empty" style="display:none"><h3>No matching accounts</h3><p class="dim">Try a different name, email, or role.</p></div>';
+      if (tab === "log") cloudHtml += '<div class="mt-16" id="audit-log">' + auditLogCard() + "</div>";
+      else cloudHtml += '<div class="user-grid mt-16" id="users-grid">' + gridHtml + '</div><div class="card card-pad empty mt-16" id="users-filter-empty" style="display:none"><h3>No matching accounts</h3><p class="dim">Try a different name, email, or role.</p></div>';
       const pendingResets = passwordResetRequests.filter(r => r.user_id);
-      if (pendingResets.length) {
+      if (pendingResets.length && tab !== "log") {
         cloudHtml += '<div class="card card-pad mt-16"><h3>' + icon("key", 15) + ' Password reset requests</h3><p class="dim">These users requested a reset from the Forgot Password tab. Generate a temporary password and share it with them.</p>' +
           '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' + pendingResets.map(r =>
             '<div class="chip-row" style="display:flex;align-items:center;gap:8px;border:1px solid var(--stroke);border-radius:10px;padding:6px 10px"><div><div class="tiny" style="font-weight:600">' + esc(r.full_name || r.email) + '</div><div class="dim tiny">' + esc(r.email) + '</div></div>' +
@@ -17827,6 +18009,14 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         if (access) { setCloudProfileAccess(access.getAttribute("data-profile-id"), access.getAttribute("data-profile-action")); return; }
         const utab = e.target.closest("[data-users-tab]");
         if (utab) { state.usersTab = utab.getAttribute("data-users-tab"); save(); render(); return; }
+        const agrp = e.target.closest("[data-audit-group]");
+        if (agrp) { auditGroup = agrp.getAttribute("data-audit-group"); auditLoaded = false; auditRows = []; auditError = ""; render(); return; }
+        if (e.target.closest("[data-audit-more]")) { loadAuditLog(true); return; }
+        if (e.target.closest("[data-audit-retry]")) { auditError = ""; auditLoaded = false; render(); return; }
+        if (e.target.closest("[data-audit-csv]")) {
+          if (AUDIT && auditRows.length) { download("change-log-" + new Date().toISOString().slice(0, 10) + ".csv", "data:text/csv;charset=utf-8," + encodeURIComponent(AUDIT.toCsv(auditRows, auditCtx()))); toast("Change log downloaded (CSV)"); }
+          return;
+        }
         const cun = e.target.closest("[data-cloud-user-new]");
         if (cun) { openCloudUserEditor(); return; }
         const cus = e.target.closest("[data-cloud-user-save]");
@@ -18960,6 +19150,9 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (!listingId) { toast("Choose a listing first", "err"); return; }
     if (!email) { toast("Pick a partner broker or enter their email", "err"); return; }
     if (!(lp >= 0 && lp <= 100) || !(sp >= 0 && sp <= 100) || lp + sp !== 100) { toast("Split must total exactly 100%", "err"); return; }
+    // One open (proposed or accepted) agreement per listing and partner (J6; the database enforces it too).
+    const openSame = (state.cobrokeAgreements || []).some(a => a && a.listing_id === listingId && String(a.partner_email || "").toLowerCase() === email.toLowerCase() && (a.status === "proposed" || a.status === "accepted"));
+    if (openSame) { toast("This partner already has an open co-broke on this listing. Wait for their answer or cancel it first.", "err"); return; }
     closeCbModal();
     const rec = { listing_id: listingId, listing_broker_id: currentUser.id, partner_email: email.toLowerCase(), split_listing_pct: lp, split_selling_pct: sp, status: "proposed", notes: g("cbf-notes"), responded_at: null, completed_at: null };
     const local = Object.assign({ id: "cb-" + Date.now(), selling_broker_id: partnerId || null }, rec);
@@ -18968,6 +19161,11 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (psCloud()) {
       delete local.id; delete local.selling_broker_id;
       const r = await SB.from("cobroke_agreements").insert(rec).select("*").single();
+      if (r.error && r.error.code === "23505") {
+        state.cobrokeAgreements = state.cobrokeAgreements.filter(a => a !== local); save(); render();
+        toast("This partner already has an open co-broke on this listing. Wait for their answer or cancel it first.", "err");
+        return;
+      }
       if (r.error) toast("Cloud save failed: " + esc(friendlyErr(r.error.message)), "err");
       else Object.assign(local, r.data);
     }
@@ -19515,7 +19713,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   async function backupCloud() {
     const result = { listings: [], leads: [], profiles: [], storage: { photoUrls: [], documentPaths: [], files: [] } };
     if (SB && currentUser && currentUser.id) {
-      try { const { data } = await SB.from("crm_leads").select("id,ref,name,assigned_to,assigned_to_id,payload,created_by,updated_at").order("updated_at", { ascending: false }); if (Array.isArray(data)) result.leads = data; } catch (e) {}
+      try { const { data } = await selectAllPages(() => SB.from("crm_leads").select("id,ref,name,assigned_to,assigned_to_id,payload,created_by,updated_at").order("updated_at", { ascending: false }).order("id", { ascending: true })); if (Array.isArray(data)) result.leads = data; } catch (e) {}
       try { const res = await SB.rpc("admin_list_profiles"); if (Array.isArray(res.data)) result.profiles = res.data; } catch (e) {}
       const seenU = {}, seenP = {};
       (state.listings || []).forEach(l => (l.images || []).forEach(i => { const u = i.url; if (u && /supabase\.co\/storage/.test(u) && !seenU[u]) { seenU[u] = 1; result.storage.photoUrls.push(u); } }));
@@ -19750,6 +19948,11 @@ const ccBtn = e.target.closest("[data-cc-calc]");
 
   /* ================= TEST HELPERS ================= */
   window.__ESREALTY_TEST_HELPERS = {
+    selectAllPages: selectAllPages,
+    listingQualityGaps: listingQualityGaps,
+    leadStageProblem: leadStageProblem,
+    leadLostLabel: leadLostLabel,
+    notifState: function () { return { items: notifItems.length, unread: notifUnreadCount(), more: notifMore }; },
     setListingCreatedAt: function(id, createdAt) {
       if (!state.listings) return false;
       const idx = state.listings.findIndex(x => x.id === id);

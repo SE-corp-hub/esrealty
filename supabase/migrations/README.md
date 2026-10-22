@@ -43,6 +43,9 @@ plus four access-rule fixes) came after it and are applied with the workflow abo
 `0005_broker_access_audit_ledger_settings.sql` (broker team access follows the broker's
 current role, indexes on the foreign keys, a change log, a lock on posted ledger entries,
 the `site_settings` table and stale-listing alerts) follows `0004`.
+`0006_storage_rules_more_audit_cobroke.sql` (storage size and type limits, no public
+listing of the photo bucket, Super Admin read of private documents, deals / rent payments /
+co-broke in the change log, one open co-broke per listing and partner) follows `0005`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses

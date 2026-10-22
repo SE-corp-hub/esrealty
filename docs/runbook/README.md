@@ -21,7 +21,7 @@ Pushing to `main` changes the live website. Work happens on a branch and a pull 
 | Rent reminders (`rent-reminders`) | 08:07 daily | reminds tenants and managers about rent due or overdue | variable `RENT_REMINDERS` = on (until then it only counts) |
 | Still-available reminders (`listing-stale`) | 08:37 daily | asks an agent "Still available?" for a published listing not saved in 75 days; again every 14 days | variable `LISTING_STALE_ALERTS` = on (until then it only counts). Needs migration 0005 |
 | Keep-alive (`keepalive`) | 11:00 daily | pings Supabase and the Market Scan so the free project is not paused | none |
-| Backend health check (`backend-check`) | 13:00 daily, and after each push to `main` | probes every function, table and endpoint a visitor could reach; fails if something is open that should be closed | none |
+| Backend health check (`backend-check`) | 13:00 daily, and after each push to `main` | probes every function, table and endpoint a visitor could reach; fails if something is open that should be closed, or if a function's newer code has waited more than 3 days for **Deploy edge functions**; lists secret names the functions read but that are not set | `SUPABASE_ACCESS_TOKEN` (for the deploy and secret-name part only) |
 | Storage use check (`usage-check`) | 05:23 daily | reads the database size and stored-file size (read-only); fails and opens an issue at 80% of the plan's limit; the numbers show on the run's Summary page. Bandwidth is not measured: see Usage in the Supabase dashboard | `SUPABASE_ACCESS_TOKEN`; `USAGE_DB_LIMIT_MB` / `USAGE_STORAGE_LIMIT_MB` for a plan other than free (500 / 1024) |
 | Market price index (`market-index`) | 02:30 daily | writes `data/market-index.json` to `main` | variable `MS_API_URL` (optional) |
 | Market scan nightly check (`market-scan-nightly`) | 03:23 daily | runs two real scans and opens one issue if a source stops returning listings | none |
@@ -40,6 +40,7 @@ The market scan check, the comparables refresh and the data review keep their ow
 
 Common causes:
 - **Token or secret expired** (`SUPABASE_ACCESS_TOKEN`): make a new one in Supabase > Account > Access tokens, update the secret.
+- **"The repository has newer code than the deployed version"**: run Actions > Deploy edge functions.
 - **A migration not applied yet**: the health check lists such items as "waiting for a migration" and does not fail on them. Apply the migration.
 - **A site changed its pages** (market scan, BDO PDF): the issue says which source; the comparables issue explains the manual BDO upload.
 
