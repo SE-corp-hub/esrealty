@@ -49,6 +49,8 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
       q('[data-lead-back]') && q('[data-lead-back]').click(); await wait(600);
       const card = q("[data-team-targets]");
       chk("the leads page has the team targets card", !!card && /Team targets/.test(card.textContent));
+      chk("it starts closed so the pipeline stays on the first screen", !card.open);
+      card.querySelector("summary").click(); await wait(300);
       q("[data-targets-edit]").click(); await wait(400);
       const tm = q("#tt-modal");
       chk("a Super Admin can set targets", !!tm && !!q("#tt-def-contacted"));

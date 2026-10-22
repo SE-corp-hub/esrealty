@@ -15900,7 +15900,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (!(roleIs("super-admin") || roleIs("broker") || roleIs("agent"))) return "";
     if (!targetsState) loadTargets();
     const label = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
-    return '<details class="card card-pad mb-24 team-targets" data-team-targets open><summary class="row spread" style="gap:8px;flex-wrap:wrap"><b>' + (roleIs("agent") ? "My targets" : "Team targets") + ", " + esc(label) + "</b>" +
+    // Closed until opened (the choice is remembered), so the pipeline stays on the first screen.
+    return '<details class="card card-pad mb-24 team-targets" data-team-targets' + (state.ttOpen ? " open" : "") + '><summary class="row spread" style="gap:8px;flex-wrap:wrap"><b>' + (roleIs("agent") ? "My targets" : "Team targets") + ", " + esc(label) + "</b>" +
       (roleIs("super-admin") ? '<button type="button" class="btn btn-ghost btn-sm" data-targets-edit>' + icon("edit", 13) + " Set targets</button>" : "") + "</summary>" +
       '<div id="team-targets">' + teamTargetsInner() + "</div>" +
       '<p class="dim tiny mt-8">Counted from the leads: moved on from New, viewings done or moved to Site Visit, offers and wins this month.</p></details>';
@@ -16706,6 +16707,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         const act = e.target.closest("[data-lead-act]");
         if (act) { leadAddActivity(act.getAttribute("data-lead-act")); return; }
         if (e.target.closest("[data-targets-edit]")) { e.preventDefault(); openTargetsEditor(); return; }
+        const ttSum = e.target.closest("[data-team-targets] > summary");
+        if (ttSum) { const dd = ttSum.parentElement; setTimeout(() => { state.ttOpen = dd.open; save(); }, 0); }
         const dupBtn = e.target.closest("[data-lead-dups]");
         if (dupBtn) { openDuplicatesModal(dupBtn.getAttribute("data-lead-dups") || ""); return; }
         const vgVerify = e.target.closest("[data-vg-verify]");
