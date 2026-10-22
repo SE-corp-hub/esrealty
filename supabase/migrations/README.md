@@ -58,6 +58,8 @@ on) follows `0010`.
 `0012_duplicate_leads.sql` (a lead from the website, Value Guide or Facebook with the same phone or
 email as an earlier lead is marked as a possible duplicate and goes to the earlier lead's person;
 staff may read the team targets) follows `0011`.
+`0013_find_a_person.sql` (Super Admin: find where a person appears, export it for them, erase their
+leads and inquiries on request; last sign-in in Users & Access) follows `0012`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses
