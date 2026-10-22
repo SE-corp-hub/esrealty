@@ -1729,7 +1729,10 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
       try { info = JSON.parse(item.getAttribute("data-ntf")); } catch (err) {}
       await notifMarkRead(info.id);
       pnl.classList.add("hidden");
-      if (info.link && navAllowed(info.link)) navigate(info.link);
+      // "view:tab" opens a tab inside a view (e.g. admin:compliance for licence renewals).
+      const lk = String(info.link || "").split(":");
+      if (lk[0] === "admin" && lk[1] && navAllowed("admin") && adminTabAllowed(lk[1])) { state.adminTab = lk[1]; navigate("admin"); }
+      else if (info.link && navAllowed(info.link)) navigate(info.link);
     });
   }
   async function restoreSupabaseSession() {
@@ -9344,7 +9347,7 @@ premise: "Fee Simple / As Improved",
   // Utilities and other charges of a lease, with what is paid and still owed.
   function pmsLeaseCharges(l) { return PL().chargeStatus(l, pmsActivePayments(), pmsToday()); }
   function pmsChargesOwed(l) { return pmsLeaseCharges(l).filter(c => c.balance > 0); }
-  const PMS_CHARGE_TYPES = ["Water", "Electricity", "Association dues", "Internet", "Parking", "Other"];
+  const PMS_CHARGE_TYPES = ["Water", "Electricity", "Association dues", "Internet", "Parking", "Late fee", "Other"];
   // What a payment was for: a charge's name, or the rent month.
   function pmsPaymentFor(p) {
     if (p && p.charge_id) {
@@ -9582,11 +9585,40 @@ premise: "Fee Simple / As Improved",
         '<td class="num">' + (C.num(u.size, 0) > 0 ? C.numFmt(u.size) + " sqm" : "—") + '</td>' +
         '<td class="num">' + (C.num(u.rent_amount, 0) > 0 ? C.money(u.rent_amount) + "/mo" : "—") + '</td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (u.status || "—")) + '</td>' +
-        (canManage ? '<td>' + pmsRowActions("unit", u.id) + '</td>' : "") +
+        (canManage ? '<td>' + pmsRowActions("unit", u.id, pmsUnitListButton(u, used)) + '</td>' : "") +
         '</tr>';
     });
     h += '</table></div>';
     return h;
+  }
+  /* Vacant unit to listing (roadmap I9): one press opens the listing form filled from the unit and
+   * its property, as a private draft. Inquiries on the listing become leads as usual. A unit that
+   * already has a listing shows it instead. */
+  function pmsUnitListing(u) { return (state.listings || []).find(x => x.pmsUnitId === u.id && x.status !== "sold"); }
+  function pmsUnitListButton(u, used) {
+    if (!listingCanManage()) return "";
+    const ex = pmsUnitListing(u);
+    if (ex) return '<button class="btn btn-ghost btn-sm" data-pms-unit-listing="' + esc(ex.id) + '">' + icon("home", 13) + (ex.isPublished === false ? " Listing (draft)" : " Listed") + '</button>';
+    if (used > 0) return "";
+    return '<button class="btn btn-ghost btn-sm" data-pms-list-unit="' + esc(u.id) + '">' + icon("plus", 13) + ' List for rent</button>';
+  }
+  function pmsUnitListingDraft(u) {
+    const p = pms().properties.find(x => x.id === u.property_id) || {};
+    const ptype = String(p.type || "").toLowerCase();
+    const region = Object.keys(PH_GEO).find(r => p.province && lsGeoProvinces(r).indexOf(p.province) !== -1) || "";
+    const parts = [];
+    if (C.num(u.bedrooms, 0) > 0) parts.push(C.num(u.bedrooms, 0) + " bedroom" + (C.num(u.bedrooms, 0) === 1 ? "" : "s"));
+    if (C.num(u.size, 0) > 0) parts.push(C.numFmt(u.size) + " sqm");
+    return {
+      pmsUnitId: u.id,
+      title: ((parts.length ? parts.join(", ") + " " : "") + (ptype === "commercial" ? "space" : "unit") + " for rent" + (p.city ? " in " + p.city : "")).replace(/^./, c => c.toUpperCase()),
+      propertyType: ptype === "commercial" ? "commercial" : ptype === "land" ? "lot-only" : (/condo/i.test(p.title || "") ? "condominium" : "house-and-lot"),
+      dealType: "rent", status: "available",
+      rent: C.num(u.rent_amount, 0) || C.num(p.rent, 0), floorArea: C.num(u.size, 0), bedrooms: C.num(u.bedrooms, 0), bathrooms: C.num(u.bathrooms, 0),
+      region: region, province: p.province || "", city: p.city || "", barangay: p.barangay || "", address: p.address || "",
+      description: [p.description || "", (p.amenities || []).length ? "Amenities: " + p.amenities.join(", ") + "." : ""].filter(Boolean).join("\n\n"),
+      isPublished: false
+    };
   }
 
   function pmsListOwners() {
@@ -9665,7 +9697,9 @@ premise: "Fee Simple / As Improved",
         '<td><span style="white-space:nowrap">' + (l.start ? esc(String(l.start).slice(0, 10)) : "—") + '</span><div class="dim tiny" style="white-space:nowrap">to ' + (l.end ? esc(String(l.end).slice(0, 10)) : "—") + '</div></td>' +
         '<td>' + pmsStatusBadge(sc, sc ? sc.label : (l.status || "—")) + dueBadge + (function () {
           const open = pmsChargesOwed(l), amt = open.reduce((t, c) => t + c.balance, 0);
-          return open.length ? '<div class="mt-8">' + pmsStatusBadge({ color: open.some(c => c.status === "overdue") ? "red" : "gold" }, "Charges " + C.money(amt)) + '</div>' : "";
+          const lateN = canManage ? PL().lateFeesDue(l, pmsActivePayments(), pmsToday()).length : 0;
+          return (open.length ? '<div class="mt-8">' + pmsStatusBadge({ color: open.some(c => c.status === "overdue") ? "red" : "gold" }, "Charges " + C.money(amt)) + '</div>' : "") +
+            (lateN ? '<div class="mt-8" data-pms-late-badge>' + pmsStatusBadge({ color: "gold" }, lateN === 1 ? "Late fee to add" : lateN + " late fees to add") + '</div>' : "");
         })() + '</td>' +
         (canManage || viewOnly ? '<td>' + (function () {
           const look = '<button class="btn btn-ghost btn-sm" data-pms-paylink="' + esc(l.id) + '">' + icon("dollar", 13) + ' Payments</button><button class="btn btn-ghost btn-sm" data-pms-print="lease:' + esc(l.id) + '">' + icon("print", 13) + ' Statement</button>' +
@@ -10394,7 +10428,12 @@ premise: "Fee Simple / As Improved",
         (c.balance > 0 ? '<button type="button" class="btn btn-primary btn-sm" data-pms-markpaid="' + esc(l.id) + '|' + esc(c.period || "") + '|' + esc(String(c.balance)) + '|' + esc(c.id) + '">' + icon("check", 13) + ' Mark paid</button>' : "") +
         (c.paid > 0 ? "" : '<button type="button" class="btn btn-ghost btn-sm" data-pms-chargedel="' + esc(l.id) + '|' + esc(c.id) + '">Remove</button>') + '</div></div>').join("") + '</div>'
       : '<p class="dim col-full">No charges on this lease yet.</p>';
-    const body = '<p class="col-full dim">' + esc(pmsLeaseLabel(l)) + '</p>' + rows +
+    const late = PL().lateFeesDue(l, pmsActivePayments(), pmsToday());
+    const lateHtml = late.length ? '<div class="col-full notice-banner warn pms-late-box" data-pms-late-list style="display:block">' +
+      '<p style="margin:0">' + icon("alert", 14) + ' <b>Late fees to add:</b> ' + late.map(f => esc(f.label) + " " + C.money(f.amount)).join(", ") + '. Rent for ' + (late.length === 1 ? "that month" : "those months") + ' is still unpaid ' + PL().graceDays(l) + ' days after the due day.</p>' +
+      '<div class="row mt-8" style="gap:8px;flex-wrap:wrap;align-items:center"><button type="button" class="btn btn-primary btn-sm" data-pms-latefees="' + esc(l.id) + '">Add ' + (late.length === 1 ? "the late fee" : late.length + " late fees") + '</button>' +
+      '<span class="dim tiny">To waive one, add it, then press Remove on it.</span></div></div>' : "";
+    const body = '<p class="col-full dim">' + esc(pmsLeaseLabel(l)) + '</p>' + lateHtml + rows +
       '<h4 class="col-full" style="margin:8px 0 0">Add a charge</h4>' +
       pmsField("Type", pmsSel("pms-chg-type", PMS_CHARGE_TYPES.map(t => [t, t]), "Water")) +
       pmsField("Name (optional)", pmsTxt("pms-chg-label", "", "e.g. Parking slot 12")) +
@@ -10428,6 +10467,18 @@ premise: "Fee Simple / As Improved",
     c.archived = true; l.updatedAt = Date.now();
     save(); render();
     toast("Charge removed");
+    pmsChargesDialog(l.id);
+  }
+  function pmsAddLateFees(leaseId) {
+    const l = pms().leases.find(x => x.id === leaseId);
+    if (!l || !pmsCan("manage")) return;
+    const late = PL().lateFeesDue(l, pmsActivePayments(), pmsToday());
+    if (!late.length) { toast("No late fees to add"); return; }
+    l.charges = (l.charges || []).concat(late.map(f => ({ id: pmsNewId("c"), type: PL().LATE_FEE_TYPE, label: "Late fee", amount: f.amount, due: pmsToday(), period: f.month,
+      note: "Rent for " + f.label + " unpaid after " + PL().graceDays(l) + " grace days", createdAt: Date.now() })));
+    l.updatedAt = Date.now();
+    save(); render();
+    toast(late.length === 1 ? "Late fee added" : late.length + " late fees added");
     pmsChargesDialog(l.id);
   }
   function pmsDepositState(l) {
@@ -10698,6 +10749,9 @@ premise: "Fee Simple / As Improved",
       pmsField("Rent Due (day of month)", pmsNum("pms-lease-due", pmsDueDay(d)), "Deadline each month for the rent payment (1\u201328).") +
       '<div class="field col-full" id="pms-lease-rent-wrap"' + (rt === "lease" ? ' style="display:none"' : "") + '><label>Monthly Rent (\u20B1)</label>' + pmsNum("pms-lease-rent", defaultRent) + '<div class="field-hint">Collected every month.</div></div>' +
       '<div class="field col-full" id="pms-lease-total-wrap"' + (rt === "lease" ? "" : ' style="display:none"') + '><label>Lease Amount / Total (\u20B1)</label>' + pmsNum("pms-lease-total", rt === "lease" ? d.rent : 0) + '<div class="field-hint">Total payable over the lease term.</div></div>' +
+      pmsField("Late fee", pmsNum("pms-lease-late", C.num(d.late_fee, 0)), "0 means no late fee. When rent stays unpaid past the grace days, the fee is suggested under Charges; nothing is added until you press Add.") +
+      pmsField("Late fee is", pmsSel("pms-lease-latetype", [["fixed", "A peso amount (\u20B1)"], ["percent", "A percent of the month's rent"]], d.late_fee_type === "percent" ? "percent" : "fixed")) +
+      pmsField("Grace days", pmsNum("pms-lease-grace", PL().graceDays(d)), "Days after the due day before a late fee applies (0\u201360).") +
       pmsField("Security Deposit (\u20B1)", pmsNum("pms-lease-dep", d.deposit), "For covered residential units the Rent Control Act (RA 9653) allows at most two months' deposit and one month's advance.") +
       (id && C.num(d.deposit, 0) > 0 ? '<details class="col-full pms-dep-settle"' + (d.deposit_settled_on ? " open" : "") + '><summary>Deposit at move-out</summary><div class="pms-dep-grid">' +
         pmsField("Settled on", pmsDate("pms-lease-depdate", d.deposit_settled_on || "")) +
@@ -11598,10 +11652,14 @@ premise: "Fee Simple / As Improved",
       rent: rentAmount,
       deposit: C.num($("#pms-lease-dep").value, 0),
       due_day: String(Math.min(28, Math.max(1, Math.floor(C.num($("#pms-lease-due").value, 0)) || 10))),
+      late_fee: Math.max(0, C.num(($("#pms-lease-late") || {}).value, 0)),
+      late_fee_type: (($("#pms-lease-latetype") || {}).value === "percent") ? "percent" : "fixed",
+      grace_days: Math.min(60, Math.max(0, Math.floor(C.num(($("#pms-lease-grace") || {}).value, 5)))),
       status: finalStatus,
       terminated_on: terminatedOn,
       notes: $("#pms-lease-notes").value.trim()
     };
+    if (data.late_fee_type === "percent" && data.late_fee > 100) { toast("A late fee in percent can be at most 100", "err"); return; }
     // Deposit settled at move-out (only shown when editing a lease with a deposit).
     if ($("#pms-lease-depdate")) {
       const back = C.num($("#pms-lease-depback").value, 0), kept = C.num($("#pms-lease-depkept").value, 0);
@@ -12467,7 +12525,8 @@ function vgQuestionGroups() {
       + '<button class="btn btn-ghost" data-vg-next="1">Edit inputs</button>'
       + '<button class="btn btn-primary" data-vg-pdf' + (integrity.ok ? "" : " disabled") + ">" + icon("print", 14) + " Download PDF</button>"
       + "</div>"
-      + '<p class="dim tiny mt-8">Downloaded locally as a PDF. Nothing is saved to the CRM and no email is sent.</p>'
+      + (d.fromLead && (state.leads || []).some(x => x.id === d.fromLead) ? vgLeadFinishHtml(d)
+        : '<p class="dim tiny mt-8">Downloaded to this device as a PDF. Nothing is saved to the CRM and no email is sent.</p>')
       + "</div>";
     return html;
   }
@@ -12597,6 +12656,15 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       /* Revoke on the next tick so the download has taken the blob. */
       setTimeout(() => URL.revokeObjectURL(url), 4000);
       toast("Value Guide PDF downloaded");
+      const fromLead = d.fromLead ? (state.leads || []).find(x => x.id === d.fromLead) : null;
+      if (fromLead) {
+        d.pdfDoneAt = new Date().toISOString();
+        fromLead.activity = fromLead.activity || [];
+        fromLead.activity.push({ date: d.pdfDoneAt, text: "Value Guide report PDF prepared: " + a.download + " (" + ((currentUser && (currentUser.name || currentUser.email)) || "team") + ")." });
+        fromLead.updatedAt = d.pdfDoneAt;
+        save(); render();
+        syncLead(fromLead);
+      }
     } catch (e) {
       toast("Could not build the PDF: " + ((e && e.message) || e), "err");
     } finally {
@@ -12608,6 +12676,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   let vgDelegated = false;
   function bindValueGuide() {
     const d = vgDraft();
+    $$("#content [data-vg-finish-sent]").forEach(b => b.addEventListener("click", () => vgRequestStep(b.getAttribute("data-vg-finish-sent"), "sent")));
+    $$("#content [data-vg-back-lead]").forEach(b => b.addEventListener("click", () => { state.leadDetail = b.getAttribute("data-vg-back-lead"); navigate("leads"); }));
     $$("#content [data-vg-next]").forEach(b => b.addEventListener("click", () => {
       d.stage = Number(b.getAttribute("data-vg-next"));
       d.error = "";
@@ -13474,6 +13544,12 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (chg) { pmsChargesDialog(chg.getAttribute("data-pms-charges")); return; }
       const chd = e.target.closest("[data-pms-chargedel]");
       if (chd) { pmsRemoveCharge(chd.getAttribute("data-pms-chargedel")); return; }
+      const lun = e.target.closest("[data-pms-list-unit]");
+      if (lun) { const u = pms().units.find(x => x.id === lun.getAttribute("data-pms-list-unit")); if (u) openListingEditor("", pmsUnitListingDraft(u)); return; }
+      const ulo = e.target.closest("[data-pms-unit-listing]");
+      if (ulo) { if (navAllowed("listings")) { state.listingDetail = ulo.getAttribute("data-pms-unit-listing"); navigate("listings"); } return; }
+      const lfe = e.target.closest("[data-pms-latefees]");
+      if (lfe) { pmsAddLateFees(lfe.getAttribute("data-pms-latefees")); return; }
       const os = e.target.closest("[data-pms-ownerstmt]");
       if (os) { pmsOwnerStatement(os.getAttribute("data-pms-ownerstmt") === "mine" ? pmsMyOwnerIds() : [os.getAttribute("data-pms-ownerstmt")]); return; }
       const cf = e.target.closest("[data-pms-confirm]");
@@ -14016,10 +14092,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       }
     }
   }
-  function openListingEditor(id) {
+  function openListingEditor(id, prefill) {
     if (!listingCanManage()) { toast("You don't have permission to manage listings", "err"); return; }
     closeLstModal();
-    const l = id ? (state.listings || []).find(x => x.id === id) || {} : {};
+    const l = id ? (state.listings || []).find(x => x.id === id) || {} : (prefill || {});
     if (id && !listingCanEdit(l)) { toast("You can only edit listings owned by your account", "err"); return; }
     const fin = l.financing && l.financing.length ? l.financing : ["cash"];
     const finChk = LISTING_FINANCING.map(o => '<label class="ms-chk"><input type="checkbox" data-ls-fin value="' + o[0] + '"' + (fin.indexOf(o[0]) >= 0 ? " checked" : "") + "> " + esc(o[1]) + "</label>").join("");
@@ -14080,6 +14156,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const ov = document.createElement("div");
     ov.className = "modal-overlay"; ov.id = "ls-modal";
     ov.setAttribute("data-edit-id", id || "");
+    if (!id && l.pmsUnitId) ov.setAttribute("data-pms-unit", l.pmsUnitId);
     ov.innerHTML = '<div class="modal-card modal-card-wide"><div class="modal-head"><h3>' + (id ? "Edit Listing" : "Add Listing") + '</h3><button class="icon-btn" data-ls-cancel title="Close">&times;</button></div>' +
       '<div class="modal-body" style="max-height:70vh;overflow:auto">' + body + "</div>" +
       '<div class="modal-foot"><button class="btn btn-ghost" data-ls-cancel>Cancel</button><button class="btn btn-primary" data-ls-save>' + icon("check", 15) + " Save Listing</button></div></div>";
@@ -14114,6 +14191,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     $$("[data-ls-fin]").forEach(c => { if (c.checked) fin.push(c.value); });
     if (!fin.length) fin.push("cash");
     rec._isNew = !editId;
+    if (!editId && m && m.getAttribute("data-pms-unit")) rec.pmsUnitId = m.getAttribute("data-pms-unit");
     rec.id = rec.id || ("lst-" + Date.now() + "-" + Math.floor(Math.random() * 1000));
     rec.ref = rec.ref || "";
     rec.title = title;
@@ -14435,9 +14513,11 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   /* ================= CRM / LEADS ================= */
   const LEAD_TYPES = [["buyer", "Buyer"], ["seller", "Seller"], ["renter", "Renter"], ["investor", "Investor"]];
   const LEAD_STATUSES = [["new", "New", "blue"], ["contacted", "Contacted", "gold"], ["site-visit", "Site Visit", "cyan"], ["offer", "Offer Submitted", "purple"], ["negotiation", "Negotiating", "gold"], ["closed", "Closed / Won", "green"], ["lost", "Lost", "red"]];
+  // Reminders are sent by the server (migration 0011, workflow reminders.yml) once switched on.
+  const VIEWING_REMINDER_NOTE = "The reminder goes to the bell (and phone alerts) of the person the lead is assigned to, once your Super Admin turns reminders on. Texting the client is still done by you.";
   const CAL_EVENT_TYPES = [["showing", "Property showing", "cyan"], ["follow-up", "Lead follow-up", "blue"], ["meeting", "Client meeting", "purple"], ["offer", "Offer deadline", "gold"], ["closing", "Closing / turnover", "green"], ["documents", "Document deadline", "red"]];
   const LEAD_SOURCES = [["listing", "Listing Inquiry"], ["referral", "Referral"], ["walk-in", "Walk-in"], ["facebook", "Facebook"], ["website", "Website"], ["market", "Market Scan"], ["other", "Other"], ["lamudi", "Lamudi"], ["dotproperty", "DotProperty"], ["property24", "Property24"], ["carousell", "Carousell"], ["fb-marketplace", "FB Marketplace / Groups"], ["tiktok", "TikTok / YouTube Tour"], ["pagibig", "Pag-IBIG Project"], ["bank-leans", "Bank Foreclosed (LEANS)"], ["myproperty", "MyProperty.ph"], ["google", "Google"], ["whatsapp", "WhatsApp"], ["viber", "Viber"], ["site", "Website / Portal"]];
-  const COMPLIANCE_TYPES = [["broker_license", "Broker License (PRC)"], ["entity_reg", "Entity Registration (SEC/DTI)"], ["mayors_permit", "Mayor's Permit"], ["bir_reg", "BIR Registration"], ["dhsud_lts", "DHSUD License-to-Sell"], ["buyer_bond", "Buyer Protection Bond"], ["bank_acc", "Corporate Bank Account"]];
+  const COMPLIANCE_TYPES = [["broker_license", "Broker License (PRC)"], ["agent_prc", "Salesperson / Agent PRC ID"], ["entity_reg", "Entity Registration (SEC/DTI)"], ["mayors_permit", "Mayor's Permit"], ["bir_reg", "BIR Registration"], ["dhsud_lts", "DHSUD License-to-Sell"], ["buyer_bond", "Buyer Protection Bond"], ["bank_acc", "Corporate Bank Account"]];
   const ADS_CHANNELS = [["lamudi", "Lamudi"], ["property24", "Property24"], ["myproperty", "MyProperty.ph"], ["dotproperty", "DotProperty"], ["fb", "Facebook Marketplace / Groups"], ["tiktok", "TikTok / Reels"]];
   const BIZ_BROKER_NAME = "";
   const BIZ_BROKER_LICENSE = "";
@@ -15221,7 +15301,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       titleField +
       leadFld("Status", '<select class="input" id="ce-status">' + statusOpts + '</select>') +
       leadFld("Location / property", leadTxt("ce-location", value.location || "", "e.g. One Orchard showroom")) +
-      leadFld("Reminder", '<select class="input" id="ce-reminder"><option value="1"' + (value.reminder === "1" ? " selected" : "") + '>1 hour before</option><option value="3"' + (!value.reminder || value.reminder === "3" ? " selected" : "") + '>3 hours before</option><option value="24"' + (value.reminder === "24" ? " selected" : "") + '>1 day before</option><option value="0"' + (value.reminder === "0" ? " selected" : "") + '>No reminder</option></select>') +
+      leadFld("Reminder", '<select class="input" id="ce-reminder"><option value="1"' + (value.reminder === "1" ? " selected" : "") + '>1 hour before</option><option value="3"' + (!value.reminder || value.reminder === "3" ? " selected" : "") + '>3 hours before</option><option value="24"' + (value.reminder === "24" ? " selected" : "") + '>1 day before</option><option value="0"' + (value.reminder === "0" ? " selected" : "") + '>No reminder</option></select>', esc(VIEWING_REMINDER_NOTE)) +
       '</div><div class="field mt-8"><label>Notes</label><textarea class="input" id="ce-notes" rows="3" placeholder="Client requirements, documents to bring, access instructions...">' + esc(value.notes || "") + '</textarea></div>';
     const ov = document.createElement("div");
     ov.className = "modal-overlay"; ov.id = "ce-modal";
@@ -15643,7 +15723,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const at = Math.max(0, steps.findIndex(x => x[0] === st));
     const place = [loc.town, loc.barangay, loc.address].filter(Boolean).map(x => titleCaseSafe(x)).join(" · ");
     const range = Number(est.low) > 0 && Number(est.high) > 0 ? C.money(est.low) + " – " + C.money(est.high) : "";
-    const mailBody = "Hi " + (l.name || "") + ",\n\nThank you for confirming your details on the phone. Attached is your SEA ESTATES property value report" + (place ? " for " + place : "") + ".\n\nIt is a planning guide, not a formal appraisal. Reply to this email if you have any questions.\n\nSEA ESTATES";
+    const mailBody = vgReportMailBody(l, place);
     const mailto = l.email ? "mailto:" + encodeURIComponent(l.email) + "?subject=" + encodeURIComponent("Your SEA ESTATES property value report") + "&body=" + encodeURIComponent(mailBody) : "";
     let html = '<div class="card card-pad mb-24 vg-request" data-vg-request="' + esc(l.id) + '">' +
       '<div class="row spread" style="flex-wrap:wrap;gap:8px"><h3 style="margin:0">' + icon("doc", 15) + " Value Guide request</h3>" +
@@ -15660,12 +15740,40 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       html += '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' +
         (st === "awaiting-call" ? phoneChatLinks(l.phone) + '<button class="btn btn-primary btn-sm" data-vg-verify="' + esc(l.id) + '">' + icon("check", 13) + " Called &amp; verified</button>" : "") +
         (can("appraisal.view") ? '<button class="btn ' + (st === "verified" ? "btn-primary" : "btn-ghost") + ' btn-sm" data-vg-prepare="' + esc(l.id) + '">' + icon("doc", 13) + " Prepare report</button>" : "") +
-        (st !== "awaiting-call" && l.email ? gmailLink(l.email, "Your SEA ESTATES property value report", mailBody, "Email via Gmail") + '<a class="btn btn-ghost btn-sm" href="' + esc(mailto) + '">Other mail app</a>' : "") +
+        (st !== "awaiting-call" && l.email ? gmailLink(l.email, VG_REPORT_SUBJECT, mailBody, "Email via Gmail") + '<a class="btn btn-ghost btn-sm" href="' + esc(mailto) + '">Other mail app</a>' : "") +
         (st === "verified" ? '<button class="btn btn-ghost btn-sm" data-vg-sent="' + esc(l.id) + '">' + icon("check", 13) + " Mark report sent</button>" : "") +
         "</div>" +
         (st === "verified" ? '<p class="dim tiny mt-8">Prepare report opens the Value Guide with these inputs. Download the PDF there, attach it to the Gmail message, send it, then mark it sent.</p>' : "");
     }
     return html + "</div>";
+  }
+  function vgReportPlace(l) {
+    const loc = ((l && l.fullReport) || {}).location || {};
+    return [loc.town, loc.barangay, loc.address].filter(Boolean).map(x => titleCaseSafe(x)).join(" · ");
+  }
+  function vgReportMailBody(l, place) {
+    if (place === undefined) place = vgReportPlace(l);
+    return "Hi " + (l.name || "") + ",\n\nThank you for confirming your details on the phone. Attached is your SEA ESTATES property value report" + (place ? " for " + place : "") + ".\n\nIt is a planning guide, not a formal appraisal. Reply to this email if you have any questions.\n\nSEA ESTATES";
+  }
+  const VG_REPORT_SUBJECT = "Your SEA ESTATES property value report";
+  /* G1: when the Value Guide was opened from a request, the last screen carries the rest of the job:
+   * download, email through Gmail (addressed, worded), mark sent, back to the lead. */
+  function vgLeadFinishHtml(d) {
+    const l = d && d.fromLead ? (state.leads || []).find(x => x.id === d.fromLead) : null;
+    if (!l) return "";
+    const sent = vgRequestStatus(l) === "sent";
+    return '<div class="card card-pad mt-16 vg-lead-finish" data-vg-lead-finish="' + esc(l.id) + '"><h3 style="margin:0">For ' + esc(l.name || "this request") + '</h3>' +
+      '<ol class="vg-request-steps mt-8">' +
+        '<li class="' + (d.pdfDoneAt ? "done" : "now") + '">Download the PDF</li>' +
+        '<li class="' + (sent ? "done" : d.pdfDoneAt ? "now" : "") + '">Attach it to the email and send</li>' +
+        '<li class="' + (sent ? "done" : "") + '">Mark the report sent</li></ol>' +
+      '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' +
+        (l.email ? gmailLink(l.email, VG_REPORT_SUBJECT, vgReportMailBody(l), "Email via Gmail", d.pdfDoneAt && !sent ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm") : '<span class="dim tiny">No email on this request: send the PDF by Viber or text.</span>') +
+        (sent ? '<span class="badge green">Report sent</span>'
+          : vgRequestStatus(l) !== "verified" ? '<span class="dim tiny">Call the customer first, then press Called &amp; verified on the lead.</span>'
+          : leadCanEdit(l) ? '<button class="btn btn-ghost btn-sm" data-vg-finish-sent="' + esc(l.id) + '">' + icon("check", 13) + " Mark report sent</button>" : "") +
+        '<button class="btn btn-ghost btn-sm" data-vg-back-lead="' + esc(l.id) + '">Back to the lead</button>' +
+      '</div></div>';
   }
   function titleCaseSafe(v) {
     return String(v || "").toLowerCase().replace(/\b([a-z])/g, m => m.toUpperCase())
@@ -16563,7 +16671,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         leadFld("Reference / license number", leadTxt("cmp-number", r.number, "e.g. L-000123")) +
         leadFld("Holder", leadTxt("cmp-holder", r.holder, "Person or firm")) +
         leadFld("Issue date", leadTxt("cmp-issued", r.issuedAt || "", "YYYY-MM-DD")) +
-        leadFld("Expiry date", leadTxt("cmp-expires", r.expiresAt || "", "YYYY-MM-DD — blank if perpetual")) +
+        leadFld("Expiry date", leadTxt("cmp-expires", r.expiresAt || "", "YYYY-MM-DD — blank if perpetual"), "Reminders at 60, 30 and 7 days before, and on the day, to you (and to an agent's broker), once your Super Admin turns reminders on.") +
       "</div>" +
       '<div class="field col-full mt-8"><label>Notes</label><textarea class="input" id="cmp-notes" rows="2">' + esc(r.notes || "") + "</textarea></div>";
     ov.innerHTML = '<div class="modal-card"><div class="modal-head"><h3>' + (id ? "Edit Compliance Record" : "Add Compliance Record") + '</h3><button class="icon-btn" data-comp-cancel title="Close">&times;</button></div>' +
@@ -18721,10 +18829,10 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       '<div class="field"><label>Date *</label><input class="input" id="vs-date" type="date"></div>' +
       '<div class="field"><label>Time *</label><input class="input" id="vs-time" type="time"></div>' +
       '<div class="field" style="grid-column:span 2"><label>Location / property</label><input class="input" id="vs-loc" type="text" placeholder="e.g. Model unit, One Orchard Makati"></div>' +
-      '<div class="field" style="grid-column:span 2"><label>Reminder (when to nudge via SMS/Viber/email)</label><select class="input" id="vs-remind"><option value="1">1 hour before</option><option value="3" selected>3 hours before</option><option value="24">1 day before</option><option value="0">No reminder</option></select></div>' +
+      '<div class="field" style="grid-column:span 2"><label>Reminder</label><select class="input" id="vs-remind"><option value="1">1 hour before</option><option value="3" selected>3 hours before</option><option value="24">1 day before</option><option value="0">No reminder</option></select></div>' +
       '<div class="field" style="grid-column:span 2"><label>Notes</label><textarea class="input" id="vs-notes" rows="2" placeholder="Bring valid ID, meet at the lobby…"></textarea></div>' +
       "</div>" +
-      '<div class="notice-banner mt-8">' + icon("phone", 14) + " Many PH clients prefer SMS / Viber reminders — we list the reminder in the dashboard so you can send it via your messaging app.</div>";
+      '<div class="notice-banner mt-8">' + icon("bell", 14) + " " + esc(VIEWING_REMINDER_NOTE) + "</div>";
     const ov = document.createElement("div");
     ov.className = "modal-overlay"; ov.id = "vs-modal";
     ov.setAttribute("data-lead-id", leadId);
@@ -20398,6 +20506,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   window.__ESREALTY_TEST_HELPERS = {
     selectAllPages: selectAllPages,
     pmsAgeing: function (leases) { return pmsAgeing(leases); },
+    vgLeadFinishHtml: function (d) { return vgLeadFinishHtml(d); },
     listingPerformance: function (l, now) { return listingPerformance(l, now); },
     listingOwnerSummary: listingOwnerSummary,
     txClosingMissing: txClosingMissing,

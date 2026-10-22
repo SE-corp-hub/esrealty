@@ -315,6 +315,41 @@
     return { month: key, label: monthLabel(key), end: end, rows: list, total: total };
   }
 
+  /* Late fees (roadmap I6). A lease may set late_fee (a peso amount, or a percent of the month's
+   * rent when late_fee_type is "percent") and grace_days (default 5). A rent month still unpaid
+   * more than grace_days after its due date is owed one late fee, unless the lease already has a
+   * late-fee charge for that month (added, paid or removed: a removed one counts as waived).
+   * Returns the fees to add, oldest first; nothing is added by this function. */
+  var LATE_FEE_TYPE = "Late fee";
+  function graceDays(lease) {
+    var g = lease && lease.grace_days;
+    if (g === "" || g == null) return 5;
+    var n = Math.floor(num(g));
+    return n >= 0 ? Math.min(60, n) : 5;
+  }
+  function lateFeeFor(lease, rent) {
+    var v = num(lease && lease.late_fee);
+    if (v <= 0) return 0;
+    if (lease.late_fee_type === "percent") return Math.round(num(rent) * Math.min(v, 100)) / 100;
+    return Math.round(v * 100) / 100;
+  }
+  function addDays(date, n) {
+    var p = date.split("-"), d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + n));
+    return ymd(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+  }
+  function lateFeesDue(lease, payments, asOf) {
+    asOf = asOf || today();
+    if (!lease || lease.archived || lease.rent_type === "lease" || num(lease.late_fee) <= 0) return [];
+    var grace = graceDays(lease);
+    var charged = {};
+    (lease.charges || []).forEach(function (c) { if (c && c.type === LATE_FEE_TYPE && monthKey(c.period)) charged[monthKey(c.period)] = true; });
+    return ledger(lease, payments, asOf).months.filter(function (m) {
+      return m.balance > 0 && !charged[m.key] && addDays(m.due, grace) < asOf;
+    }).map(function (m) {
+      return { month: m.key, label: monthLabel(m.key), amount: lateFeeFor(lease, m.amount), rentDue: m.due, lateSince: addDays(m.due, grace + 1) };
+    }).filter(function (f) { return f.amount > 0; });
+  }
+
   function leaseMonthKeys(lease) {
     return leaseMonths(lease, today()).map(function (m) { return m.key; });
   }
@@ -325,6 +360,7 @@
     endLimit: endLimit, daysBetween: daysBetween, dueDateFor: dueDateFor, daysLate: daysLate,
     receiptNo: receiptNo, nextReceiptNo: nextReceiptNo, amountInWords: amountInWords,
     depositHeld: depositHeld, depositNote: depositNote, monthStatement: monthStatement, lastDayOf: lastDayOf,
-    chargeStatus: chargeStatus, chargeLabel: chargeLabel, credited: credited, withholding: withholding
+    chargeStatus: chargeStatus, chargeLabel: chargeLabel, credited: credited, withholding: withholding,
+    lateFeesDue: lateFeesDue, graceDays: graceDays, lateFeeFor: lateFeeFor, LATE_FEE_TYPE: LATE_FEE_TYPE
   };
 });
