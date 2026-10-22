@@ -2518,3 +2518,6 @@ a.btn, a.btn:hover { text-decoration: none; }
 .dup-row input { margin-top: 4px; width: 18px; height: 18px; flex: none; }
 .dup-row span { overflow-wrap: anywhere; }
 #dup-modal .modal-body, #tt-modal .modal-body { display: block; }
+.modal-body .print-root.com-st { display: block !important; }
+#com-modal .modal-body { display: block; }
+#com-modal .modal-body .field { margin-bottom: 12px; } #com-modal .modal-body .row .field { margin-bottom: 0; }
