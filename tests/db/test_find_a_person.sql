@@ -28,7 +28,7 @@ set local role authenticated;
 insert into f select * from public.admin_person_find('0917-222-3333');
 reset role;
 insert into results select 'by phone: every place this person appears',
-  (select string_agg(source, ',' order by source) from f) = 'PMS tenant,lead,lead,listing inquiry,website inquiry', (select string_agg(source, ',' order by source) from f);
+  (select string_agg(source, ',' order by source collate "C") from f) = 'PMS tenant,lead,lead,listing inquiry,website inquiry', (select string_agg(source, ',' order by source collate "C") from f);
 insert into results select 'someone else is not included', not exists (select 1 from f where record_id = 'fp-l3'), '';
 delete from f;
 set local role authenticated;
