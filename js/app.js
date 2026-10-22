@@ -15180,6 +15180,15 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (diff === 0) return { cls: "gold", label: "Due today", due: true };
     return null;
   }
+  /* Lead score (F4): Hot / Warm / Cold from what the record shows, with the reasons on hover and
+   * in the lead's details. */
+  const LEAD_SCORE_BADGE = { hot: ["red", "Hot"], warm: ["gold", "Warm"], cold: ["blue", "Cold"] };
+  function leadScoreOf(l) { return AT && AT.leadScore ? AT.leadScore(l) : { score: null, band: "", reasons: [] }; }
+  function leadScoreChip(l) {
+    const sc = leadScoreOf(l), b = LEAD_SCORE_BADGE[sc.band];
+    if (!b) return "";
+    return '<div style="margin-bottom:4px"><span class="badge ' + b[0] + '" data-lead-score="' + esc(sc.band) + '" title="' + esc("Score " + sc.score + ": " + sc.reasons.join(", ")) + '">' + b[1] + " " + sc.score + "</span></div>";
+  }
   function leadCard(l) {
     const can = leadCanEdit(l);
     const fu = leadFollowupState(l);
@@ -15197,6 +15206,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         (fu ? '<div style="margin-bottom:4px"><span class="badge ' + fu.cls + '">' + icon("calendar", 11) + " " + fu.label + "</span></div>" : "") +
         (l.serviceRequested ? '<div style="margin-bottom:4px"><span class="badge blue">' + icon("briefcase", 11) + " " + esc(l.serviceRequested) + "</span></div>" : "") +
         (isVgRequest(l) && vgRequestStatus(l) !== "sent" ? '<div style="margin-bottom:4px"><span class="badge ' + (vgRequestStatus(l) === "verified" ? "gold" : "red") + '">' + icon("doc", 11) + " " + (vgRequestStatus(l) === "verified" ? "Report to send" : "Call to confirm") + "</span></div>" : "") +
+        (l.possibleDuplicateOf ? '<div style="margin-bottom:4px"><span class="badge gold">' + icon("users", 11) + " Possible duplicate</span></div>" : "") +
+        leadScoreChip(l) +
         (l.budget || l.askingPrice || l.rentBudget ? '<div class="lead-card-budget">' + leadBudget(l) + "</div>" : "") +
         '<div class="dim tiny">' + icon("pin", 11) + " " + esc(l.source ? leadSourceLabel(l.source) : "—") + "</div>" +
       "</div>" +
@@ -15437,6 +15448,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         '<button class="btn btn-ghost" data-lead-csv>' + icon("download", 15) + " Export CSV</button>" +
         (can ? '<button class="btn btn-ghost" data-lead-bulk>' + icon("layers", 15) + " Bulk update</button>" : "") +
         (can ? '<button class="btn btn-ghost" data-lead-import>' + icon("upload", 15) + " Import CSV</button>" : "")) + "</div></div>";
+    const dupGroups = can ? leadDuplicateGroups() : [];
+    if (dupGroups.length) html += '<div class="notice-banner warn mb-16" data-lead-dup-summary>' + icon("users", 14) + " <span>" + dupGroups.length + " group" + (dupGroups.length === 1 ? "" : "s") + " of leads share a phone number or email. " +
+      '<button type="button" class="btn btn-ghost btn-sm" data-lead-dups="">Review duplicates</button></span></div>';
     html += '<div class="lead-stats">' +
       '<div class="ls-stat"><div class="ls-stat-v">' + leads.length + '</div><div class="ls-stat-l dim">Total leads</div></div>' +
       '<div class="ls-stat"><div class="ls-stat-v">' + newCount + '</div><div class="ls-stat-l dim">New</div></div>' +
@@ -15446,6 +15460,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       '<div class="ls-stat"><div class="ls-stat-v"' + (followupDue > 0 ? ' style="color:var(--red,#e05252)"' : "") + '>' + followupDue + '</div><div class="ls-stat-l dim">Follow-ups due</div></div>' +
       '<div class="ls-stat"><div class="ls-stat-v">' + conv + '</div><div class="ls-stat-l dim">Conversion</div></div>' +
       "</div>";
+    if (mode === "pipeline") html += teamTargetsCard();
     if (lostCount) {
       const why = {};
       leads.filter(l => l.status === "lost").forEach(l => { const k = leadLostLabel(l.lostReason) || "No reason given"; why[k] = (why[k] || 0) + 1; });
@@ -15832,6 +15847,184 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     toast("Value Guide opened with " + (l.name || "the customer") + "'s details");
   }
 
+  /* ---- Team targets (F14) ----
+   * Monthly targets per person (contacted, viewings, offers, won), set by a Super Admin and kept in
+   * site_settings 'teamTargets' (staff may read it, migration 0012). Progress is counted from the
+   * leads in view: Super Admins see everyone, brokers their team, agents themselves. */
+  const TARGET_LABELS = [["contacted", "Contacted"], ["viewings", "Viewings"], ["offers", "Offers"], ["won", "Won"]];
+  let targetsCfg = null, targetsState = "";
+  async function loadTargets() {
+    if (targetsState === "loading") return;
+    targetsState = "loading";
+    try {
+      if (!SB || (currentUser && currentUser.demo)) targetsCfg = targetsCfg || { default: {}, people: {} };
+      else {
+        const r = await SB.from("site_settings").select("value").eq("key", "teamTargets").maybeSingle();
+        if (r.error) throw r.error;
+        targetsCfg = (r.data && r.data.value) || { default: {}, people: {} };
+      }
+      targetsState = "ok";
+    } catch (e) { targetsState = "error"; targetsCfg = targetsCfg || { default: {}, people: {} }; }
+    if (state.view === "leads" && !state.leadDetail) scopedRender("#team-targets", teamTargetsInner());
+  }
+  function targetFor(key, measure) {
+    const c = targetsCfg || {};
+    const p = (c.people || {})[key] || {};
+    const v = p[measure] != null && p[measure] !== "" ? p[measure] : (c.default || {})[measure];
+    const n = Math.floor(Number(v));
+    return n > 0 ? n : 0;
+  }
+  function teamTargetsMonth() { return new Date().toISOString().slice(0, 7); }
+  function teamTargetsRows() {
+    if (!AT || !AT.teamProgress) return [];
+    let rows = AT.teamProgress(leadScope(), teamTargetsMonth());
+    if (roleIs("agent")) rows = rows.filter(r => currentUser && (r.key === currentUser.id || r.name === currentUser.name));
+    return rows;
+  }
+  function teamTargetsInner() {
+    const rows = teamTargetsRows();
+    const any = TARGET_LABELS.some(t => targetFor("", t[0]) > 0) || Object.keys((targetsCfg || {}).people || {}).length > 0;
+    const cell = (r, k) => {
+      const got = r[k], goal = targetFor(r.key, k);
+      const pct = goal ? Math.min(100, Math.round(got / goal * 100)) : 0;
+      return '<td class="num"><b>' + got + "</b>" + (goal ? '<span class="dim"> / ' + goal + '</span><div class="tt-bar" role="img" aria-label="' + pct + '% of target"><i style="width:' + pct + '%"></i></div>' : "") + "</td>";
+    };
+    return (rows.length
+      ? '<div class="table-wrap mt-8"><table class="data"><tr><th>Person</th>' + TARGET_LABELS.map(t => '<th class="num">' + t[1] + "</th>").join("") + "</tr>" +
+        rows.map(r => "<tr><td>" + esc(r.name || "—") + "</td>" + TARGET_LABELS.map(t => cell(r, t[0])).join("") + "</tr>").join("") + "</table></div>"
+      : '<p class="dim mt-8">Nothing yet this month.</p>') +
+      (!any ? '<p class="dim tiny mt-8">' + (roleIs("super-admin") ? "No targets set. Set them to see progress bars." : "No targets set yet.") + "</p>" : "") +
+      (targetsState === "error" ? '<p class="dim tiny mt-8">Targets could not be loaded (apply database update 0012).</p>' : "");
+  }
+  function teamTargetsCard() {
+    if (!(roleIs("super-admin") || roleIs("broker") || roleIs("agent"))) return "";
+    if (!targetsState) loadTargets();
+    const label = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    // Closed until opened (the choice is remembered), so the pipeline stays on the first screen.
+    return '<details class="card card-pad mb-24 team-targets" data-team-targets' + (state.ttOpen ? " open" : "") + '><summary class="row spread" style="gap:8px;flex-wrap:wrap"><b>' + (roleIs("agent") ? "My targets" : "Team targets") + ", " + esc(label) + "</b>" +
+      (roleIs("super-admin") ? '<button type="button" class="btn btn-ghost btn-sm" data-targets-edit>' + icon("edit", 13) + " Set targets</button>" : "") + "</summary>" +
+      '<div id="team-targets">' + teamTargetsInner() + "</div>" +
+      '<p class="dim tiny mt-8">Counted from the leads: moved on from New, viewings done or moved to Site Visit, offers and wins this month.</p></details>';
+  }
+  function closeTargetsModal() { const m = $("#tt-modal"); if (m) m.remove(); }
+  function openTargetsEditor() {
+    if (!roleIs("super-admin")) return;
+    closeTargetsModal();
+    const c = targetsCfg || { default: {}, people: {} };
+    const rows = AT.teamProgress(leadScope(), teamTargetsMonth());
+    const inp = (id, v) => '<input class="input" type="number" min="0" step="1" inputmode="numeric" id="' + id + '" value="' + esc(v == null ? "" : String(v)) + '">';
+    const head = "<tr><th>Who</th>" + TARGET_LABELS.map(t => '<th class="num">' + t[1] + "</th>").join("") + "</tr>";
+    const defRow = '<tr><td><b>Everyone (default)</b></td>' + TARGET_LABELS.map(t => "<td>" + inp("tt-def-" + t[0], (c.default || {})[t[0]]) + "</td>").join("") + "</tr>";
+    const pRows = rows.map((r, i) => '<tr data-tt-person="' + esc(r.key) + '"><td>' + esc(r.name || r.key) + "</td>" + TARGET_LABELS.map(t => "<td>" + inp("tt-" + i + "-" + t[0], ((c.people || {})[r.key] || {})[t[0]]) + "</td>").join("") + "</tr>").join("");
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "tt-modal";
+    ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-labelledby", "tt-title");
+    ov.innerHTML = '<div class="modal-card modal-card-wide"><div class="modal-head"><h3 id="tt-title">Monthly targets</h3><button class="icon-btn" data-tt-close title="Close">&times;</button></div>' +
+      '<div class="modal-body"><p class="dim">The default applies to everyone; a number on a person\'s row replaces it for them. Leave a box empty for no target.</p>' +
+      '<div class="table-wrap"><table class="data tt-edit">' + head + defRow + pRows + "</table></div></div>" +
+      '<div class="modal-foot"><button class="btn btn-ghost" data-tt-close>Cancel</button><button class="btn btn-primary" data-tt-save>' + icon("check", 15) + " Save targets</button></div></div>";
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e => {
+      if (e.target === ov || e.target.closest("[data-tt-close]")) { closeTargetsModal(); return; }
+      if (e.target.closest("[data-tt-save]")) saveTargets(rows, e.target.closest("[data-tt-save]"));
+    });
+  }
+  async function saveTargets(rows, btn) {
+    const num = id => { const el = document.getElementById(id); const v = el ? String(el.value).trim() : ""; if (v === "") return null; const n = Math.floor(Number(v)); return n >= 0 ? n : null; };
+    const value = { default: {}, people: {}, updatedAt: new Date().toISOString() };
+    TARGET_LABELS.forEach(t => { const v = num("tt-def-" + t[0]); if (v != null) value.default[t[0]] = v; });
+    rows.forEach((r, i) => {
+      const p = {};
+      TARGET_LABELS.forEach(t => { const v = num("tt-" + i + "-" + t[0]); if (v != null) p[t[0]] = v; });
+      if (Object.keys(p).length) value.people[r.key] = Object.assign({ name: r.name || "" }, p);
+    });
+    if (currentUser && currentUser.demo) { targetsCfg = value; targetsState = "ok"; closeTargetsModal(); render(); toast("Demo: targets saved"); return; }
+    if (btn) btn.disabled = true;
+    try {
+      const r = await SB.from("site_settings").upsert({ key: "teamTargets", value, is_public: false }, { onConflict: "key" });
+      if (r.error) throw r.error;
+      targetsCfg = value; targetsState = "ok";
+      closeTargetsModal(); render(); toast("Targets saved");
+    } catch (e) { toast("Could not save targets: " + esc(friendlyErr(String((e && e.message) || e))), "err"); if (btn) btn.disabled = false; }
+  }
+
+  /* ---- Duplicate leads (F2) ----
+   * The website, Value Guide and Facebook mark a repeat person (migration 0012); the CRM also finds
+   * leads in your list that share a phone or email. Merging keeps one lead, fills its empty fields
+   * from the others, combines their history and deletes the others. Nothing merges by itself. */
+  function leadDuplicateGroups() {
+    if (!AT || !AT.duplicateGroups) return [];
+    return AT.duplicateGroups(leadScope()).filter(g => g.every(x => leadCanEdit(x)));
+  }
+  function leadDuplicateBanner(l, can) {
+    const groups = leadDuplicateGroups().filter(g => g.some(x => x.id === l.id));
+    const other = l.possibleDuplicateOf ? (state.leads || []).find(x => x.id === l.possibleDuplicateOf) : null;
+    if (!groups.length && !l.possibleDuplicateOf) return "";
+    const peers = groups.length ? groups[0].filter(x => x.id !== l.id) : (other ? [other] : []);
+    const names = peers.map(x => esc(x.name || "a lead") + (x.ref ? " (" + esc(x.ref) + ")" : "")).join(", ");
+    return '<div class="notice-banner warn mb-16" data-lead-dup-banner style="display:block"><p style="margin:0">' + icon("users", 14) + " <b>Possibly the same person as " +
+      (names || "a lead you cannot see" + (l.possibleDuplicateRef ? " (" + esc(l.possibleDuplicateRef) + ")" : "")) + ".</b> Same phone number or email.</p>" +
+      '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' +
+      peers.map(x => '<button type="button" class="btn btn-ghost btn-sm" data-lead-open="' + esc(x.id) + '">Open ' + esc(x.name || x.ref || "lead") + "</button>").join("") +
+      (can && groups.length ? '<button type="button" class="btn btn-primary btn-sm" data-lead-dups="' + esc(l.id) + '">Review and merge</button>' : "") +
+      (!peers.length ? '<span class="dim tiny">Ask your broker: that lead is not in your list.</span>' : "") +
+      "</div></div>";
+  }
+  function closeDupModal() { const m = $("#dup-modal"); if (m) m.remove(); }
+  function openDuplicatesModal(focusId) {
+    closeDupModal();
+    let groups = leadDuplicateGroups();
+    if (focusId) groups = groups.filter(g => g.some(x => x.id === focusId)).concat(groups.filter(g => !g.some(x => x.id === focusId)));
+    const row = (g, gi) => {
+      const keep = AT.pickPrimary(g);
+      return '<fieldset class="dup-group card card-pad mt-8" data-dup-group="' + gi + '"><legend class="dim tiny">' + g.length + " leads, same phone or email</legend>" +
+        g.map(x => '<label class="dup-row"><input type="radio" name="dup-keep-' + gi + '" value="' + esc(x.id) + '"' + (x.id === keep.id ? " checked" : "") + "> <span><b>" + esc(x.name || "Unnamed") + "</b> " +
+          '<span class="dim tiny">' + esc([x.ref, leadStatusCfg(x.status) ? leadStatusCfg(x.status)[1] : x.status, x.assignedTo, x.phone, x.email, x.createdAt ? String(x.createdAt).slice(0, 10) : ""].filter(Boolean).join(" · ")) + "</span></span></label>").join("") +
+        '<div class="row mt-8" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn btn-primary btn-sm" data-dup-merge="' + gi + '">Merge the others into the ticked one</button></div></fieldset>';
+    };
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "dup-modal";
+    ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-labelledby", "dup-title");
+    ov.innerHTML = '<div class="modal-card modal-card-wide"><div class="modal-head"><h3 id="dup-title">Possible duplicate leads</h3><button class="icon-btn" data-dup-close title="Close">&times;</button></div>' +
+      '<div class="modal-body">' + (groups.length
+        ? '<p class="dim">These leads share a phone number or email. Pick the one to keep: its details stay, empty fields are filled from the others, their history and viewings move over, and the others are deleted. The change log keeps a record.</p>' + groups.map(row).join("")
+        : '<p class="dim">No duplicates in your leads.</p>') + "</div>" +
+      '<div class="modal-foot"><button class="btn btn-ghost" data-dup-close>Close</button></div></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e => {
+      if (e.target === ov || e.target.closest("[data-dup-close]")) { closeDupModal(); return; }
+      const mb = e.target.closest("[data-dup-merge]");
+      if (mb) {
+        const gi = Number(mb.getAttribute("data-dup-merge"));
+        const pick = ov.querySelector('input[name="dup-keep-' + gi + '"]:checked');
+        if (pick) mergeDuplicateGroup(groups[gi], pick.value);
+      }
+    });
+    ov._groups = groups;
+  }
+  async function mergeDuplicateGroup(group, keepId) {
+    const keep = (group || []).find(x => x.id === keepId);
+    const others = (group || []).filter(x => x.id !== keepId);
+    if (!keep || !others.length) return;
+    if (!group.every(x => leadCanEdit(x))) { toast("You can only merge leads you can edit", "err"); return; }
+    const ok = await confirmModal({ title: "Merge leads", message: "Merge " + others.length + " lead" + (others.length === 1 ? "" : "s") + " into " + (keep.name || "this lead") + "? The others are deleted after their details and history move over.", confirmLabel: "Merge" });
+    if (!ok) return;
+    const who = (currentUser && (currentUser.name || currentUser.email)) || "";
+    const merged = AT.mergeLeads(keep, others, who);
+    const idx = state.leads.findIndex(x => x.id === keep.id);
+    if (idx >= 0) state.leads[idx] = merged;
+    const gone = others.map(x => x.id);
+    state.leads = state.leads.filter(x => gone.indexOf(x.id) < 0);
+    if (state.leadDetail && gone.indexOf(state.leadDetail) >= 0) state.leadDetail = merged.id;
+    save();
+    await persistLeadToCloud(merged);
+    for (const id of gone) await deleteLeadFromCloud(id);
+    closeDupModal();
+    render();
+    toast("Merged into " + (merged.name || "the lead"));
+    if (leadDuplicateGroups().length) openDuplicatesModal();
+  }
+
   function renderLeadDetail(l) {
     const can = leadCanEdit(l);
     const acts = (l.activity || []).slice().reverse();
@@ -15851,7 +16044,12 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       (l.convertedTxId ? '<span class="badge green">Converted → ' + esc(l.convertedTxId) + "</span>" : "") +
       (can ? '<button class="btn btn-ghost btn-sm" data-lead-del="' + esc(l.id) + '">' + icon("trash", 14) + " Delete</button>" : "") +
       "</div></div>";
+    html += leadDuplicateBanner(l, can);
     html += vgRequestCard(l, can);
+    const scd = leadScoreOf(l), scb = LEAD_SCORE_BADGE[scd.band];
+    if (scb) html += '<div class="card card-pad mb-24 lead-score-card" data-lead-score-card><div class="row spread" style="flex-wrap:wrap;gap:8px"><h3 style="margin:0">Lead score</h3><span class="badge ' + scb[0] + '">' + scb[1] + " " + scd.score + " / 100</span></div>" +
+      '<p class="dim tiny mt-8">From what this record shows. It goes up with contact details, a budget, a strong source, progress and a booked viewing, and down when the lead goes quiet.</p>' +
+      '<ul class="lead-score-why mt-8">' + scd.reasons.map(r => "<li>" + esc(r) + "</li>").join("") + "</ul></div>";
     html += '<div class="grid grid-3 mb-24">';
     html += '<div style="grid-column:span 2" class="card card-pad">' +
       '<h3>Lead Information</h3><div class="table-wrap mt-8"><table class="data"><tbody>' +
@@ -16508,6 +16706,11 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         if (del) { leadDelete(del.getAttribute("data-lead-del")); return; }
         const act = e.target.closest("[data-lead-act]");
         if (act) { leadAddActivity(act.getAttribute("data-lead-act")); return; }
+        if (e.target.closest("[data-targets-edit]")) { e.preventDefault(); openTargetsEditor(); return; }
+        const ttSum = e.target.closest("[data-team-targets] > summary");
+        if (ttSum) { const dd = ttSum.parentElement; setTimeout(() => { state.ttOpen = dd.open; save(); }, 0); }
+        const dupBtn = e.target.closest("[data-lead-dups]");
+        if (dupBtn) { openDuplicatesModal(dupBtn.getAttribute("data-lead-dups") || ""); return; }
         const vgVerify = e.target.closest("[data-vg-verify]");
         if (vgVerify) { vgRequestStep(vgVerify.getAttribute("data-vg-verify"), "verified"); return; }
         const vgSent = e.target.closest("[data-vg-sent]");
@@ -20507,6 +20710,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     selectAllPages: selectAllPages,
     pmsAgeing: function (leases) { return pmsAgeing(leases); },
     vgLeadFinishHtml: function (d) { return vgLeadFinishHtml(d); },
+    leadDuplicateGroups: function () { return leadDuplicateGroups(); },
+    teamTargets: function () { return { cfg: targetsCfg, state: targetsState, rows: teamTargetsRows() }; },
     listingPerformance: function (l, now) { return listingPerformance(l, now); },
     listingOwnerSummary: listingOwnerSummary,
     txClosingMissing: txClosingMissing,

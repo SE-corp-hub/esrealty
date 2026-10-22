@@ -2501,3 +2501,20 @@ a.btn, a.btn:hover { text-decoration: none; }
 .pms-check { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; font-weight: 500; }
 .pms-check input { width: 20px; height: 20px; flex: none; accent-color: var(--accent); }
 .pms-ar-wht { margin: 12px 0 0; padding: 10px 12px; border: 1px dashed var(--stroke-strong, #cbd4df); border-radius: 8px; line-height: 1.6; }
+
+/* Phase 10: team targets, lead score reasons, duplicate merge */
+.team-targets > summary { cursor: pointer; list-style: none; align-items: center; min-height: 44px; }
+.team-targets > summary::-webkit-details-marker { display: none; }
+.tt-bar { height: 6px; border-radius: 3px; background: var(--stroke); margin-top: 4px; overflow: hidden; min-width: 60px; }
+.tt-bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.tt-edit .input { max-width: 90px; text-align: right; }
+.lead-score-why { margin: 0; padding-left: 18px; }
+.lead-score-why li { margin: 2px 0; }
+.dup-group { min-width: 0; max-width: 100%; display: block; }
+.dup-group legend { padding: 0 4px; }
+.dup-group .btn { white-space: normal; height: auto; min-height: 44px; text-align: left; }
+.dup-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; min-height: 44px; border-bottom: 1px solid var(--stroke); cursor: pointer; }
+.dup-row:last-of-type { border-bottom: 0; }
+.dup-row input { margin-top: 4px; width: 18px; height: 18px; flex: none; }
+.dup-row span { overflow-wrap: anywhere; }
+#dup-modal .modal-body, #tt-modal .modal-body { display: block; }
