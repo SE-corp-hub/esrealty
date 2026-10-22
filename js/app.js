@@ -9289,6 +9289,27 @@ premise: "Fee Simple / As Improved",
     const estimates = work.filter(m => m.status === "open" || m.status === "in progress").reduce((s, m) => s + C.num(m.cost, 0), 0);
     return { collected: collected, expenses: expenses, repairs: repairs, estimates: estimates, spent: expenses + repairs, net: collected - expenses - repairs };
   }
+  /* I11: unpaid rent by how long it has been overdue, from the same rent ledger the CSV uses. */
+  function pmsAgeing(leases) {
+    const b = [0, 0, 0, 0], today = pmsToday();
+    (leases || []).forEach(l => pmsLeaseLedger(l).months.forEach(m => {
+      if (m.balance <= 0 || m.due >= today) return;
+      const days = Math.round((new Date(today + "T00:00:00") - new Date(m.due + "T00:00:00")) / 86400000);
+      b[days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3] += m.balance;
+    }));
+    return b;
+  }
+  // Rent and charges received in the last 12 months (paid, by payment date), and the yield on the
+  // property's price when one is recorded: received / price.
+  function pmsYearFor(prop) {
+    const since = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+    const leaseProp = {};
+    pms().leases.forEach(l => { leaseProp[l.id] = l.property_id; });
+    const got = pmsActivePayments().filter(x => x.status === "paid" && (leaseProp[x.lease_id] || x.property_id) === prop.id && String(x.date || "").slice(0, 10) >= since)
+      .reduce((t, x) => t + PL().credited(x), 0);
+    const price = C.num(prop.price, 0);
+    return { received: got, price, yieldPct: price > 0 ? Math.round(got / price * 1000) / 10 : null };
+  }
   function pmsPaymentsOfProperty(propId) {
     return pmsActivePayments().filter(p => { const l = pms().leases.find(x => x.id === p.lease_id); return (l ? l.property_id : p.property_id) === propId; });
   }
@@ -9885,6 +9906,17 @@ premise: "Fee Simple / As Improved",
       html += '<tr><td>' + esc(p.title) + '</td><td class="num">' + C.money(monthly) + '</td><td class="num">' + C.money(m.collected) + '</td><td class="num">' + C.money(arr) + '</td><td class="num">' + C.money(m.spent) + '</td><td class="num"><b>' + C.money(m.net) + '</b></td></tr>';
     });
     html += '</table></div></div>';
+    // I11: how late the unpaid rent is, and what each property earned on its price in the last year.
+    const ageAll = pmsAgeing(leases);
+    html += '<div class="card card-pad mb-24 pms-ageing"><h3>Unpaid rent by age, and yield</h3><p class="dim tiny mb-16">Overdue rent grouped by how long it has been overdue. Yield is rent and charges received in the last 12 months divided by the property price (add the price on the property to see it).</p>' +
+      '<div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">0\u201330 days</th><th class="num">31\u201360</th><th class="num">61\u201390</th><th class="num">Over 90</th><th class="num">Received, last 12 months</th><th class="num">Yield</th></tr>';
+    props.forEach(p => {
+      const a = pmsAgeing(leases.filter(x => x.property_id === p.id)), y = pmsYearFor(p);
+      html += '<tr><td>' + esc(p.title) + "</td>" + a.map((v, i) => '<td class="num' + (v > 0 && i >= 2 ? " neg" : "") + '">' + (v > 0 ? C.money(v) : "\u2014") + "</td>").join("") +
+        '<td class="num">' + C.money(y.received) + '</td><td class="num">' + (y.yieldPct == null ? '<span class="dim tiny">no price</span>' : y.yieldPct + "%") + "</td></tr>";
+    });
+    html += '<tr><td><b>Total</b></td>' + ageAll.map(v => '<td class="num"><b>' + (v > 0 ? C.money(v) : "\u2014") + "</b></td>").join("") + '<td class="num"><b>' + C.money(props.reduce((t, p) => t + pmsYearFor(p).received, 0)) + "</b></td><td></td></tr>";
+    html += "</table></div></div>";
     html += '<div class="card card-pad mb-24"><h3 class="mb-16">Property Reports</h3><div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">Units</th><th class="num">Active Leases</th><th class="num">Collected</th><th class="num">Arrears</th><th>Actions</th></tr>';
     props.forEach(p => {
       const u = pmsActiveUnits().filter(x => x.property_id === p.id);
@@ -9925,14 +9957,8 @@ premise: "Fee Simple / As Improved",
     } else if (kind === "ageing") {
       // Arrears by how long each unpaid month has been overdue.
       rows = [["Property", "Unit", "Tenant", "0-30 days", "31-60 days", "61-90 days", "Over 90 days", "Total overdue"]];
-      const today = pmsToday();
       pmsActiveLeases().forEach(l => {
-        const b = [0, 0, 0, 0];
-        pmsLeaseLedger(l).months.forEach(m => {
-          if (m.balance <= 0 || m.due >= today) return;
-          const days = Math.round((new Date(today + "T00:00:00") - new Date(m.due + "T00:00:00")) / 86400000);
-          b[days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3] += m.balance;
-        });
+        const b = pmsAgeing([l]);
         const total = b[0] + b[1] + b[2] + b[3];
         if (total > 0) rows.push([pmsPropertyTitle(l.property_id), pmsUnitName(l.unit_id), pmsTenantName(l.tenant_id)].concat(b, [total]));
       });
@@ -10449,7 +10475,12 @@ premise: "Fee Simple / As Improved",
         (st.total.withheld > 0 ? 'Rent received includes ' + money(st.total.withheld) + ' tax withheld by company tenants and paid to the BIR for the owner (BIR Form 2307, a credit against the owner\u2019s income tax). ' : "") +
         'Deposits are held for the tenants and are not income. Prepared by SEA ESTATES \u00B7 Property Management System</span></div>' +
       '</div>';
-    pmsPrintModal("Owner Statement \u2014 " + owners[0].name, body);
+    const ownerEmail = owners.map(o => o.email).filter(Boolean)[0];
+    const stBody = "Hi " + (String(owners[0].name || "").split(/\s+/)[0] || "") + ",\n\nHere is your SEA ESTATES owner statement for " + st.label + ".\n\n" +
+      "Rent received: " + money(st.total.collected) + "\nCharges collected: " + money(st.total.charges) + "\nExpenses and repairs: " + money(st.total.expenses + st.total.repairs) +
+      "\nNet: " + money(st.total.net) + "\n\nThe full statement is attached as a PDF." + emailSignature();
+    const bodyWithMail = ownerEmail && pmsIsManager() ? body.replace('<div class="pms-st-pick no-print">', '<div class="pms-st-pick no-print"><span class="row" style="gap:8px;flex-wrap:wrap">' + gmailLink(ownerEmail, "Owner statement: " + st.label, stBody, "Email via Gmail") + '<span class="dim tiny">Save the statement as a PDF first (Print > Save as PDF), then attach it.</span></span>') : body;
+    pmsPrintModal("Owner Statement \u2014 " + owners[0].name, bodyWithMail);
     const sel = $("#pms-st-month");
     if (sel) sel.addEventListener("change", () => pmsOwnerStatement(ownerIds, sel.value));
   }
@@ -13377,13 +13408,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       "Regards,",
       (currentUser && currentUser.name) || "Property Management"
     ].filter(line => line !== null).join("\n");
-    const link = document.createElement("a");
-    link.href = "mailto:" + encodeURIComponent(email) + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    toastHtml("Payment email prepared for <b>" + esc(email) + "</b>");
+    openGmail(email, subject, body);
+    toastHtml("Gmail opened with the payment email for <b>" + esc(email) + "</b>. Check it and press Send.");
   }
 
   let pmsHooked = false;
@@ -13489,6 +13515,39 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
 
   /* ================= LISTINGS STOREFRONT ================= */
   function listTypeLabel(v) { const f = LISTING_TYPES.find(x => x[0] === v); return f ? f[1] : (v || "—"); }
+  // Listing performance for the owner (roadmap H8): views and inquiries counted on the public site,
+  // days on market and price changes. "Email the owner" opens Gmail with the same summary.
+  function listingPerformance(l, now) {
+    const st = (state.listingStats && state.listingStats[l.id]) || {};
+    const views = C.num(st.views != null ? st.views : l.views, 0), inquiries = C.num(st.inquiries != null ? st.inquiries : l.inquiries, 0);
+    const start = Date.parse(l.publishedAt || l.createdAt || "");
+    const days = isFinite(start) ? Math.max(0, Math.floor(((now || Date.now()) - start) / 86400000)) : null;
+    const dropped = C.num(l.previousPrice, 0) > 0 && C.num(l.price, 0) > 0 && C.num(l.price, 0) < C.num(l.previousPrice, 0);
+    return { views, inquiries, days, rate: views > 0 ? Math.round(inquiries / views * 1000) / 10 : null,
+      perWeek: days ? Math.round(views / Math.max(1, days / 7) * 10) / 10 : null,
+      dropped, previousPrice: dropped ? C.num(l.previousPrice, 0) : 0 };
+  }
+  function listingOwnerSummary(l, p) {
+    const lines = ["Listing update: " + (l.title || "your property") + (l.ref ? " (" + l.ref + ")" : ""), "",
+      "Asking price: " + (C.num(l.price, 0) > 0 ? C.money(C.num(l.price, 0)) : "on request") + (p.dropped ? " (reduced from " + C.money(p.previousPrice) + ")" : ""),
+      "Days on the market: " + (p.days == null ? "not recorded" : p.days),
+      "Page views: " + p.views + (p.perWeek != null ? " (about " + p.perWeek + " a week)" : ""),
+      "Inquiries: " + p.inquiries + (p.rate != null ? " (" + p.rate + "% of views)" : ""),
+      "", "Views and inquiries are counted on our website only; calls and walk-ins are not included."];
+    return lines.join("\n");
+  }
+  function listingOwnerReportHtml(l) {
+    const p = listingPerformance(l);
+    const text = listingOwnerSummary(l, p);
+    return '<div class="card card-pad mb-24" data-ls-perf="' + esc(l.id) + '"><h3>Listing performance</h3>' +
+      '<p class="dim tiny mt-8">Counted on the public website. Only you and Super Admins see this.</p>' +
+      '<div class="ls-stats mt-8">' + lsStat("Page views", p.views) + lsStat("Inquiries", p.inquiries) +
+      lsStat("Inquiry rate", p.rate == null ? "—" : p.rate + "%") + lsStat("Days on market", p.days == null ? "—" : p.days) + "</div>" +
+      (p.dropped ? '<p class="mt-8">Price reduced from ' + esc(C.money(p.previousPrice)) + (l.priceDroppedAt ? " on " + esc(new Date(l.priceDroppedAt).toLocaleDateString()) : "") + ".</p>" : "") +
+      (p.views >= 50 && p.inquiries === 0 ? '<p class="mt-8 dim">Many views but no inquiries yet: the price, photos or description may need another look.</p>' : "") +
+      '<div class="row mt-16" style="gap:8px;flex-wrap:wrap">' + gmailLink("", "Listing update: " + (l.title || ""), text + emailSignature(), "Email the owner via Gmail") +
+      '<button class="btn btn-ghost btn-sm" data-ls-perf-copy="' + esc(l.id) + '">' + icon("doc", 13) + " Copy summary</button></div></div>";
+  }
   function listingCanEdit(l) {
     if (!listingCanManage()) return false;
     if (!l || !l.id || (currentUser && currentUser.demo) || roleIs("super-admin")) return true;
@@ -13710,6 +13769,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (l.hoaDues || l.condoDues) html += '<div class="mt-8"><label class="ls-sublabel">Association / Condo dues</label><div>' + (l.hoaDues ? "HOA " + C.money(l.hoaDues) + "/mo" : "") + (l.condoDues ? (l.hoaDues ? " · " : "") + "Condo " + C.money(l.condoDues) + "/mo" : "") + "</div></div>";
     html += listingContactHtml(l);
     html += "</div></div>";
+    if (listingCanEdit(l) && l.id) html += listingOwnerReportHtml(l);
     html += '<div class="grid grid-3 mb-24">';
     html += '<div class="card card-pad" style="grid-column:span 2">' +
       (l.description ? "<h3>Description</h3><p class='dim mt-8'>" + esc(l.description) + "</p>" : "") +
@@ -14168,6 +14228,12 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         }
         const adCopy = e.target.closest("[data-ls-ad-copy]");
         if (adCopy) { copyListingAd(adCopy.getAttribute("data-ls-ad-copy")); return; }
+        const perfCopy = e.target.closest("[data-ls-perf-copy]");
+        if (perfCopy) {
+          const pl = (state.listings || []).find(x => x.id === perfCopy.getAttribute("data-ls-perf-copy"));
+          if (pl) { const t = listingOwnerSummary(pl, listingPerformance(pl)); if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(() => toast("Summary copied")).catch(() => toast(t, "info")); else toast(t, "info"); }
+          return;
+        }
         const ltap = e.target.closest("[data-listing-contact]");
         if (ltap) {
           const lid = ltap.getAttribute("data-listing-id");
@@ -15331,6 +15397,36 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (/^639\d{9}$/.test(d)) return "+" + d;
     return String(v || "").trim();
   }
+  /* Email by hand through Gmail (owner decision 21 Oct: no email provider). Opens Gmail's
+     "New message" in a new tab, written and addressed; the staff member checks it, attaches
+     anything needed and presses Send from their own Gmail. A popup blocker falls back to the
+     device's mail app (mailto). */
+  function gmailUrl(to, subject, body) {
+    return "https://mail.google.com/mail/?view=cm&fs=1&to=" + encodeURIComponent(to || "") + "&su=" + encodeURIComponent(subject || "") + "&body=" + encodeURIComponent(String(body || "").slice(0, 1800));
+  }
+  function mailtoUrl(to, subject, body) {
+    return "mailto:" + encodeURIComponent(to || "") + "?subject=" + encodeURIComponent(subject || "") + "&body=" + encodeURIComponent(String(body || "").slice(0, 1800));
+  }
+  function openGmail(to, subject, body) {
+    const w = window.open(gmailUrl(to, subject, body), "_blank", "noopener");
+    if (!w) { const a = document.createElement("a"); a.href = mailtoUrl(to, subject, body); a.style.display = "none"; document.body.appendChild(a); a.click(); a.remove(); }
+  }
+  function gmailLink(to, subject, body, label, cls) {
+    return '<a class="' + (cls || "btn btn-ghost btn-sm") + '" href="' + esc(gmailUrl(to, subject, body)) + '" target="_blank" rel="noopener" data-gmail>' + icon("mail", 13) + " " + esc(label || "Email via Gmail") + "</a>";
+  }
+  function emailSignature() {
+    const sc = state.siteContact || {};
+    return "\n\nRegards,\n" + (((currentUser && currentUser.name) || "").trim() || "SEA ESTATES") + "\nSEA ESTATES" + (sc.phone ? "\n" + sc.phone : "");
+  }
+  function leadReplyEmail(l) {
+    const first = String(l.name || "").trim().split(/\s+/)[0] || "";
+    const about = l.listingTitle || l.propertyInterest || "";
+    return {
+      subject: "Your inquiry with SEA ESTATES" + (about ? ": " + about : ""),
+      body: "Hi " + first + ",\n\nThank you for getting in touch with SEA ESTATES" + (about ? " about " + about : "") + ". " +
+        "I'm your contact for this and I'd be glad to help.\n\nWhen is a good time to call you? You can also reply here with any questions." + emailSignature()
+    };
+  }
   function phoneChatLinks(phone) {
     const p = String(phone || "").trim();
     if (!p) return "";
@@ -15564,10 +15660,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       html += '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' +
         (st === "awaiting-call" ? phoneChatLinks(l.phone) + '<button class="btn btn-primary btn-sm" data-vg-verify="' + esc(l.id) + '">' + icon("check", 13) + " Called &amp; verified</button>" : "") +
         (can("appraisal.view") ? '<button class="btn ' + (st === "verified" ? "btn-primary" : "btn-ghost") + ' btn-sm" data-vg-prepare="' + esc(l.id) + '">' + icon("doc", 13) + " Prepare report</button>" : "") +
-        (st !== "awaiting-call" && mailto ? '<a class="btn btn-ghost btn-sm" href="' + esc(mailto) + '">' + icon("mail", 13) + " Email draft</a>" : "") +
+        (st !== "awaiting-call" && l.email ? gmailLink(l.email, "Your SEA ESTATES property value report", mailBody, "Email via Gmail") + '<a class="btn btn-ghost btn-sm" href="' + esc(mailto) + '">Other mail app</a>' : "") +
         (st === "verified" ? '<button class="btn btn-ghost btn-sm" data-vg-sent="' + esc(l.id) + '">' + icon("check", 13) + " Mark report sent</button>" : "") +
         "</div>" +
-        (st === "verified" ? '<p class="dim tiny mt-8">Prepare report opens the Value Guide with these inputs. Download the PDF there, attach it to the email draft, then mark it sent.</p>' : "");
+        (st === "verified" ? '<p class="dim tiny mt-8">Prepare report opens the Value Guide with these inputs. Download the PDF there, attach it to the Gmail message, send it, then mark it sent.</p>' : "");
     }
     return html + "</div>";
   }
@@ -15658,7 +15754,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       leadDetailRow("Requested Service", l.serviceRequested || (l.channel === "professional-appraisal-request" ? "Appraisal consultation" : l.channel === "broker-consultation" ? "Broker consultation" : l.channel === "location-analysis" ? "Location analysis report" : "—")) +
       (l.serviceTransacted ? leadDetailRow("Service Transacted", "Yes — " + esc(l.serviceTransacted.service) + " by " + esc(l.serviceTransacted.by) + " (" + esc(l.serviceTransacted.byRole) + ")") : "") +
       leadDetailRow("Status", leadStatusCfg(l.status) ? leadStatusCfg(l.status)[1] : "—") +
-      leadDetailRow("Email", l.email) +
+      (l.email ? leadDetailRowRaw("Email", esc(l.email) + ' <span style="display:inline-flex;gap:6px;margin-left:6px;vertical-align:middle">' + gmailLink(l.email, leadReplyEmail(l).subject, leadReplyEmail(l).body, "Email via Gmail", "badge blue") + "</span>") : leadDetailRow("Email", l.email)) +
       leadDetailRowRaw("Phone", phoneChatLinks(l.phone)) +
       leadDetailRow("Source", leadSourceLabel(l.source)) +
       leadDetailRow("Assigned Agent", l.assignedTo) +
@@ -16031,47 +16127,27 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         d.upcoming.map(u => "<tr><td>" + esc(u.when.toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })) + "</td><td>" + esc(u.what) + "</td><td>" + esc(u.who || "—") + "</td></tr>").join("") + "</table>"
         : "<p class='dim tiny'>No scheduled events this week.</p>") +
       '<div class="actions mt-16"><button class="btn btn-primary" data-digest-print>' + icon("doc", 14) + " Print / Save PDF</button>" +
-      '<button class="btn btn-ghost" data-digest-email>' + icon("check", 14) + " Email me this</button></div>" +
+      '<button class="btn btn-ghost" data-digest-email>' + icon("mail", 14) + " Email me this (Gmail)</button></div>" +
       "</div></div>";
     document.body.appendChild(ov);
   }
   function closeLeadDigest() { const m = $("#digest-modal"); if (m) m.remove(); }
+  // "Email me this": opens Gmail addressed to the signed-in person with the digest as text
+  // (no email service is set up; owner decision 21 Oct).
   async function emailLeadDigest() {
-    const cfg = window.ESREALTY_SUPABASE || {};
     const to = currentUser && currentUser.email;
-    if (!cfg.supabaseUrl || !to) { toast("Email delivery needs Supabase config and a signed-in account with an email", "err"); return; }
-    let token = "";
-    try { const sess = SB && SB.auth ? await SB.auth.getSession() : null; token = (sess && sess.data && sess.data.session && sess.data.session.access_token) || ""; } catch (e) { token = ""; }
-    if (!token) { toast("Sign in first — digest email uses your account session", "err"); return; }
-    const d = leadDigestData();
-    const rows = d.overdue.map(x => "<li>" + esc(x.l.ref + " " + (x.l.name || "")) + " (" + esc((leadStatusCfg(x.l.status) || [0, x.l.status])[1]) + ") — " + esc(x.s.label) + "</li>").join("");
-    const html = "<h2>Weekly Broker Digest — week of " + d.weekStart.toLocaleDateString() + "</h2>" +
-      "<p>New leads: <b>" + d.newThisWeek.length + "</b> · Stage moves: <b>" + d.movements + "</b> · Won: <b>" + d.closedThisWeek.length + "</b> (" + C.money(d.wonValue) + ") · Lost: <b>" + d.lostThisWeek + "</b> · Win rate: <b>" + d.conv + "</b></p>" +
-      "<h3>Overdue follow-ups (" + d.overdue.length + ")</h3><ul>" + (rows || "<li>None</li>") + "</ul>";
-    try {
-      const res = await fetch(cfg.supabaseUrl + "/functions/v1/notify-dispatch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + token, apikey: cfg.supabaseKey || "" },
-        body: JSON.stringify({ to: to, subject: "SEA ESTATES weekly broker digest", html: html })
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || out.ok === false) throw new Error(out.error || ("HTTP " + res.status));
-      toastHtml("Digest emailed to <b>" + esc(to) + "</b>", "ok");
-    } catch (e) {
-      // Fallback: pre-filled mailto so the digest always goes out, no infra needed.
-      const d2 = leadDigestData();
-      const txt =
-        "Weekly Broker Digest — week of " + d2.weekStart.toLocaleDateString() + "\n\n" +
-        "New leads: " + d2.newThisWeek.length + " · Stage moves: " + d2.movements +
-        " · Won: " + d2.closedThisWeek.length + " (" + C.money(d2.wonValue) + ")" +
-        " · Lost: " + d2.lostThisWeek + " · Win rate: " + d2.conv + "\n\n" +
-        "Overdue follow-ups (" + d2.overdue.length + "):\n" +
-        (d2.overdue.map(x => " • " + x.l.ref + " " + (x.l.name || "") + " — " + x.s.label).join("\n") || " • None") + "\n\n" +
-        "(Sent via mailto fallback — edge dispatch unavailable: " + String(e && e.message || e) + ")";
-      const mailto = "mailto:" + encodeURIComponent(to) + "?subject=" + encodeURIComponent("SEA ESTATES weekly broker digest") + "&body=" + encodeURIComponent(txt);
-      toast("Edge email failed (" + esc(String(e && e.message || e)) + ") — opening your mail app instead", "info");
-      setTimeout(() => { window.location.href = mailto; }, 600);
-    }
+    if (!to) { toast("Your account has no email address to send the digest to", "err"); return; }
+    const d2 = leadDigestData();
+    const txt =
+      "Weekly Broker Digest - week of " + d2.weekStart.toLocaleDateString() + "\n\n" +
+      "New leads: " + d2.newThisWeek.length + ", stage moves: " + d2.movements +
+      ", won: " + d2.closedThisWeek.length + " (" + C.money(d2.wonValue) + ")" +
+      ", lost: " + d2.lostThisWeek + ", win rate: " + d2.conv + "\n\n" +
+      "Overdue follow-ups (" + d2.overdue.length + "):\n" +
+      (d2.overdue.slice(0, 25).map(x => " - " + x.l.ref + " " + (x.l.name || "") + ": " + x.s.label).join("\n") || " - None") +
+      (d2.overdue.length > 25 ? "\n ...and " + (d2.overdue.length - 25) + " more (open Leads)" : "");
+    openGmail(to, "SEA ESTATES weekly broker digest", txt);
+    toastHtml("Gmail opened with the digest for <b>" + esc(to) + "</b>. Press Send to keep a copy.");
   }
   /* ---- Bulk lead actions and CSV import (F6) ---- */
   function leadModal(id, title, body, okLabel) {
@@ -18147,7 +18223,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     for (let i = 0; i < (len || 12); i++) out += chars[Math.floor(Math.random() * chars.length)];
     return out;
   }
-  function showTempPasswordModal(name, temp) {
+  function showTempPasswordModal(name, temp, email) {
     const existing = $("#rp-modal");
     if (existing) existing.remove();
     const ov = document.createElement("div");
@@ -18155,7 +18231,9 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     ov.innerHTML = '<div class="modal-card" style="max-width:420px"><div class="modal-head"><h3>' + icon("key", 15) + ' Password Reset</h3><button class="icon-btn" data-rp-close title="Close">&times;</button></div>' +
       '<div class="modal-body"><p class="dim">Temporary password generated for <b>' + esc(name) + '</b>. Share it with the user - it replaces their current password.</p>' +
       '<div class="row mt-8" style="gap:8px"><input class="input" id="rp-pass" type="text" readonly value="' + esc(temp) + '" style="font-family:monospace;letter-spacing:1px">' +
-      '<button class="btn btn-primary" data-rp-copy>' + icon("copy", 15) + ' Copy</button></div></div>' +
+      '<button class="btn btn-primary" data-rp-copy>' + icon("copy", 15) + ' Copy</button></div>' +
+      (email ? '<div class="mt-8">' + gmailLink(email, "Your new SEA ESTATES password", "Hi " + (String(name || "").split(/\s+/)[0] || "") + ",\n\nYour SEA ESTATES password was reset.\n\nEmail: " + email + "\nTemporary password: " + temp + "\n\nSign in at https://esrealty.tradersgag6.workers.dev and you will be asked to choose a new password straight away. If you did not ask for this, reply to this email." + emailSignature(), "Email it via Gmail") + '<p class="dim tiny mt-8">Opens Gmail with the message ready. Delete it from your Sent folder afterwards if you prefer.</p></div>' : "") +
+      '</div>' +
       '<div class="modal-foot"><button class="btn btn-ghost" data-rp-close>Done</button></div></div>';
     document.body.appendChild(ov);
     ov.addEventListener("click", e => { if (e.target === ov) closeRpModal(); });
@@ -18176,7 +18254,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     if (!(await confirmModal({ title: "Reset password", message: "Reset the password for " + name + "? A new temporary password will be generated — give it to the user in person.", confirmLabel: "Reset password" }))) return;
     if (currentUser.demo) {
       const temp = randomTempPassword();
-      showTempPasswordModal(name, temp);
+      showTempPasswordModal(name, temp, p && p.email);
       demoResetRequests = demoResetRequests.filter(r => r.user_id !== id);
       passwordResetRequests = [];
       toast("Temporary password generated");
@@ -18188,7 +18266,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     try {
       const res = await SB.rpc("admin_reset_password", { target_id: id });
       if (res.error) throw res.error;
-      showTempPasswordModal(name, String(res.data || ""));
+      showTempPasswordModal(name, String(res.data || ""), p && p.email);
       toast("Password reset successfully");
     } catch (err) {
       toast("Could not reset password: " + esc(friendlyErr(err.message || err)), "err");
@@ -18226,6 +18304,53 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       loadPasswordResets(true);
     }
   }
+  const OWNED_LABELS = { leads: "leads", listings: "listings", deals: "deals", ledger_entries: "ledger entries", ledger_accounts: "ledger accounts", construction_projects: "construction projects", cobroke: "co-broke agreements", compliance: "compliance records", ads: "ads", agents: "supervised agents" };
+  async function handOverBeforeDelete(id, name) {
+    let owned;
+    try {
+      const r = await SB.rpc("admin_records_owned", { p_user: id });
+      if (r.error) throw r.error;
+      owned = r.data || {};
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      toast(/admin_records_owned/.test(msg) && /not find|does not exist|schema cache/i.test(msg)
+        ? "Apply database update 0010 first. Deleting now would also delete this person's leads, listings and deals."
+        : "Could not check what " + name + " still owns: " + friendlyErr(msg), "err");
+      return false;
+    }
+    const parts = Object.keys(OWNED_LABELS).filter(k => Number(owned[k]) > 0).map(k => owned[k] + " " + OWNED_LABELS[k]);
+    if (!parts.length) return true;
+    const pool = remoteProfiles.filter(x => x.id !== id && x.registration_status === "approved" && ["super-admin", "broker", "agent"].indexOf(x.role) >= 0)
+      .sort((a, b) => String(a.full_name || a.email).localeCompare(String(b.full_name || b.email)));
+    if (!pool.length) { toast("There is no approved staff account to give " + name + "'s records to", "err"); return false; }
+    return new Promise(resolve => {
+      const ov = document.createElement("div");
+      ov.className = "modal-overlay"; ov.id = "ho-modal";
+      ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-labelledby", "ho-title");
+      ov.innerHTML = '<div class="modal-card"><div class="modal-head"><h3 id="ho-title">Hand over ' + esc(name) + "'s records</h3>" + '<button class="icon-btn" data-ho-cancel aria-label="Close">&times;</button></div>' +
+        '<div class="modal-body"><p>' + esc(name) + " still has " + esc(parts.join(", ")) + ". Deleting the account would delete them too. Give them to someone first.</p>" +
+        '<div class="field mt-8"><label for="ho-to">Give everything to</label><select class="input" id="ho-to">' +
+        pool.map(x => '<option value="' + esc(x.id) + '">' + esc((x.full_name || x.email) + " (" + roleLabel(x.role) + ")") + "</option>").join("") + "</select></div>" +
+        '<p class="dim tiny mt-8">Their property management book moves to a broker you choose (or to the company book for a Super Admin). The handover is written to the change log.</p></div>' +
+        '<div class="modal-foot"><button class="btn btn-ghost" data-ho-cancel>Cancel</button><button class="btn btn-primary" id="ho-ok">Hand over</button></div></div>';
+      document.body.appendChild(ov);
+      const done = v => { ov.remove(); resolve(v); };
+      ov.addEventListener("click", async e => {
+        if (e.target === ov || e.target.closest("[data-ho-cancel]")) { done(false); return; }
+        if (!e.target.closest("#ho-ok")) return;
+        const btn = ov.querySelector("#ho-ok"); btn.disabled = true; btn.textContent = "Handing over…";
+        try {
+          const r = await SB.rpc("admin_handover_records", { p_from: id, p_to: ov.querySelector("#ho-to").value });
+          if (r.error) throw r.error;
+          toast("Records handed over");
+          done(true);
+        } catch (err) {
+          btn.disabled = false; btn.textContent = "Hand over";
+          toast("Could not hand over: " + esc(friendlyErr(String((err && err.message) || err))), "err");
+        }
+      });
+    });
+  }
   async function deleteCloudAccount(id) {
     if (!canManageUsers()) { toast("You don't have permission to manage users", "err"); return; }
     if (currentUser && currentUser.id && id === currentUser.id) { toast("You can't delete your own account", "err"); return; }
@@ -18236,6 +18361,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     const linkedTenant = (pms().tenants || []).find(t => t.archived !== true && String(t.authUserId || "") === String(id));
     if (linkedTenant && !allowPmsTenantDeletion(linkedTenant)) return;
     if (p && p.registration_status !== "rejected") { toast("Only rejected accounts can be deleted", "err"); return; }
+    // A5: their leads, listings, deals and ledger would be deleted with the account. Hand them over first.
+    if (!currentUser.demo && !(await handOverBeforeDelete(id, name))) return;
     if (!(await confirmModal({ title: "Delete account", message: "Delete the account for " + name + "? This permanently removes the user, their profile, and their access. This cannot be undone.", danger: true, confirmLabel: "Delete", typeToConfirm: "DELETE" }))) return;
     if (currentUser.demo) {
       remoteProfiles = remoteProfiles.filter(x => x.id !== id);
@@ -20270,6 +20397,9 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   /* ================= TEST HELPERS ================= */
   window.__ESREALTY_TEST_HELPERS = {
     selectAllPages: selectAllPages,
+    pmsAgeing: function (leases) { return pmsAgeing(leases); },
+    listingPerformance: function (l, now) { return listingPerformance(l, now); },
+    listingOwnerSummary: listingOwnerSummary,
     txClosingMissing: txClosingMissing,
     roleMatrixCard: function () { return roleMatrixCard(); },
     listingQualityGaps: listingQualityGaps,

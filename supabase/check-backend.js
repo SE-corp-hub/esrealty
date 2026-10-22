@@ -198,6 +198,7 @@ const REST_RPCS = [
   { fn: "listing_stale_sweep", note: "stale-listing alerts, server only (migrations/0005)", pending: "0005" },
   { fn: "admin_announce", note: "staff announcements, Super Admin only (migrations/0007)", pending: "0007" },
   { fn: "lead_response_sweep", note: "lead response alerts, server only (migrations/0008)", pending: "0008" },
+  { fn: "admin_records_owned", note: "account handover check, Super Admin only (migrations/0010)", pending: "0010" },
 ];
 async function probeRpc(entry) {
   try {

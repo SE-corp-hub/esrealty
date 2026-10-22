@@ -108,6 +108,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run the database tests
         run: bash tests/db/run.sh
+      - name: Backup round trip (export, encrypt, restore, compare)
+        run: bash tests/db/backup_roundtrip.sh
 
   e2e-tests:
     name: Browser e2e (headless Chromium)
@@ -345,6 +347,8 @@ jobs:
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test phase5_app_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test phase5_app_e2e
       - name: e2e phase7_app_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test phase7_app_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test phase7_app_e2e
+      - name: e2e phase8_app_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test phase8_app_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test phase8_app_e2e
       - name: e2e market_filters_mobile_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test market_filters_mobile_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test market_filters_mobile_e2e
       - name: e2e market_index_e2e

@@ -5,6 +5,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
 // emails it themselves, so this function only saves the request as a CRM lead
 // with everything needed to rebuild the report. It sends no email.
 
+// The privacy notice the visitor agreed to (js/storefront.js, "Last updated"). Stored with each
+// consent so it is known later which wording a person accepted (B1). Change both together.
+const PRIVACY_NOTICE_VERSION = "2026-10-01";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "content-type, authorization, apikey, idempotency-key",
@@ -348,6 +351,7 @@ Deno.serve(async (req) => {
       source: "website",
       status: "new",
       consent: true,
+      consentRecord: { at: now, notice: PRIVACY_NOTICE_VERSION, channel: "value-guide" },
       origin: "storefront",
       channel: inquiryType,
       /* Label the requested service on the lead so the CRM routes it without
