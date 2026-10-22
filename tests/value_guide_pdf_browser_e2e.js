@@ -51,11 +51,17 @@ async function pagesOf(bytes) {
     var e = latin.indexOf("endstream", p);
     if (e < 0) break;
     var raw = new Uint8Array(bytes.buffer, bytes.byteOffset + p, e - p);
-    /* Trim the EOL that sits between the stream data and the "endstream"
-       keyword. Node's zlib tolerates that trailing junk; DecompressionStream
-       rejects it with "Junk found after end of compressed data". */
+    /* Read exactly /Length bytes from the stream's dictionary. Trimming trailing
+       line breaks instead (DecompressionStream rejects the EOL before "endstream"
+       as junk) broke on any page whose compressed data happens to END in byte 10
+       or 13: the checksum lost a byte, that page could not be read, and the test
+       failed on some days only, because the PDF carries the date it was made. */
+    var dict = latin.slice(Math.max(0, st - 400), st);
+    var lens = dict.match(/\/Length\s+(\d+)(?!\s+\d+\s+R)/g);
+    var len = lens ? Number(lens[lens.length - 1].replace(/\D/g, "")) : NaN;
     var slice = raw;
-    while (slice.length && (slice[slice.length - 1] === 10 || slice[slice.length - 1] === 13)) {
+    if (isFinite(len) && len > 0 && len <= raw.length) slice = raw.subarray(0, len);
+    else while (slice.length && (slice[slice.length - 1] === 10 || slice[slice.length - 1] === 13)) {
       slice = slice.subarray(0, slice.length - 1);
     }
     var body = "";
