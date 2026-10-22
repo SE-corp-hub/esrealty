@@ -19448,7 +19448,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const ltLink = lt && t.listingId ? (state.listings || []).find(x => x.id === t.listingId) : null;
     let html = '<div class="hero"><div><button class="btn btn-ghost btn-sm" data-tx-back>' + icon("back", 13) + " Back to transactions</button>" +
       '<h1 class="mt-8">' + esc(t.title || "Transaction") + "</h1><div class='row mt-8' style='gap:8px'>" + txStatusBadge(t.stage) + (t.feePaid ? '<span class="badge green">Fee received</span>' : "") + '<span class="badge blue">' + esc(t.ref || "") + "</span></div></div>" +
-      '<div class="actions"><button class="btn btn-ghost btn-sm" data-tx-print="' + esc(t.id) + '">' + icon("print", 14) + ' Print Transaction</button>' + (canManageTx ? '<button class="btn btn-ghost btn-sm" data-tx-edit="' + esc(t.id) + '">' + icon("edit", 14) + " Edit</button>" +
+      '<div class="actions"><button class="btn btn-ghost btn-sm" data-tx-print="' + esc(t.id) + '">' + icon("print", 14) + ' Print Transaction</button>' +
+      (window.ESREALTY_DOCS ? '<button class="btn btn-ghost btn-sm" data-tx-docs="' + esc(t.id) + '">' + icon("doc", 14) + " Documents</button>" : "") + (canManageTx ? '<button class="btn btn-ghost btn-sm" data-tx-edit="' + esc(t.id) + '">' + icon("edit", 14) + " Edit</button>" +
       (t.stage !== "done" ? '<button class="btn btn-primary" data-tx-advance="' + esc(t.id) + '">' + icon("arrow", 14) + " Advance to " + esc((txStageCfg(TX_STAGE_ORDER[Math.min(TX_STAGE_ORDER.indexOf(t.stage) + 1, TX_STAGE_ORDER.length - 1)]).label)) + "</button>" : "") +
       '<button class="btn btn-ghost btn-sm" data-tx-del="' + esc(t.id) + '">' + icon("trash", 14) + " Delete</button>" : "") + "</div></div>";
     if (t.voided) {
@@ -19500,6 +19501,75 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       (canManageTx ? '<button class="btn btn-primary btn-sm" data-tx-vault="' + esc(t.id) + '">' + icon("folder", 14) + " Manage Documents</button>" : "") + '</div><div class="vault-list tx-vault-list">' +
       (txDocs.length ? txDocs.map(d => vaultDocRow(d, !canManageTx)).join("") : '<div class="vault-empty compact">' + icon("folder", 28) + '<b>No transaction documents</b><span>Upload the reservation agreement, contracts, title and closing records.</span></div>') + "</div></div>";
     return html;
+  }
+  /* Deal documents (J5): offer to buy, reservation agreement, exclusive authority to sell, filled
+   * from the deal, its listing and the signed-in broker (js/doc_templates.js). Starting points,
+   * not legal advice: the dialog says to have a lawyer review them. */
+  function txDocData(t) {
+    const ls = t.listingId ? (state.listings || []).find(x => x.id === t.listingId) : null;
+    const PLx = window.ESPMSLEDGER;
+    const price = C.num(t.price, 0);
+    const cs = commissionFor(t);
+    const dp = C.num(t.dpPct, 0), dpm = C.num(t.dpMonths, 0);
+    return {
+      date: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
+      buyer_name: t.buyerName || "", seller_name: t.sellerName || "",
+      property: t.title || (ls && ls.title) || "",
+      property_address: ls ? [ls.address, ls.barangay, ls.city, ls.province].filter(Boolean).join(", ") : "",
+      title_no: (ls && ls.titleNo) || "", lot_area: ls && C.num(ls.lotArea, 0) ? String(C.num(ls.lotArea, 0)) : "", floor_area: ls && C.num(ls.floorArea, 0) ? String(C.num(ls.floorArea, 0)) : "",
+      price: price ? C.money(price) : "", price_words: price && PLx ? PLx.amountInWords(price) : "",
+      reservation_fee: C.num(t.reservationFee, 0) ? C.money(C.num(t.reservationFee, 0)) : "", reservation_date: t.reservationDate || "",
+      payment_terms: dp ? dp + "% down payment" + (dpm ? " in " + dpm + " monthly payments" : "") + "; the balance as agreed" : "",
+      offer_valid_days: "7", authority_days: "90",
+      commission_pct: cs && cs.split ? String(cs.split.grossPct) : String(commissionSettings().grossPct),
+      broker_name: (currentUser && currentUser.name) || "", broker_prc: (currentUser && currentUser.prc) || "", agency: (currentUser && currentUser.agency) || "SEA ESTATES",
+      agent_name: t.agentName || ""
+    };
+  }
+  function closeDocsModal() { const m = $("#docs-modal"); if (m) m.remove(); }
+  function openTxDocs(id, tplId) {
+    const D = window.ESREALTY_DOCS;
+    const t = transactionScope().find(x => x.id === id);
+    if (!D || !t) return;
+    const tpl = D.find(tplId || state.txDocTpl || "offer") || D.TEMPLATES[0];
+    const data = Object.assign(txDocData(t), (t.docFields || {}));
+    closeDocsModal();
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "docs-modal";
+    ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-labelledby", "docs-title");
+    ov.innerHTML = '<div class="modal-card modal-card-wide"><div class="modal-head"><h3 id="docs-title">Deal documents</h3><button class="icon-btn" data-docs-close title="Close">&times;</button></div>' +
+      '<div class="modal-body">' +
+      '<div class="notice-banner warn">' + icon("alert", 14) + " <span>A starting point written for this office, not legal advice. Have your lawyer review it before anyone signs.</span></div>" +
+      '<div class="field mt-8"><label for="docs-tpl">Document</label><select class="input" id="docs-tpl">' + D.TEMPLATES.map(x => '<option value="' + x.id + '"' + (x.id === tpl.id ? " selected" : "") + ">" + esc(x.title) + "</option>").join("") + "</select></div>" +
+      '<details class="docs-fields mt-8"' + (D.missing(tpl.id, data).length ? " open" : "") + '><summary>Details (' + D.missing(tpl.id, data).length + " to fill in)</summary>" +
+      '<div class="docs-grid">' + tpl.uses.map(k => '<div class="field"><label for="docf-' + k + '">' + esc(D.LABEL[k] || k) + '</label><input class="input" id="docf-' + k + '" data-docf="' + k + '" value="' + esc(data[k] || "") + '"></div>').join("") + "</div></details>" +
+      '<div class="print-root docs-print" id="docs-print-root"><pre class="docs-text" id="docs-text"></pre></div>' +
+      "</div>" +
+      '<div class="modal-foot"><button class="btn btn-ghost" data-docs-close>Close</button><button class="btn btn-ghost" data-docs-copy>' + icon("copy", 14) + ' Copy text</button><button class="btn btn-primary" data-docs-print>' + icon("print", 15) + " Print / Save as PDF</button></div></div>";
+    document.body.appendChild(ov);
+    const read = () => { const d = Object.assign({}, data); $$("#docs-modal [data-docf]").forEach(i => { d[i.getAttribute("data-docf")] = i.value; }); return d; };
+    const draw = () => { const el = $("#docs-text"); if (el) el.textContent = D.fill(tpl.id, read()); };
+    draw();
+    ov.addEventListener("input", e => { if (e.target.closest("[data-docf]")) draw(); });
+    ov.addEventListener("change", e => {
+      if (e.target.id === "docs-tpl") { rememberDocFields(t, read()); state.txDocTpl = e.target.value; openTxDocs(id, e.target.value); }
+    });
+    ov.addEventListener("click", async e => {
+      if (e.target === ov || e.target.closest("[data-docs-close]")) { rememberDocFields(t, read()); closeDocsModal(); return; }
+      if (e.target.closest("[data-docs-print]")) { rememberDocFields(t, read()); window.print(); return; }
+      if (e.target.closest("[data-docs-copy]")) {
+        const text = D.fill(tpl.id, read());
+        try { await navigator.clipboard.writeText(text); toast("Copied"); } catch (err) { toast("Select the text and copy it", "err"); }
+      }
+    });
+  }
+  // What was typed in is kept on the deal, so it is there next time (and on other devices).
+  function rememberDocFields(t, d) {
+    const auto = txDocData(t), keep = {};
+    Object.keys(d).forEach(k => { if (k !== "date" && String(d[k] || "") !== String(auto[k] || "")) keep[k] = d[k]; });
+    const before = JSON.stringify(t.docFields || {});
+    if (Object.keys(keep).length) t.docFields = keep; else delete t.docFields;
+    if (JSON.stringify(t.docFields || {}) !== before && txCanManage()) { t.updatedAt = new Date().toISOString(); save(); persistTransactionToCloud(t); }
   }
   function printTransaction(id) {
     const t = transactionScope().find(x => x.id === id);
@@ -19672,6 +19742,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (!txHooked) {
       txHooked = true;
       document.addEventListener("click", e => {
+        const dcs = e.target.closest("[data-tx-docs]");
+        if (dcs) { e.stopPropagation(); openTxDocs(dcs.getAttribute("data-tx-docs")); return; }
         const pr = e.target.closest("[data-tx-print]");
         if (pr) { e.stopPropagation(); printTransaction(pr.getAttribute("data-tx-print")); return; }
         const gol = e.target.closest("[data-tx-goto-listing]");
@@ -19715,21 +19787,34 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const ids = brokerageTransactions().map(t => t.id);
     return (state.commission.payouts || []).filter(p => ids.indexOf(p.transactionId) >= 0);
   }
-  function commissionSettings() { return state.commission.settings || { grossPct: 3, brokerShare: 40, agentShare: 50, referralShare: 10 }; }
+  function commissionSettings() { return state.commission.settings || { grossPct: 3, brokerShare: 40, agentShare: 50, referralShare: 10, withholdingPct: 0 }; }
+  /* Commission engine (J1): js/commission.js. A deal can carry its own rate and split
+   * (t.commission); otherwise the settings apply. A co-broke partner's share comes off the top;
+   * with no referrer, the referral share goes to the broker; withholding tax is taken from what is
+   * paid to people at the rate in the settings. */
+  const COMX = () => window.ESREALTY_COMMISSION;
   function commissionFor(t) {
     const s = commissionSettings();
-    const gross = C.num(t.price, 0) * s.grossPct / 100;
-    const brokerAmt = gross * s.brokerShare / 100;
-    const agentAmt = gross * s.agentShare / 100;
-    const referralAmt = t.referralName ? gross * s.referralShare / 100 : 0;
-    return { gross: gross, brokerAmt: brokerAmt, agentAmt: agentAmt, referralAmt: referralAmt, settings: s };
+    if (!COMX()) {
+      const gross = C.num(t.price, 0) * s.grossPct / 100;
+      return { gross: gross, brokerAmt: gross * s.brokerShare / 100, agentAmt: gross * s.agentShare / 100, referralAmt: t.referralName ? gross * s.referralShare / 100 : 0, settings: s, split: null };
+    }
+    const sp = COMX().splitFor(t, s);
+    return { gross: sp.gross, brokerAmt: sp.broker, agentAmt: sp.agent, referralAmt: sp.referral, cobrokeAmt: sp.cobroke, settings: s, split: sp };
   }
   function closedTransactions() { return brokerageTransactions().filter(t => t.stage === "doas" || t.stage === "done"); }
+  /* Payouts (J2): pending -> approved -> paid, with who and when for each step. */
   function payoutMark(id, status) {
     if (!can("payout.approve")) { toast("You don't have permission to approve payouts", "err"); return; }
-    const p = brokeragePayouts().find(x => x.transactionId === id);
-    if (p) { p.status = status; if (status === "paid") p.paidAt = new Date().toISOString(); }
-    save(); render(); toast(status === "paid" ? "Commission marked paid" : "Commission marked pending");
+    const list = state.commission.payouts || [];
+    const i = list.findIndex(x => x.transactionId === id);
+    if (i < 0 || !brokeragePayouts().some(x => x.transactionId === id)) return;
+    const who = (currentUser && (currentUser.name || currentUser.email)) || "";
+    try {
+      list[i] = COMX() ? COMX().moveTo(list[i], status, who) : Object.assign(list[i], { status: status });
+    } catch (e) { toast(e.message, "err"); return; }
+    save(); render();
+    toast({ approved: "Payout approved", paid: "Commission marked paid", pending: "Payout back to pending" }[status] || "Saved");
   }
   function ensurePayout(t) {
     if (t.stage !== "doas" && t.stage !== "done") return;
@@ -19982,25 +20067,132 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       '<div class="field"><label>Broker share (%)</label><input class="input input-num" id="com-broker" type="text" inputmode="decimal" value="' + s.brokerShare + '"></div>' +
       '<div class="field"><label>Agent share (%)</label><input class="input input-num" id="com-agent" type="text" inputmode="decimal" value="' + s.agentShare + '"></div>' +
       '<div class="field"><label>Referral share (%)</label><input class="input input-num" id="com-referral" type="text" inputmode="decimal" value="' + s.referralShare + '"></div>' +
-      "</div><button class='btn btn-primary mt-8' data-com-save>" + icon("check", 15) + " Save Settings</button></div>";
+      '<div class="field"><label>Withholding tax on payouts to people (%)</label><input class="input input-num" id="com-wht" type="text" inputmode="decimal" value="' + C.num(s.withholdingPct, 0) + '"><div class="field-hint">Taken from what agents, referrers and co-broke partners are paid. Ask your accountant which rate applies; 0 means none is shown.</div></div>' +
+      "</div>" +
+      '<p class="dim tiny mt-8">Broker, agent and referral shares must add up to 100%. When a deal has no referrer, the referral share goes to the broker. A deal can have its own rate, split and co-broke partner: use Edit split below.</p>' +
+      "<button class='btn btn-primary mt-8' data-com-save>" + icon("check", 15) + " Save Settings</button></div>";
     html += '<div class="card card-pad"><h3>Commission Register</h3>' + (rows.length ?
-      '<div class="table-wrap mt-8"><table class="data"><thead><tr><th>Transaction</th><th>Price</th><th>Gross (₱)</th><th>Broker (₱)</th><th>Agent (₱)</th><th>Referral (₱)</th><th>Status</th></tr></thead><tbody>' +
-      rows.map(r => { const p = brokeragePayouts().find(x => x.transactionId === r.t.id); return "<tr><td>" + esc(r.t.title || r.t.ref) + "</td><td>" + C.money(r.t.price) + "</td><td>" + C.money(r.c.gross) + "</td><td>" + C.money(r.c.brokerAmt) + "</td><td>" + C.money(r.c.agentAmt) + "</td><td>" + C.money(r.c.referralAmt) + "</td><td>" + (p && p.status === "paid" ? '<span class="badge green">Paid</span>' : '<span class="badge gold">Pending</span>') + "</td></tr>"; }).join("") +
+      '<div class="table-wrap mt-8"><table class="data"><thead><tr><th>Transaction</th><th>Price</th><th>Gross (₱)</th><th>Co-broke (₱)</th><th>Broker (₱)</th><th>Agent (₱)</th><th>Referral (₱)</th><th>Status</th><th></th></tr></thead><tbody>' +
+      rows.map(r => { const p = brokeragePayouts().find(x => x.transactionId === r.t.id); const sp = r.c.split; return "<tr><td>" + esc(r.t.title || r.t.ref) + (sp && sp.custom ? ' <span class="badge blue">own split</span>' : "") + (sp && !sp.ok ? '<div class="dim tiny" style="color:var(--red)">' + esc(sp.problems.join(". ")) + "</div>" : "") + "</td><td>" + C.money(r.t.price) + "</td><td>" + C.money(r.c.gross) + "</td><td>" + (r.c.cobrokeAmt ? C.money(r.c.cobrokeAmt) : "—") + "</td><td>" + C.money(r.c.brokerAmt) + "</td><td>" + C.money(r.c.agentAmt) + "</td><td>" + C.money(r.c.referralAmt) + "</td><td>" + payoutBadge(p) + "</td><td>" + (can("commission.manage") ? '<button class="btn btn-ghost btn-sm" data-com-split="' + esc(r.t.id) + '">Edit split</button>' : "") + "</td></tr>"; }).join("") +
       "</tbody></table></div>" : '<div class="dim mt-8">No closed deals yet — commissions appear automatically once a transaction reaches DOAS or Completed.</div>') + "</div>";
     return html;
+  }
+  /* Commission statement (J2): one person's deals closed in a month, with their share, withholding
+   * and net, ready to print or send. */
+  function commissionStatementCard() {
+    if (!COMX()) return "";
+    const months = []; const d = new Date();
+    for (let i = 0; i < 12; i++) { const k = new Date(d.getFullYear(), d.getMonth() - i, 1); months.push([k.getFullYear() + "-" + String(k.getMonth() + 1).padStart(2, "0"), k.toLocaleDateString("en-US", { month: "long", year: "numeric" })]); }
+    const month = state.comStMonth || months[0][0];
+    const people = COMX().peopleIn(brokerageTransactions(), commissionSettings(), month);
+    return '<div class="card card-pad mb-24" data-com-statement-card><h3>Commission statement</h3><p class="dim tiny mt-8">One person\'s deals closed in a month: their share, withholding tax and what they receive.</p>' +
+      '<div class="row mt-8" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><div class="field"><label for="com-st-month">Month</label><select class="input" id="com-st-month">' + months.map(m => '<option value="' + m[0] + '"' + (m[0] === month ? " selected" : "") + ">" + esc(m[1]) + "</option>").join("") + "</select></div>" +
+      '<div class="field"><label for="com-st-person">Person</label><select class="input" id="com-st-person">' + (people.length ? people.map(n => '<option value="' + esc(n) + '">' + esc(n) + "</option>").join("") : '<option value="">Nobody this month</option>') + "</select></div>" +
+      '<button class="btn btn-primary" data-com-statement' + (people.length ? "" : " disabled") + ">" + icon("print", 14) + " Open statement</button></div></div>";
+  }
+  function closeComModal() { const m = $("#com-modal"); if (m) m.remove(); }
+  function comModal(title, body, foot) {
+    closeComModal();
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "com-modal";
+    ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-labelledby", "com-title");
+    ov.innerHTML = '<div class="modal-card modal-card-wide"><div class="modal-head"><h3 id="com-title">' + esc(title) + '</h3><button class="icon-btn" data-com-close title="Close">&times;</button></div>' +
+      '<div class="modal-body">' + body + '</div><div class="modal-foot"><button class="btn btn-ghost" data-com-close>Close</button>' + (foot || "") + "</div></div>";
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e => {
+      if (e.target === ov || e.target.closest("[data-com-close]")) { closeComModal(); return; }
+      if (e.target.closest("[data-com-print]")) { window.print(); return; }
+      const sv = e.target.closest("[data-com-split-save]");
+      if (sv) saveDealSplit(sv.getAttribute("data-com-split-save"));
+      const rs = e.target.closest("[data-com-split-reset]");
+      if (rs) saveDealSplit(rs.getAttribute("data-com-split-reset"), true);
+    });
+    return ov;
+  }
+  function openCommissionStatement() {
+    const month = ($("#com-st-month") || {}).value, person = ($("#com-st-person") || {}).value;
+    if (!month || !person) return;
+    const st = COMX().statement(brokerageTransactions(), commissionSettings(), person, month);
+    const label = new Date(month + "-01T00:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const roleName = { agent: "Agent", referral: "Referral", cobroke: "Co-broke" };
+    const body = '<div class="print-root com-st" id="com-print-root"><div class="print-brand"><h1>Commission statement</h1><div class="dim tiny">' + esc(label) + "</div></div>" +
+      '<p><b>Paid to:</b> ' + esc(person) + "<br><b>Period:</b> " + esc(label) + "</p>" +
+      '<table class="data"><tr><th>Closed</th><th>Deal</th><th>As</th><th class="num">Price</th><th class="num">Gross</th><th class="num">Share</th><th class="num">Withholding</th><th class="num">Net</th></tr>' +
+      st.rows.map(r => "<tr><td>" + esc(r.closed) + "</td><td>" + esc(r.title) + "</td><td>" + esc(roleName[r.role] || r.role) + '</td><td class="num">' + C.money(r.price) + '</td><td class="num">' + C.money(r.gross) + '</td><td class="num">' + C.money(r.amount) + '</td><td class="num">' + C.money(r.withheld) + '</td><td class="num"><b>' + C.money(r.net) + "</b></td></tr>").join("") +
+      '<tr><td colspan="5"><b>Total</b></td><td class="num"><b>' + C.money(st.amount) + '</b></td><td class="num"><b>' + C.money(st.withheld) + '</b></td><td class="num"><b>' + C.money(st.net) + "</b></td></tr></table>" +
+      (st.withheld > 0 ? '<p class="dim tiny">Withholding tax is paid to the BIR for the payee; ask for the certificate (BIR Form 2307).</p>' : "") +
+      '<div class="print-foot"><span>Prepared by SEA ESTATES</span></div></div>';
+    comModal("Commission statement", body, '<button class="btn btn-primary" data-com-print>' + icon("print", 15) + " Print / Save as PDF</button>");
+  }
+  function openDealSplit(id) {
+    if (!can("commission.manage")) return;
+    const t = brokerageTransactions().find(x => x.id === id);
+    if (!t) return;
+    const o = t.commission || {}, s = commissionSettings();
+    const fld = (id2, label, v, ph, hint) => '<div class="field"><label for="' + id2 + '">' + label + '</label><input class="input input-num" id="' + id2 + '" type="text" inputmode="decimal" value="' + esc(v == null ? "" : String(v)) + '" placeholder="' + esc(ph) + '">' + (hint ? '<div class="field-hint">' + hint + "</div>" : "") + "</div>";
+    const body = '<p class="dim col-full">' + esc(t.title || t.ref || "") + " · " + C.money(t.price) + '. Leave a box empty to use the default (shown in grey).</p>' +
+      fld("cs-gross", "Gross commission (%)", o.grossPct, s.grossPct) + fld("cs-broker", "Broker share (%)", o.brokerShare, s.brokerShare) +
+      fld("cs-agent", "Agent share (%)", o.agentShare, s.agentShare) + fld("cs-referral", "Referral share (%)", o.referralShare, s.referralShare) +
+      '<div class="field"><label for="cs-cb-name">Co-broke partner</label><input class="input" id="cs-cb-name" value="' + esc(o.cobrokeName || "") + '" placeholder="None"></div>' +
+      fld("cs-cb-pct", "Co-broke share of the gross (%)", o.cobrokePct, "0", "Comes off the top, before the split.") +
+      '<div class="col-full" id="cs-preview"></div>';
+    comModal("Commission split for this deal", body, '<button class="btn btn-ghost" data-com-split-reset="' + esc(t.id) + '">Use the defaults</button><button class="btn btn-primary" data-com-split-save="' + esc(t.id) + '">' + icon("check", 15) + " Save split</button>");
+    const prev = () => {
+      const sp = COMX().splitFor(Object.assign({}, t, { commission: readDealSplit() }), s);
+      const el = $("#cs-preview"); if (!el) return;
+      el.innerHTML = (sp.ok ? "" : '<div class="notice-banner warn">' + esc(sp.problems.join(". ")) + "</div>") +
+        '<table class="data mt-8"><tr><th>Who</th><th class="num">Share</th><th class="num">Amount</th><th class="num">Withholding</th><th class="num">Net</th></tr>' +
+        sp.parts.map(p => "<tr><td>" + esc(p.name) + '</td><td class="num">' + p.pct + "%" + (p.ofGross ? " of gross" : "") + '</td><td class="num">' + C.money(p.amount) + '</td><td class="num">' + C.money(p.withheld) + '</td><td class="num">' + C.money(p.net) + "</td></tr>").join("") + "</table>";
+    };
+    $$("#com-modal input").forEach(i => i.addEventListener("input", prev));
+    prev();
+  }
+  function readDealSplit() {
+    const v = id => { const el = document.getElementById(id); const x = el ? String(el.value).trim() : ""; return x === "" ? undefined : C.num(x, 0); };
+    const o = { grossPct: v("cs-gross"), brokerShare: v("cs-broker"), agentShare: v("cs-agent"), referralShare: v("cs-referral"), cobrokePct: v("cs-cb-pct") };
+    const nm = (($("#cs-cb-name") || {}).value || "").trim();
+    if (nm) o.cobrokeName = nm;
+    Object.keys(o).forEach(k => { if (o[k] === undefined) delete o[k]; });
+    return o;
+  }
+  async function saveDealSplit(id, reset) {
+    const t = (state.transactions || []).find(x => x.id === id);
+    if (!t || !can("commission.manage")) return;
+    const o = reset ? {} : readDealSplit();
+    if (Object.keys(o).length) {
+      const sp = COMX().splitFor(Object.assign({}, t, { commission: o }), commissionSettings());
+      if (!sp.ok) { toast(sp.problems[0], "err"); return; }
+      t.commission = o;
+    } else delete t.commission;
+    t.updatedAt = new Date().toISOString();
+    save();
+    if (typeof persistTransactionToCloud === "function") await persistTransactionToCloud(t);
+    closeComModal(); render();
+    toast(reset ? "This deal uses the default split" : "Split saved for this deal");
+  }
+  function payoutBadge(p) {
+    const st = (p && p.status) || "pending";
+    return st === "paid" ? '<span class="badge green">Paid' + (p.paidAt ? " · " + esc(new Date(p.paidAt).toLocaleDateString()) : "") + "</span>"
+      : st === "approved" ? '<span class="badge blue">Approved</span>' : '<span class="badge gold">Pending</span>';
+  }
+  function payoutActions(p) {
+    if (!can("payout.approve")) return "";
+    const id = esc(p.transactionId), b = (st, label, cls) => '<button class="btn ' + (cls || "btn-ghost") + ' btn-sm" data-payout="' + id + '" data-payout-status="' + st + '">' + label + "</button>";
+    const st = p.status || "pending";
+    return '<div class="row" style="gap:6px;flex-wrap:wrap">' + (st === "pending" ? b("approved", "Approve", "btn-primary") : st === "approved" ? b("paid", "Mark paid", "btn-primary") + b("pending", "Back to pending") : b("approved", "Undo paid")) + "</div>";
   }
   function adminPayouts() {
     const transactions = brokerageTransactions();
     const payouts = brokeragePayouts().slice().reverse();
     const missings = transactions.filter(t => (t.stage === "doas" || t.stage === "done") && !brokeragePayouts().find(x => x.transactionId === t.id));
     const pendingCount = payouts.filter(p => p.status === "pending").length;
-    let html = '<div class="card card-pad"><div class="row" style="gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap"><h3>Payout History</h3>' +
+    let html = commissionStatementCard() + '<div class="card card-pad"><div class="row" style="gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap"><h3>Payout History</h3>' +
       '<button class="btn btn-primary btn-sm" data-payouts-generate' + (missings.length ? "" : " disabled") + '>' + icon("play", 13) + " Generate pending payouts" + (missings.length ? " (" + missings.length + ")" : "") + "</button></div>" +
       (pendingCount ? '<div class="dim tiny mt-4">' + pendingCount + " payout(s) still pending — mark them paid individually below.</div>" : "") +
       (payouts.length ?
-      '<div class="table-wrap mt-8"><table class="data"><thead><tr><th>Transaction</th><th>Gross commission</th><th>Status</th><th>Mark</th></tr></thead><tbody>' +
-      payouts.map(p => { const t = transactions.find(x => x.id === p.transactionId); const c = t ? commissionFor(t) : { gross: 0 }; return "<tr><td>" + esc((t && t.title) || p.transactionId) + "</td><td>" + C.money(c.gross) + "</td><td>" + (p.status === "paid" ? '<span class="badge green">Paid' + (p.paidAt ? " · " + new Date(p.paidAt).toLocaleDateString() : "") + "</span>" : '<span class="badge gold">Pending</span>') + "</td><td>" +
-        (p.status === "paid" ? '<button class="btn btn-ghost btn-sm" data-payout="' + esc(p.transactionId) + '" data-payout-status="pending">Revert</button>' : '<button class="btn btn-primary btn-sm" data-payout="' + esc(p.transactionId) + '" data-payout-status="paid">Mark paid</button>') + "</td></tr>"; }).join("") +
+      '<div class="table-wrap mt-8"><table class="data"><thead><tr><th>Transaction</th><th>Gross commission</th><th>Status</th><th>Next step</th></tr></thead><tbody>' +
+      payouts.map(p => { const t = transactions.find(x => x.id === p.transactionId); const c = t ? commissionFor(t) : { gross: 0 }; return "<tr><td>" + esc((t && t.title) || p.transactionId) + "</td><td>" + C.money(c.gross) + "</td><td>" + payoutBadge(p) +
+        (p.approvedBy ? '<div class="dim tiny">Approved by ' + esc(p.approvedBy) + (p.approvedAt ? ", " + esc(new Date(p.approvedAt).toLocaleDateString()) : "") + "</div>" : "") + "</td><td>" + payoutActions(p) + "</td></tr>"; }).join("") +
       "</tbody></table></div>" : '<div class="dim mt-8">No payouts yet.</div>') + "</div>";
     return html;
   }
@@ -20120,10 +20312,11 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (!can("commission.manage")) { toast("You don't have permission to edit commission settings", "err"); return; }
     const s = commissionSettings();
     const $n = id => { const el = document.getElementById(id); return el ? C.num(el.value, 0) : 0; };
-    s.grossPct = $n("com-gross") || 3;
-    s.brokerShare = $n("com-broker") || 0;
-    s.agentShare = $n("com-agent") || 0;
-    s.referralShare = $n("com-referral") || 0;
+    const next = { grossPct: $n("com-gross") || 3, brokerShare: $n("com-broker") || 0, agentShare: $n("com-agent") || 0, referralShare: $n("com-referral") || 0, withholdingPct: $n("com-wht") || 0 };
+    const problems = COMX() ? COMX().checkShares(next) : [];
+    if (problems.length) { toast(problems[0], "err"); return; }
+    Object.assign(s, next);
+    state.commission.settings = s;
     save(); render(); toast("Commission settings saved");
   }
   function adminValueGuideSave() {
@@ -20150,6 +20343,9 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   function bindAdmin() {
     if (!adminHooked) {
       adminHooked = true;
+      document.addEventListener("change", e => {
+        if (e.target && e.target.id === "com-st-month") { state.comStMonth = e.target.value; render(); }
+      });
       document.addEventListener("click", e => {
         const tb = e.target.closest("[data-admin-tab]");
         if (tb) {
@@ -20165,6 +20361,9 @@ const ccBtn = e.target.closest("[data-cc-calc]");
         if (cs) { adminComSave(); return; }
         const vg = e.target.closest("[data-vg-save]");
         if (vg) { adminValueGuideSave(); return; }
+        const csb = e.target.closest("[data-com-split]");
+        if (csb) { openDealSplit(csb.getAttribute("data-com-split")); return; }
+        if (e.target.closest("[data-com-statement]")) { openCommissionStatement(); return; }
         const po = e.target.closest("[data-payout]");
         if (po) { payoutMark(po.getAttribute("data-payout"), po.getAttribute("data-payout-status")); return; }
         const pgen = e.target.closest("[data-payouts-generate]");

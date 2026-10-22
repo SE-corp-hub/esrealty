@@ -21,7 +21,7 @@
  * Deploy note: bump VERSION when you ship. The activate handler deletes every
  * cache not named here, so a bump evicts the previous generation.
  */
-const VERSION = "esrealty-pages-v63";
+const VERSION = "esrealty-pages-v64";
 const SHELL_CACHE = VERSION + "-shell";
 const ASSET_CACHE = VERSION + "-asset";
 const VENDOR_CACHE = VERSION + "-vendor";
@@ -51,6 +51,8 @@ const SHELL = [
   "./js/pms_cloud.js",
   "./js/pms_ledger.js",
   "./js/attribution.js",
+  "./js/commission.js",
+  "./js/doc_templates.js",
   "./js/estimator.js",
   "./js/value_guide_tax.js",
   "./js/value_guide_pdf.js",
