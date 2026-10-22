@@ -2531,3 +2531,6 @@ a.btn, a.btn:hover { text-decoration: none; }
 @media print { .print-root.docs-print { max-height: none !important; overflow: visible !important; border: 0 !important; padding: 0 !important; } .docs-text { font-size: 12pt; } }
 .chip.chip-warn { border-color: var(--gold); color: var(--gold); }
 .pms-meter { border: 1px dashed var(--stroke); border-radius: 10px; padding: 8px 12px; }
+/* Listing editor: trust details shown to buyers (H9), one per line */
+.ls-trust-chk { display: flex; align-items: flex-start; padding-top: 8px; }
+.ls-trust-chk input { margin-top: 3px; flex: none; }

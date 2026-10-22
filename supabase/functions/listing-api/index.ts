@@ -295,6 +295,9 @@ const listingInput = (body: JsonRecord, existing: JsonRecord | null, ownerId: st
     licenseToSell: stringValue(details.license_to_sell ?? oldPayload.licenseToSell, 180, "details.license_to_sell"),
     // The Property Management unit a rental listing was made from ("List for rent", roadmap I9).
     pmsUnitId: stringValue(details.pms_unit_id ?? oldPayload.pmsUnitId, 80, "details.pms_unit_id"),
+    // Trust badges on the listing page (H9): exclusive authority, documents seen by the agent.
+    exclusive: details.exclusive === undefined ? oldPayload.exclusive === true : details.exclusive === true,
+    docsChecked: details.docs_checked === undefined ? oldPayload.docsChecked === true : details.docs_checked === true,
     hoaDues: numberValue(details.hoa_dues, "details.hoa_dues", 0, 99_999_999.99, Number(oldPayload.hoaDues || 0)),
     condoDues: numberValue(details.condo_dues, "details.condo_dues", 0, 99_999_999.99, Number(oldPayload.condoDues || 0)),
     videoUrl,
@@ -391,6 +394,7 @@ const getListing = async (req: Request, id: string, admin: SupabaseClient, peppe
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new HttpError(404, "Listing not found");
+  const details = await publicDetails(admin, id, (data as JsonRecord).agent_id as string | null);
   // One view per visitor per listing per day: the limiter remembers who already counted.
   const viewKey = await sha256(`${pepper}:view:${id}:${callerAddress(req)}`);
   const { data: firstToday, error: seenError } = await admin.rpc("consume_listing_inquiry_rate_limit", {
@@ -403,7 +407,30 @@ const getListing = async (req: Request, id: string, admin: SupabaseClient, peppe
     const { error: viewError } = await admin.rpc("increment_public_listing_view", { p_listing_id: id });
     if (viewError) console.error(viewError);
   }
-  return json({ data });
+  return json({ data: { ...(data as JsonRecord), details } });
+};
+
+// Trust details for a listing page (roadmap H9): the DHSUD licence to sell, whether the listing is
+// exclusive and its documents were checked, and the agent's PRC licence number, which the Real
+// Estate Service Act asks to show in advertising. Read from the listing's saved record; a failure
+// leaves them out rather than failing the page.
+const publicDetails = async (admin: SupabaseClient, id: string, agentId: string | null) => {
+  const out: JsonRecord = {};
+  try {
+    const { data: row } = await admin.from("shared_listings").select("payload").eq("id", id).maybeSingle();
+    const p = (row?.payload && typeof row.payload === "object" ? row.payload : {}) as JsonRecord;
+    if (typeof p.licenseToSell === "string" && p.licenseToSell.trim()) out.license_to_sell = p.licenseToSell.trim().slice(0, 180);
+    if (p.exclusive === true) out.exclusive = true;
+    if (p.docsChecked === true) out.docs_checked = true;
+    if (agentId) {
+      const { data: prof } = await admin.from("profiles").select("prc").eq("id", agentId).maybeSingle();
+      const prc = String(prof?.prc || "").trim();
+      if (prc) out.agent_prc = prc.slice(0, 40);
+    }
+  } catch (e) {
+    console.error("listing details", id, (e as Error).message);
+  }
+  return out;
 };
 
 // Change log for edits made through this API. Listings are saved with the server key, so the

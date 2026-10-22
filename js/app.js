@@ -14287,6 +14287,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         '<div class="field-hint">JPG, PNG or WebP - photos are compressed automatically, so any camera photo works. The first photo is the cover shown on listings and cards. Uploads are public.</div></div>' +
       '<div class="field col-full mt-8"><label>Virtual tour / video URL</label>' + lsTxt("ls-video", l.videoUrl) + "</div>" +
       '<div class="field col-full mt-8"><label>Featured listing</label><label class="ms-chk"><input type="checkbox" id="ls-feat"' + (l.featured ? " checked" : "") + "> Show as featured</label><div class='field-hint'>Featured slots require at least one photo.</div></div>" +
+      '<div class="field col-full mt-8"><label>Shown to buyers</label>' +
+        '<label class="ms-chk ls-trust-chk"><input type="checkbox" id="ls-exclusive"' + (l.exclusive ? " checked" : "") + "> Exclusive: we hold a signed authority to sell</label>" +
+        '<label class="ms-chk ls-trust-chk"><input type="checkbox" id="ls-docs-checked"' + (l.docsChecked ? " checked" : "") + "> Documents checked: we have seen the title and tax declaration</label>" +
+        '<div class="field-hint">These show as badges on the public listing, with the PRC number from your profile. Tick only what is true.</div></div>' +
       '<div class="field col-full mt-8"><label>Publication</label><label class="ms-chk"><input type="checkbox" id="ls-published"' + (l.isPublished ? " checked" : "") + '> Publish on the public property website</label><div class="field-hint">Leave unchecked to keep this listing as a private draft.</div></div>' +
       '<div class="field col-full mt-8"><label>Pin on map</label>' +
         '<div class="row" style="align-items:center;gap:8px"><input class="input" id="ls-map-q" type="text" placeholder="Search address / place" style="flex:1"><button class="btn btn-ghost btn-sm" id="ls-map-btn" type="button">' + icon("search", 14) + " Find</button></div>" +
@@ -14363,6 +14367,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     rec.videoUrl = $v("ls-video");
     rec.featured = $("#ls-feat") ? $("#ls-feat").checked : false;
     rec.isPublished = $("#ls-published") ? $("#ls-published").checked : false;
+    rec.exclusive = $("#ls-exclusive") ? $("#ls-exclusive").checked : rec.exclusive === true;
+    rec.docsChecked = $("#ls-docs-checked") ? $("#ls-docs-checked").checked : rec.docsChecked === true;
     if (rec.featured && !(rec.photos && rec.photos.length)) {
       toast("Featured listings need at least one photo — attach a photo or untick Featured", "err");
       return;
@@ -14891,6 +14897,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         developer: rec.developer || "",
         license_to_sell: rec.licenseToSell || "",
         pms_unit_id: rec.pmsUnitId || "",
+        exclusive: rec.exclusive === true,
+        docs_checked: rec.docsChecked === true,
         hoa_dues: Number(rec.hoaDues || 0),
         condo_dues: Number(rec.condoDues || 0),
         video_url: rec.videoUrl || ""
@@ -21155,6 +21163,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     leadDuplicateGroups: function () { return leadDuplicateGroups(); },
     teamTargets: function () { return { cfg: targetsCfg, state: targetsState, rows: teamTargetsRows() }; },
     listingPerformance: function (l, now) { return listingPerformance(l, now); },
+    listingToApi: function (rec) { return listingToApi(rec); },
     listingOwnerSummary: listingOwnerSummary,
     txClosingMissing: txClosingMissing,
     roleMatrixCard: function () { return roleMatrixCard(); },
