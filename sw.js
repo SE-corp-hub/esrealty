@@ -51,6 +51,7 @@ const SHELL = [
   "./js/pms_cloud.js",
   "./js/pms_ledger.js",
   "./js/attribution.js",
+  "./js/commission.js",
   "./js/estimator.js",
   "./js/value_guide_tax.js",
   "./js/value_guide_pdf.js",
