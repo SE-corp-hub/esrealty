@@ -421,7 +421,7 @@ body .tab.active { background: var(--accent-dim); color: var(--accent); border-c
 .hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
 .hero h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; }
 .hero p { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
-.hero .actions { display: flex; gap: 10px; }
+.hero .actions { display: flex; gap: 10px; flex-wrap: wrap; max-width: 100%; } /* wraps instead of pushing the page wider when a screen has many actions */
 
 /* ============ KPI ============ */
 body .grid { display: grid; gap: 16px; }

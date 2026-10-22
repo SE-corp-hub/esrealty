@@ -23,7 +23,7 @@ const visible = el => !!el && el.getBoundingClientRect().width > 0 && el.getBoun
       check("mobile: all advanced inputs usable when open", more.open && ["state", "property_type", "offer_type"].every(n => { const r = form.querySelector('[name="' + n + '"]').getBoundingClientRect(); return r.width >= 100 && r.height >= 44; }));
     } else {
       check("desktop: disclosure hidden, all five filters visible", more.hidden && ["city", "state", "property_type", "offer_type", "max_price"].every(n => visible(form.querySelector('[name="' + n + '"]'))));
-      check("desktop: original keyboard/visual field order", [...form.children].filter(el => el.tagName === "LABEL").map(el => el.querySelector("[name]").name).join(",") === "city,state,property_type,offer_type,max_price");
+      check("desktop: original keyboard/visual field order", [...form.children].filter(el => el.tagName === "LABEL").map(el => el.querySelector("[name]").name).join(",") === "q,city,state,property_type,offer_type,max_price"); // keyword (H2) on its own row first
     }
 
     await go("#/search?state=Batangas&property_type=house-and-lot&offer_type=sale");

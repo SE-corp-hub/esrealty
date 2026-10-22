@@ -1035,6 +1035,9 @@
    * clearFilters(). Adding a filter means adding one line here.
    * ------------------------------------------------------------------ */
   var FILTERS = [
+    /* Keyword search (H2): the listing API matches every word in the title, description,
+       address, barangay, city or reference. It sits on its own full-width row. */
+    { name: "q", label: "Keyword", kind: "text", placeholder: "e.g. pool, corner lot, near school", wide: true },
     { name: "city", label: "Location", kind: "text", placeholder: "City or municipality" },
     { name: "state", label: "State / province", kind: "text", placeholder: "e.g. Batangas" },
     { name: "property_type", label: "Property type", kind: "select", options: [
@@ -1096,8 +1099,8 @@
     var body = FILTERS.map(function (f) {
       var value = params.get(f.name) || "";
       if (f.kind === "text") {
-        return '<label><span>' + esc(f.label) + '</span><input name="' + esc(f.name) + '" value="' + esc(value) +
-          '" placeholder="' + esc(f.placeholder || "") + '"></label>';
+        return '<label' + (f.wide ? ' class="sf-search-wide"' : "") + '><span>' + esc(f.label) + '</span><input name="' + esc(f.name) + '" value="' + esc(value) +
+          '" placeholder="' + esc(f.placeholder || "") + '"' + (f.wide ? ' type="search" maxlength="120"' : "") + '></label>';
       }
       var opts = f.options.map(function (o) {
         return '<option value="' + esc(o[0]) + '"' + (value === o[0] ? " selected" : "") + '>' + esc(o[1]) + '</option>';
