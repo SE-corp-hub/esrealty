@@ -86,6 +86,17 @@ footer.ft a{display:inline-flex;align-items:center;min-height:44px;color:var(--s
 .hud button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
 .hud b{font-weight:700;font-size:14.5px;min-width:84px;text-align:center;font-variant-numeric:tabular-nums;color:var(--soft)}
 .hud svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.menu-btn{display:none;flex-direction:column;justify-content:center;gap:5px;width:44px;height:44px;padding:0 11px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.86);cursor:pointer}
+.menu-btn span{display:block;height:2px;border-radius:2px;background:var(--ink);transition:transform .25s var(--ease),opacity .2s}
+.menu-btn[aria-expanded="true"] span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.menu-btn[aria-expanded="true"] span:nth-child(2){opacity:0}
+.menu-btn[aria-expanded="true"] span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+.menu-panel{position:fixed;z-index:29;left:0;right:0;top:calc(68px + env(safe-area-inset-top,0px));padding:8px max(16px,env(safe-area-inset-right,0px)) 14px max(16px,env(safe-area-inset-left,0px));background:rgba(251,248,244,.97);border-bottom:1px solid var(--line);box-shadow:0 18px 40px -24px rgba(20,17,15,.35);display:flex;flex-direction:column}
+.menu-panel[hidden]{display:none}
+.menu-panel a{display:flex;align-items:center;min-height:48px;font-size:17px;font-weight:600;color:var(--soft);text-decoration:none;border-bottom:1px solid var(--line)}
+.menu-panel a.btn{margin-top:12px;border-bottom:0;color:#fff;justify-content:center}
+.menu-panel a[aria-current="page"]{color:var(--accent)}
+.hud{transition:opacity .3s var(--ease),transform .3s var(--ease)}
 .dots{position:fixed;z-index:30;right:max(18px,env(safe-area-inset-right,0px));top:50%;transform:translateY(-50%);display:none;flex-direction:column}
 .dots button{width:44px;height:30px;border:0;background:transparent;cursor:pointer;display:grid;place-items:center;padding:0}
 .dots i{display:block;width:9px;height:9px;border-radius:50%;background:rgba(20,17,15,.28);transition:transform .3s var(--ease),background .3s}
@@ -95,7 +106,6 @@ footer.ft a{display:inline-flex;align-items:center;min-height:44px;color:var(--s
 @media (max-width:999px){
  .scrim{background:linear-gradient(0deg,rgba(251,248,244,.95) 0%,rgba(251,248,244,.66) 42%,rgba(251,248,244,0) 70%)}
  .scrim-r{display:none}
- .top nav a:not(.btn){display:none}
  .hero{min-height:0;padding-top:calc(96px + env(safe-area-inset-top,0px))}
  .hero .wrap{min-height:0;align-items:flex-start}
  .hero-copy{margin-top:38svh}
@@ -104,7 +114,12 @@ footer.ft a{display:inline-flex;align-items:center;min-height:44px;color:var(--s
  .end .wrap{grid-template-columns:minmax(0,1fr)}
  .end-col{grid-column:1}
  .hud{left:max(16px,env(safe-area-inset-left,0px));justify-content:space-between}
+ .menu-btn{display:flex;margin-left:auto}
+ .top nav{display:none}
+ /* The tour bar waits until the hero's buttons have scrolled away, so it never covers them. */
+ .cta-visible .hud{opacity:0;transform:translateY(16px);pointer-events:none;visibility:hidden}
 }
+@media (max-width:999px) and (prefers-reduced-motion:reduce){.cta-visible .hud{transform:none}}
 @media (prefers-reduced-motion:reduce){
  *,*::before,*::after{animation:none!important;transition:none!important}
  html{scroll-behavior:auto}
@@ -124,7 +139,12 @@ footer.ft a{display:inline-flex;align-items:center;min-height:44px;color:var(--s
 <a href="./#/home">Home</a><a href="./#/search">Properties</a><a class="on" href="#top" aria-current="page">Services</a><a href="./#/project-bt">Project B.T</a>
 <a class="btn sm" href="./#/home">Free Value Guide</a>
 </nav>
+<button type="button" class="menu-btn" id="menuBtn" aria-expanded="false" aria-controls="menuPanel" aria-label="Open menu"><span></span><span></span><span></span></button>
 </header>
+<nav class="menu-panel" id="menuPanel" aria-label="Menu" hidden>
+<a href="./#/home">Home</a><a href="./#/search">Properties</a><a href="#top" aria-current="page">Services</a><a href="./#/project-bt">Project B.T</a><a href="./#/privacy">Privacy notice</a>
+<a class="btn" href="./#/home">Free Value Guide</a>
+</nav>
 
 <main>
 <section class="hero" id="top">
@@ -226,6 +246,31 @@ footer.ft a{display:inline-flex;align-items:center;min-height:44px;color:var(--s
 <button type="button" id="nextBtn" aria-label="Next service"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
 <button type="button" id="pauseBtn" aria-pressed="false">Pause motion</button>
 </div>
+<script>
+/* Phone menu, and the tour bar staying out of the way of the hero's buttons. Independent of the
+   3D scene, so both work when WebGL is off. */
+(function () {
+  var root = document.documentElement;
+  var act = document.querySelector('.hero .actions');
+  if (act && 'IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) { root.classList.toggle('cta-visible', es[es.length - 1].isIntersecting); }).observe(act);
+  }
+  var btn = document.getElementById('menuBtn'), panel = document.getElementById('menuPanel');
+  if (!btn || !panel) return;
+  function setOpen(open, focusBack) {
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    panel.hidden = !open;
+    if (open) { var first = panel.querySelector('a'); if (first) first.focus(); }
+    else if (focusBack) btn.focus();
+  }
+  btn.addEventListener('click', function () { setOpen(btn.getAttribute('aria-expanded') !== 'true'); });
+  panel.addEventListener('click', function (e) { if (e.target.closest('a')) setOpen(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) setOpen(false, true); });
+  document.addEventListener('click', function (e) { if (!panel.hidden && !panel.contains(e.target) && !btn.contains(e.target)) setOpen(false); });
+  window.addEventListener('resize', function () { if (window.innerWidth >= 1000 && !panel.hidden) setOpen(false); });
+})();
+</script>
 <script src="vendor/three/three.min.js" defer></script>
 <script>
 function boot() {
