@@ -195,7 +195,7 @@ const BP = 1024;
         chk("accordion-toggles", first.open === !before, "open=" + first.open);
         chk("accordion-keeps-panel-open", panel.classList.contains("open"),
           "tapping an accordion header must not dismiss the menu");
-        const rows = first.querySelectorAll(".sf-menu-acc-body a");
+        const rows = first.querySelectorAll(".sf-menu-acc-body a:not(.sf-drop-all)");
         chk("accordion-has-children", rows.length === 9, "services=" + rows.length);
         /* Touch targets */
         let small = 0;

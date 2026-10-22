@@ -2816,6 +2816,7 @@ body.sf-menu-open .sf-sticky { display: none; }
 
 /* 8: home - services beyond the first four open on request */
 .sf-site .sf-services-more { max-width: var(--sf-maxw); margin: 14px auto 0; }
+.sf-site .sf-services-tour { max-width: var(--sf-maxw); margin: 12px auto 0; }
 .sf-site .sf-services-more > summary {
   display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 22px; cursor: pointer;
   border: 1px solid var(--sf-accent-line); border-radius: 999px; background: #FFFFFF;
