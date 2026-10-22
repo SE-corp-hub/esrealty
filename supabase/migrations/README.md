@@ -55,6 +55,9 @@ change log outlives accounts, old-data clean-up that is off until switched on) f
 `0011_reminders.sql` (viewing reminders at the time picked on the calendar entry, licence and
 permit renewal reminders from Compliance; sent by the `reminders` job once `REMINDER_ALERTS` is
 on) follows `0010`.
+`0012_duplicate_leads.sql` (a lead from the website, Value Guide or Facebook with the same phone or
+email as an earlier lead is marked as a possible duplicate and goes to the earlier lead's person;
+staff may read the team targets) follows `0011`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses
