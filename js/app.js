@@ -19,6 +19,17 @@
   /* CRM Autopilot "What next" reasoning (js/agent_next.js) — falls back inline
    * so the raw harness and cold loads never depend on the script. */
   const NEXT = window.ESREALTY_NEXT || null;
+  /* Days from today to a lead's follow-up date (negative = overdue), or null when
+   * it is not a date. The shared reader lives in js/agent_next.js. */
+  function followUpDays(value) {
+    if (NEXT && NEXT.followUpDays) return NEXT.followUpDays(value);
+    const m = /^(\d{4})-(\d{2})-(\d{2})(?:$|[T ])/.exec(String(value == null ? "" : value).trim());
+    if (!m) return null;
+    const due = new Date(+m[1], +m[2] - 1, +m[3]);
+    if (isNaN(due) || due.getMonth() !== +m[2] - 1) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return Math.round((due - today) / 86400000);
+  }
   var pfPendingCollectProof = null;
   let sbReadyResolve = null;
   const sbReadyPromise = new Promise(function (resolve) { sbReadyResolve = resolve; });
@@ -1508,7 +1519,12 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
         emailMatch.data.forEach(u => { if (!(state.presellUnits || []).some(x => x.id === u.id)) (state.presellUnits = state.presellUnits || []).push(u); });
       }
       const inq = await SB.from("listing_inquiries").select("id,listing_id,full_name,status,created_at").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(10);
-      state.portalInquiries = inq.error ? [] : (inq.data || []).map(r => ({ id: r.id, listingId: r.listing_id, status: r.status, created_at: r.created_at, title: r.listing_id }));
+      const inqTitles = {};
+      if (!inq.error && (inq.data || []).length) {
+        const lt = await SB.from("shared_listings").select("id,title").in("id", Array.from(new Set(inq.data.map(r => r.listing_id))));
+        if (!lt.error) (lt.data || []).forEach(r => { inqTitles[r.id] = r.title; });
+      }
+      state.portalInquiries = inq.error ? [] : (inq.data || []).map(r => ({ id: r.id, listingId: r.listing_id, status: r.status, created_at: r.created_at, title: inqTitles[r.listing_id] || r.listing_id }));
       const saved = await SB.from("saved_listings").select("listing_id, created_at, shared_listings(title, price, city)").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(12);
       state.portalSaved = saved.error ? [] : (saved.data || []).map(r => ({ id: r.listing_id, listingId: r.listing_id, title: r.shared_listings ? r.shared_listings.title : r.listing_id, price: r.shared_listings ? r.shared_listings.price : null, city: r.shared_listings ? r.shared_listings.city : "" }));
     } catch (e) { toast("Could not load your portal: " + esc(friendlyErr(e.message)), "err"); }
@@ -5014,7 +5030,7 @@ function bindPerView() {
 
   function dealAI(m, rec, raw) {
     const loc = rec.loc;
-    let html = '<div class="ai-banner mb-24">' + icon("spark", 14) + ' <span><b>AI badge:</b> These scores are model estimates computed from your inputs with documented heuristics. In production they come from OpenAI function-calling over live Google Places data. Not financial advice.</span></div>';
+    let html = '<div class="ai-banner mb-24">' + icon("spark", 14) + ' <span><b>How these scores work:</b> They are calculated from the details you entered, using fixed formulas and local benchmarks. No AI model is involved. Treat them as estimates, not financial advice.</span></div>';
     html += '<div class="card card-pad mb-24"><h3 class="mb-16">' + icon("target", 15) + ' Location &amp; Demand Scores <span class="badge ai">AI</span></h3><div class="ai-score-grid">' +
       scoreRing("Location", loc.locationScore) + scoreRing("Demand", loc.demandScore) + scoreRing("Commercial", loc.commercialScore) + scoreRing("Investment", loc.investmentScore) +
       '</div><div class="mt-16" style="display:flex;flex-direction:column;gap:10px">' +
@@ -5543,7 +5559,6 @@ function bindPerView() {
     const postedEntries = (state.cashEntries || []).filter(e=> e.status==="posted");
     const cashIn = postedEntries.filter(e=>e.direction==="in").reduce((s,e)=> s+Number(e.amount||0),0);
     const cashOut = postedEntries.filter(e=>e.direction==="out").reduce((s,e)=> s+Number(e.amount||0),0);
-    const receivables = (state.presellPayments || state.presell_payments || []).length ? 0 : 0; // placeholder
     let html = '<div class="hero"><div><h1>Portfolio</h1><p>Investor control center — assets, cash, construction, preselling.' + (pfCloudWiring.loaded ? ' <span class="badge blue" data-pf-cloud>Cloud synced</span>' : (pfCloud() && pfCloudWiring.missing ? ' <span class="badge gold" data-pf-cloud>Local — cloud tables not found</span>' : '')) + '</p></div><div class="actions"><button class="btn btn-primary" data-view="wizard">' + icon("plus", 15) + " New Investment</button></div></div>";
     if (pfRO) html += '<div class="notice-banner pf-ro-banner">' + icon("shield", 13) + ' <span>Read-only — posting, reversing, voiding, imports, and construction/proof management require <b>admin / super-admin</b>.</span></div>';
     html += '<div class="grid grid-4 mb-24">' +
@@ -7212,7 +7227,7 @@ if(editId){
 
   /* ================= ASSISTANT ================= */
   function renderAssistant() {
-    let html = '<div class="hero"><div><h1>AI Assistant</h1><p>Ask about the loaded property. AI answers use your saved data.</p></div></div>';
+    let html = '<div class="hero"><div><h1>AI Assistant</h1><p>Ask about the loaded property. Answers are worked out from your saved numbers with fixed rules, not by a live AI model.</p></div></div>';
     html += '<div class="two-col"><div class="card card-pad"><h3 class="mb-16">' + icon("chat", 15) + ' Chat</h3><div class="chat-log" id="chat-log">' +
       '<div class="msg bot">Hi! I can analyze the loaded property. Ask me about ROI, cash required, risk, location, negotiation price, or the overall grade.</div></div>' +
       '<div class="row mt-16"><input class="input grow" id="chat-in" placeholder="e.g. What is the projected ROI?" style="font-family:var(--font-sans)"><button class="btn btn-primary" id="chat-send">Send</button></div>' +
@@ -7232,13 +7247,9 @@ if(editId){
     const reply = q => {
       const msg = document.createElement("div"); msg.className = "msg user"; msg.textContent = q; log.appendChild(msg);
       const bot = document.createElement("div"); bot.className = "msg bot";
-      bot.innerHTML = "<div>Thinking…</div>";
+      const a = state.current ? C.assistantAnswer(q, state.current) : "Load a property first so I can analyze it.";
+      bot.innerHTML = esc(a) + '<div class="dim tiny mt-8">Automated analysis for informational purposes only — not financial, legal, or investment advice.</div>';
       log.appendChild(bot); log.scrollTop = log.scrollHeight;
-      setTimeout(() => {
-        const a = state.current ? C.assistantAnswer(q, state.current) : "Load a property first so I can analyze it.";
-        bot.innerHTML = esc(a) + '<div class="dim tiny mt-8">Automated analysis for informational purposes only — not financial, legal, or investment advice.</div>';
-        log.scrollTop = log.scrollHeight;
-      }, 500);
     };
     if (send) send.addEventListener("click", () => { const q = inp.value.trim(); if (!q) return; inp.value = ""; reply(q); });
     if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter" && send) send.click(); });
@@ -13467,7 +13478,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const can = listingCanManage();
     const opt = (opts, val, allLabel) => '<option value="">' + esc(allLabel || "All") + "</option>" + opts.map(o => '<option value="' + o[0] + '"' + (val === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>").join("");
     const cityOpts = '<option value="">All cities</option>' + lsCityList().map(c => '<option value="' + esc(c) + '"' + (f.city === c ? " selected" : "") + ">" + esc(c) + "</option>").join("");
-    const openInquiries = (state.portalInquiries || []).filter(x => (x.status || "new") !== "converted").length;
+    const openInquiries = (state.portalInquiries || []).filter(x => (x.status || "new") !== "converted" && !x.crmLeadId).length;
     let html = '<div class="hero"><div><h1>Listings</h1><p>Browse the brokerage portfolio — filter, save favorites, and manage property listings.</p></div><div class="actions">' +
       (can ? '<button class="btn btn-primary" data-ls-new>' + icon("plus", 15) + " Add Listing</button>" : "") +
       moreActions(
@@ -14086,13 +14097,13 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (!SB || !currentUser || !currentUser.id) return;
       const mine = {};
       (state.listings || []).forEach(l => { mine[l.id] = l; });
-      const res = await SB.from("listing_inquiries").select("id,listing_id,full_name,phone,email,message,status,created_at").order("created_at", { ascending: false }).limit(50);
+      const res = await SB.from("listing_inquiries").select("id,listing_id,full_name,phone,email,message,status,created_at,crm_lead_id").order("created_at", { ascending: false }).limit(50);
       if (res.error) return;
       const rows = (res.data || []).filter(r => mine[r.listing_id]).map(r => ({
         id: r.id, listingId: r.listing_id,
         title: (mine[r.listing_id] || {}).title || r.listing_id,
         full_name: r.full_name || "", phone: r.phone || "", email: r.email || "",
-        message: r.message || "", status: r.status || "new", created_at: r.created_at
+        message: r.message || "", status: r.status || "new", created_at: r.created_at, crmLeadId: r.crm_lead_id || ""
       }));
       const have = new Set(rows.map(r => r.id));
       state.portalInquiries = rows.concat((state.portalInquiries || []).filter(x => !have.has(x.id) && String(x.id).indexOf("inq-seed") === 0));
@@ -14115,14 +14126,17 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       inqs.forEach(x => {
         const meta = inquiryMeta(x.id);
         const st = meta.status || x.status || "new";
-        const conv = st === "converted" || meta.leadRef;
+        /* The website already saved a lead for an inquiry that came in through it
+           (crm_lead_id), so only inquiries without one can be converted by hand. */
+        const webLead = x.crmLeadId ? (state.leads || []).find(y => y.id === x.crmLeadId) : null;
+        const conv = st === "converted" || meta.leadRef || x.crmLeadId;
         const l = (state.listings || []).find(y => y.id === x.listingId);
         body += "<tr>" +
           "<td class='dim tiny'>" + esc(new Date(x.created_at || Date.now()).toLocaleDateString()) + "</td>" +
           "<td><b>" + esc(x.title || (l ? l.title : "—")) + "</b>" + (x.message ? "<div class='dim tiny'>" + esc(String(x.message).slice(0, 60)) + "</div>" : "") + "</td>" +
           "<td>" + esc(x.full_name || "—") + "</td>" +
           "<td>" + (x.phone ? "<a href='tel:" + esc(phNormalizeMobile(x.phone)) + "'>" + esc(phNormalizeMobile(x.phone)) + "</a>" : "—") + (x.email ? "<div class='dim tiny'>" + esc(x.email) + "</div>" : "") + "</td>" +
-          "<td>" + (conv ? '<span class="badge green">Converted ' + esc(meta.leadRef || "") + '</span>' : '<span class="badge blue">' + esc(st) + '</span>') + "</td>" +
+          "<td>" + (conv ? '<span class="badge green">' + (x.crmLeadId && !meta.leadRef ? "In Leads " + esc(webLead ? (webLead.ref || "") : "") : "Converted " + esc(meta.leadRef || "")) + '</span>' : '<span class="badge blue">' + esc(st) + '</span>') + "</td>" +
           "<td>" + (conv ? "" : '<button class="btn btn-primary btn-sm" data-inq-convert="' + esc(x.id) + '">Convert to Lead</button>') + "</td>" +
           "</tr>";
       });
@@ -14136,6 +14150,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   function convertInquiryToLead(id) {
     const x = (state.portalInquiries || []).find(y => y.id === id);
     if (!x || inquiryMeta(id).leadRef) return;
+    if (x.crmLeadId) { toast("This inquiry is already in Leads", "ok"); return; }
     const l = (state.listings || []).find(y => y.id === x.listingId);
     const name = x.full_name || "Portal Inquirer";
     const lead = {
@@ -14819,10 +14834,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       const snz = new Date(l.snoozedUntil);
       if (!isNaN(snz.getTime()) && snz.getTime() > Date.now()) return null;
     }
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const d = new Date(l.nextFollowUp + "T00:00:00");
-    if (isNaN(d)) return null;
-    const diff = Math.round((d - today) / 86400000);
+    const diff = followUpDays(l.nextFollowUp);
+    if (diff == null) return null;
     if (diff < 0) return { cls: "red", label: "Overdue " + Math.abs(diff) + "d", due: true };
     if (diff === 0) return { cls: "gold", label: "Due today", due: true };
     return null;
@@ -15152,8 +15165,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const days = (Date.now() - act) / 86400000;
     if (s === "new" && days >= 2) return "stale-new";
     if (l.nextFollowUp) {
-      const d = new Date(String(l.nextFollowUp).replace(",", " ") + " " + new Date().getFullYear() + "T00:00:00");
-      if (!isNaN(d) && d.getTime() < Date.now() + 86400000) return "contacted";
+      const fuDays = followUpDays(l.nextFollowUp);
+      if (fuDays != null && fuDays <= 1) return "contacted";
     }
     const vis = (visitsFor(l.id) || []).find(v => v.status === "scheduled" && !isNaN(new Date(String(v.date || "").split("T")[0] + "T00:00:00").getTime()));
     if (vis) return "site-visit";
@@ -15555,7 +15568,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         leadFld("Purchase budget (₱)", leadNum("ld-budget", l.budget)) +
         leadFld("Asking price if selling (₱)", leadNum("ld-asking", l.askingPrice)) +
         leadFld("Rent budget (₱/mo)", leadNum("ld-rent", l.rentBudget)) +
-        leadFld("Next follow-up", leadTxt("ld-followup", l.nextFollowUp, "e.g. Mon 10am")) +
+        leadFld("Next follow-up", leadTxt("ld-followup", followUpDays(l.nextFollowUp) != null ? String(l.nextFollowUp).slice(0, 10) : "", "", "date"),
+          l.nextFollowUp && followUpDays(l.nextFollowUp) == null ? "Earlier note: \u201c" + esc(l.nextFollowUp) + "\u201d. Pick a date to get a reminder." : "Pick a date. The lead shows as due that day.") +
         leadFld("Linked listing", '<select class="input" id="ld-listing">' + listOpts + "</select>") +
       "</div>" +
       '<div class="field col-full mt-8"><label>Notes</label><textarea class="input" id="ld-notes" rows="3" placeholder="Requirements, preferences, history…">' + esc(l.notes || "") + "</textarea></div>" +
@@ -15615,7 +15629,11 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     rec.budget = $n("ld-budget");
     rec.askingPrice = $n("ld-asking");
     rec.rentBudget = $n("ld-rent");
-    rec.nextFollowUp = $v("ld-followup");
+    /* The follow-up is a date. Older leads hold typed text such as "Fri 10am": it stays
+       as it is when no date is picked, and moves to the activity log when one is. */
+    const fu = NEXT && NEXT.saveFollowUp ? NEXT.saveFollowUp($v("ld-followup"), agentPrr.nextFollowUp) : { value: $v("ld-followup"), note: "" };
+    rec.nextFollowUp = fu.value;
+    if (fu.note) { rec.activity = rec.activity || []; rec.activity.push({ date: new Date().toISOString(), text: "Earlier follow-up note: \u201c" + fu.note + "\u201d" }); }
     rec.listingId = $v("ld-listing");
     rec.listingTitle = $v("ld-listing") ? ((state.listings || []).find(x => x.id === rec.listingId) || {}).title : "";
     rec.notes = $v("ld-notes");
@@ -16015,6 +16033,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (!state.leadFilters) state.leadFilters = {};
   }
   function seedLeads() {
+    /* Demo follow-ups are dates a few days ahead (none is due yet). */
+    const fuDay = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
     const mk = (o, i) => Object.assign({
       id: "lead-seed-" + (i + 1),
       ref: "LD-" + String(i + 1).padStart(4, "0"),
@@ -16029,18 +16049,18 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const titleOf = id => { const x = L.find(z => z.id === id); return x ? x.title : ""; };
     const list = (i) => "lst-seed-" + i;
     return [
-      mk({ name: "Maria Santos", type: "buyer", status: "new", source: "listing", email: "maria.santos@example.com", phone: "+63 917 555 0123", propertyInterest: "3BR house & lot, Cavite", budget: 5500000, assignedTo: "Anna Dela Cruz", listingId: list(1), listingTitle: titleOf(list(1)), nextFollowUp: "Fri 10am", notes: "First-time buyer, pre-approved for bank loan. Wants a village with parking.", activity: [{ date: new Date(Date.now() - 86400000).toISOString(), text: "Inquiry from listing page." }] }, 1),
-      mk({ name: "Ramon Garcia", type: "buyer", status: "contacted", source: "facebook", email: "ramon.g@example.com", phone: "+63 917 555 0124", propertyInterest: "Studio / 1BR condo, Makati or BGC", budget: 7200000, assignedTo: "Anna Dela Cruz", listingId: list(2), listingTitle: titleOf(list(2)), nextFollowUp: "Mon 2pm", activity: [{ date: new Date(Date.now() - 3 * 86400000).toISOString(), text: "Messaged about pre-selling condo; sent brochure." }] }, 2),
-      mk({ name: "Liza Mendoza", type: "seller", status: "site-visit", source: "referral", email: "liza.mendoza@yahoo.com", phone: "+63 917 555 0125", propertyInterest: "Selling residential lot in Lipa", budget: 0, askingPrice: 1500000, assignedTo: "Joshua Reyes", listingId: list(3), listingTitle: titleOf(list(3)), nextFollowUp: "Sat 9am", notes: "Referred by a past client. Lot is flat, near main road.", activity: [{ date: new Date(Date.now() - 5 * 86400000).toISOString(), text: "Site visit scheduled — will bring survey." }] }, 3),
-      mk({ name: "Paolo Torres", type: "investor", status: "offer", source: "listing", email: "paolo.t@example.com", phone: "+63 917 555 0126", propertyInterest: "Townhouse with rental upside, QC", budget: 5000000, assignedTo: "Joshua Reyes", listingId: list(4), listingTitle: titleOf(list(4)), nextFollowUp: "Thu 4pm", activity: [{ date: new Date(Date.now() - 6 * 86400000).toISOString(), text: "Submitted letter of intent on the QC townhouse." }] }, 4),
-      mk({ name: "Sofia Ramirez", type: "buyer", status: "negotiation", source: "listing", email: "sofia.r@example.com", phone: "+63 917 555 0127", propertyInterest: "RFO condo, BGC", budget: 9800000, assignedTo: "Anna Dela Cruz", listingId: list(5), listingTitle: titleOf(list(5)), nextFollowUp: "Wed 11am", notes: "Negotiating on price; asked for seller concession on condo dues.", activity: [{ date: new Date(Date.now() - 8 * 86400000).toISOString(), text: "Counter-offer received — reviewing with seller." }] }, 5),
+      mk({ name: "Maria Santos", type: "buyer", status: "new", source: "listing", email: "maria.santos@example.com", phone: "+63 917 555 0123", propertyInterest: "3BR house & lot, Cavite", budget: 5500000, assignedTo: "Anna Dela Cruz", listingId: list(1), listingTitle: titleOf(list(1)), nextFollowUp: fuDay(3), notes: "First-time buyer, pre-approved for bank loan. Wants a village with parking.", activity: [{ date: new Date(Date.now() - 86400000).toISOString(), text: "Inquiry from listing page." }] }, 1),
+      mk({ name: "Ramon Garcia", type: "buyer", status: "contacted", source: "facebook", email: "ramon.g@example.com", phone: "+63 917 555 0124", propertyInterest: "Studio / 1BR condo, Makati or BGC", budget: 7200000, assignedTo: "Anna Dela Cruz", listingId: list(2), listingTitle: titleOf(list(2)), nextFollowUp: fuDay(4), activity: [{ date: new Date(Date.now() - 3 * 86400000).toISOString(), text: "Messaged about pre-selling condo; sent brochure." }] }, 2),
+      mk({ name: "Liza Mendoza", type: "seller", status: "site-visit", source: "referral", email: "liza.mendoza@yahoo.com", phone: "+63 917 555 0125", propertyInterest: "Selling residential lot in Lipa", budget: 0, askingPrice: 1500000, assignedTo: "Joshua Reyes", listingId: list(3), listingTitle: titleOf(list(3)), nextFollowUp: fuDay(5), notes: "Referred by a past client. Lot is flat, near main road.", activity: [{ date: new Date(Date.now() - 5 * 86400000).toISOString(), text: "Site visit scheduled — will bring survey." }] }, 3),
+      mk({ name: "Paolo Torres", type: "investor", status: "offer", source: "listing", email: "paolo.t@example.com", phone: "+63 917 555 0126", propertyInterest: "Townhouse with rental upside, QC", budget: 5000000, assignedTo: "Joshua Reyes", listingId: list(4), listingTitle: titleOf(list(4)), nextFollowUp: fuDay(6), activity: [{ date: new Date(Date.now() - 6 * 86400000).toISOString(), text: "Submitted letter of intent on the QC townhouse." }] }, 4),
+      mk({ name: "Sofia Ramirez", type: "buyer", status: "negotiation", source: "listing", email: "sofia.r@example.com", phone: "+63 917 555 0127", propertyInterest: "RFO condo, BGC", budget: 9800000, assignedTo: "Anna Dela Cruz", listingId: list(5), listingTitle: titleOf(list(5)), nextFollowUp: fuDay(7), notes: "Negotiating on price; asked for seller concession on condo dues.", activity: [{ date: new Date(Date.now() - 8 * 86400000).toISOString(), text: "Counter-offer received — reviewing with seller." }] }, 5),
       mk({ name: "Miguel Lopez", type: "buyer", status: "closed", source: "website", email: "miguel.lopez@example.com", phone: "+63 917 555 0128", propertyInterest: "House & lot, Cebu", budget: 7000000, assignedTo: "Joshua Reyes", listingId: list(6), listingTitle: titleOf(list(6)), nextFollowUp: "", notes: "Closed on the Banilad property. Referred two friends.", activity: [{ date: new Date(Date.now() - 12 * 86400000).toISOString(), text: "Deal closed — keys handed over." }] }, 6),
       mk({ name: "Carla Aquino", type: "buyer", status: "lost", source: "listing", email: "carla.a@yahoo.com", phone: "+63 917 555 0129", propertyInterest: "Foreclosed house, Manila", budget: 2500000, assignedTo: "Anna Dela Cruz", listingId: list(7), listingTitle: titleOf(list(7)), nextFollowUp: "", notes: "Chose a different bank property.", activity: [{ date: new Date(Date.now() - 13 * 86400000).toISOString(), text: "Went with another listing; marked lost." }] }, 7),
-      mk({ name: "Dexter Lim", type: "renter", status: "contacted", source: "listing", email: "dex.lim@example.com", phone: "+63 917 555 0130", propertyInterest: "3BR townhouse for rent, Bacoor", budget: 0, rentBudget: 15000, assignedTo: "", listingId: list(12), listingTitle: titleOf(list(12)), nextFollowUp: "Tue 5pm", activity: [{ date: new Date(Date.now() - 2 * 86400000).toISOString(), text: "Asked about lease terms and pet policy." }] }, 8),
+      mk({ name: "Dexter Lim", type: "renter", status: "contacted", source: "listing", email: "dex.lim@example.com", phone: "+63 917 555 0130", propertyInterest: "3BR townhouse for rent, Bacoor", budget: 0, rentBudget: 15000, assignedTo: "", listingId: list(12), listingTitle: titleOf(list(12)), nextFollowUp: fuDay(8), activity: [{ date: new Date(Date.now() - 2 * 86400000).toISOString(), text: "Asked about lease terms and pet policy." }] }, 8),
       mk({ name: "Nina Reyes", type: "investor", status: "new", source: "market", email: "nina.reyes@example.com", phone: "+63 917 555 0131", propertyInterest: "Agricultural land, Nueva Ecija", budget: 3000000, assignedTo: "", listingId: list(9), listingTitle: titleOf(list(9)), notes: "Saw the listing on Market Scan; wants due diligence on irrigation.", activity: [] }, 9),
-      mk({ name: "Kevin Tan", type: "buyer", status: "site-visit", source: "referral", email: "kevin.tan@example.com", phone: "+63 917 555 0132", propertyInterest: "Pre-selling studio condo, Pasig", budget: 4500000, assignedTo: "Joshua Reyes", listingId: list(11), listingTitle: titleOf(list(11)), nextFollowUp: "Sun 10am", activity: [{ date: new Date(Date.now() - 4 * 86400000).toISOString(), text: "Site visit to the model unit arranged." }] }, 10),
-      mk({ name: "Denise Lim", type: "buyer", status: "contacted", source: "website", email: "denise.lim@example.com", phone: "+63 917 555 0133", propertyInterest: "2BR condo, Ortigas", budget: 6200000, assignedTo: "Demo User", listingId: list(2), listingTitle: titleOf(list(2)), nextFollowUp: "Wed 3pm", notes: "Demo agent's own lead — should only be visible to Demo User (agent).", activity: [{ date: new Date(Date.now() - 86400000).toISOString(), text: "Asked for floor plans via website form." }] }, 11),
-      mk({ name: "Andres Cruz", type: "seller", status: "new", source: "referral", email: "andres.cruz@example.com", phone: "+63 917 555 0134", propertyInterest: "Selling 2-storey house in Antipolo", budget: 0, askingPrice: 8800000, assignedTo: "Demo User", listingId: list(7), listingTitle: titleOf(list(7)), nextFollowUp: "Fri 11am", notes: "Demo agent's own lead.", activity: [{ date: new Date(Date.now() - 2 * 86400000).toISOString(), text: "Referred by existing client." }] }, 12)
+      mk({ name: "Kevin Tan", type: "buyer", status: "site-visit", source: "referral", email: "kevin.tan@example.com", phone: "+63 917 555 0132", propertyInterest: "Pre-selling studio condo, Pasig", budget: 4500000, assignedTo: "Joshua Reyes", listingId: list(11), listingTitle: titleOf(list(11)), nextFollowUp: fuDay(9), activity: [{ date: new Date(Date.now() - 4 * 86400000).toISOString(), text: "Site visit to the model unit arranged." }] }, 10),
+      mk({ name: "Denise Lim", type: "buyer", status: "contacted", source: "website", email: "denise.lim@example.com", phone: "+63 917 555 0133", propertyInterest: "2BR condo, Ortigas", budget: 6200000, assignedTo: "Demo User", listingId: list(2), listingTitle: titleOf(list(2)), nextFollowUp: fuDay(10), notes: "Demo agent's own lead — should only be visible to Demo User (agent).", activity: [{ date: new Date(Date.now() - 86400000).toISOString(), text: "Asked for floor plans via website form." }] }, 11),
+      mk({ name: "Andres Cruz", type: "seller", status: "new", source: "referral", email: "andres.cruz@example.com", phone: "+63 917 555 0134", propertyInterest: "Selling 2-storey house in Antipolo", budget: 0, askingPrice: 8800000, assignedTo: "Demo User", listingId: list(7), listingTitle: titleOf(list(7)), nextFollowUp: fuDay(11), notes: "Demo agent's own lead.", activity: [{ date: new Date(Date.now() - 2 * 86400000).toISOString(), text: "Referred by existing client." }] }, 12)
     ];
   }
 

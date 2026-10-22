@@ -168,6 +168,31 @@
     return { text: "", section: "", label: "" };
   }
 
+  /* A lead's "next follow-up" is a date (YYYY-MM-DD, from the date picker).
+   * Leads saved earlier may hold typed text such as "Fri 10am": that cannot be
+   * placed on a calendar, so it counts as a note, never as overdue. */
+  function followUpDays(value, now) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})(?:$|[T ])/.exec(String(value == null ? "" : value).trim());
+    if (!m) return null;
+    var y = +m[1], mo = +m[2], d = +m[3];
+    var due = new Date(y, mo - 1, d);
+    if (due.getFullYear() !== y || due.getMonth() !== mo - 1 || due.getDate() !== d) return null;
+    var n = now ? new Date(now) : new Date();
+    var today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+    return Math.round((due - today) / 86400000);
+  }
+
+  /* What to store when a lead is saved. A picked date wins; the old typed text it
+   * replaces comes back as `note` so the caller can log it. With no date picked,
+   * old typed text is kept as it was and an old date is cleared. */
+  function saveFollowUp(picked, old) {
+    picked = String(picked == null ? "" : picked).trim();
+    old = String(old == null ? "" : old).trim();
+    var oldIsNote = old !== "" && followUpDays(old) === null;
+    if (picked) return { value: picked, note: oldIsNote ? old : "" };
+    return { value: oldIsNote ? old : "", note: "" };
+  }
+
   function whatNext(lead, kind, playbooks, listing) {
     lead = lead || {};
     var touch = touchFor(kind);
@@ -194,6 +219,8 @@
     sectionText: sectionText,
     pickPlaybook: pickPlaybook,
     draftMessage: draftMessage,
+    followUpDays: followUpDays,
+    saveFollowUp: saveFollowUp,
     whatNext: whatNext
   };
 });

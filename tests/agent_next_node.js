@@ -62,7 +62,34 @@ function run() {
   c("whatNext without playbooks still recommends a touch", (function () { const r = N.whatNext({ name: "Solo" }, "dormant", [], null); return r.draft === "" && r.touch === "whatsapp"; })(), "graceful degrade");
   c("whatNext for closed exposes no touch", N.whatNext({ name: "Done" }, "closed", picks, null).touch === "", "closed");
 
-  const ok = checks.every(x => x.ok) && checks.length >= 16;
+  /* Next follow-up: a date counts, typed text is only a note. */
+  const noon = new Date(2026, 9, 21, 12, 0);              // 21 Oct 2026, local noon
+  const late = new Date(2026, 9, 21, 23, 59);
+  const early = new Date(2026, 9, 21, 0, 5);
+  c("follow-up: today is 0 days", N.followUpDays("2026-10-21", noon) === 0, String(N.followUpDays("2026-10-21", noon)));
+  c("follow-up: today is 0 days late at night", N.followUpDays("2026-10-21", late) === 0, String(N.followUpDays("2026-10-21", late)));
+  c("follow-up: today is 0 days just after midnight", N.followUpDays("2026-10-21", early) === 0, String(N.followUpDays("2026-10-21", early)));
+  c("follow-up: yesterday is overdue by 1", N.followUpDays("2026-10-20", noon) === -1, String(N.followUpDays("2026-10-20", noon)));
+  c("follow-up: next week is 7 days out", N.followUpDays("2026-10-28", noon) === 7, String(N.followUpDays("2026-10-28", noon)));
+  c("follow-up: across a month end", N.followUpDays("2026-11-02", noon) === 12, String(N.followUpDays("2026-11-02", noon)));
+  c("follow-up: across a year end", N.followUpDays("2027-01-01", noon) === 72, String(N.followUpDays("2027-01-01", noon)));
+  c("follow-up: a date with a time still reads as that day", N.followUpDays("2026-10-22T09:30", noon) === 1 && N.followUpDays("2026-10-22 09:30", noon) === 1, "T and space");
+  c("follow-up: typed text is not a date", ["Fri 10am", "Mon 2pm", "next week", "Oct 25", ""].every(t => N.followUpDays(t, noon) === null), "free text");
+  c("follow-up: empty values are not dates", N.followUpDays(null, noon) === null && N.followUpDays(undefined, noon) === null, "null/undefined");
+  c("follow-up: impossible dates are not dates", N.followUpDays("2026-02-30", noon) === null && N.followUpDays("2026-13-01", noon) === null && N.followUpDays("2026-00-10", noon) === null, "Feb 30, month 13, month 0");
+  c("follow-up: a leap day is a date", N.followUpDays("2028-02-29", noon) !== null && N.followUpDays("2027-02-29", noon) === null, "2028 yes, 2027 no");
+  c("follow-up: defaults to today's clock", (function () { const d = new Date(); const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); return N.followUpDays(iso) === 0; })(), "no `now` given");
+
+  /* Saving the form: a picked date wins, typed text survives until a date replaces it. */
+  const sv = N.saveFollowUp;
+  c("save: a picked date is stored", sv("2026-10-25", "").value === "2026-10-25" && sv("2026-10-25", "").note === "", JSON.stringify(sv("2026-10-25", "")));
+  c("save: a picked date replaces an older date quietly", sv("2026-10-25", "2026-10-22").note === "", JSON.stringify(sv("2026-10-25", "2026-10-22")));
+  c("save: a picked date moves old typed text to a note", sv("2026-10-25", "Fri 10am").value === "2026-10-25" && sv("2026-10-25", "Fri 10am").note === "Fri 10am", JSON.stringify(sv("2026-10-25", "Fri 10am")));
+  c("save: no date picked keeps old typed text", sv("", "Fri 10am").value === "Fri 10am" && sv("", "Fri 10am").note === "", JSON.stringify(sv("", "Fri 10am")));
+  c("save: clearing an old date clears it", sv("", "2026-10-22").value === "" && sv("", "2026-10-22").note === "", JSON.stringify(sv("", "2026-10-22")));
+  c("save: nothing picked and nothing before stays empty", sv("", "").value === "" && sv(null, undefined).value === "", "empty");
+
+  const ok = checks.every(x => x.ok) && checks.length >= 35;
   console.log("\n[agent_next_node] " + checks.length + " checks");
   checks.forEach(x => console.log("  [" + (x.ok ? "PASS" : "FAIL") + "] " + x.name + (x.ok ? "" : "  " + x.detail)));
   console.log(ok ? "ALL PASS" : "FAILURES PRESENT");
