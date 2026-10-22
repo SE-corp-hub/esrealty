@@ -3344,3 +3344,9 @@ body.sf-menu-open .sf-sticky { display: none; }
 /* The closing band's phone and email line up with its heading (the shared
    44px-tall touch padding indented them 12px on phones). */
 .sf-site .sf-pv-endband .sf-contact-details a, .sf-site .sf-pv-endband .sf-contact-details span { padding-left: 0; padding-right: 0; }
+/* Rental application (I10) */
+.sf-site .sf-apply { border: 1px solid var(--sf-line, #e5ddd2); border-radius: 12px; padding: 10px 14px; margin: 4px 0 8px; }
+.sf-site .sf-apply > summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.sf-site .sf-apply[open] > summary { margin-bottom: 6px; }
+.sf-site .sf-apply select { width: 100%; margin-top: 5px; min-height: 44px; border: 1px solid #dcdedf; border-radius: 4px; padding: 10px 11px; background: #fafafa; color: #1b2027; font: inherit; font-size: 16px; font-weight: 400; }
+.sf-site .sf-apply input { min-height: 44px; }
