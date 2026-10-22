@@ -16,7 +16,7 @@ const c = (name, ok, detail) => checks.push({ name, ok: !!ok, detail: detail || 
   const app = read("js/app.js");
   c("Gmail compose address is Gmail's own", /"https:\/\/mail\.google\.com\/mail\/\?view=cm&fs=1&to=" \+ encodeURIComponent\(to \|\| ""\) \+ "&su=" \+ encodeURIComponent\(subject \|\| ""\) \+ "&body="/.test(app));
   c("a blocked popup falls back to the mail app", /if \(!w\) \{ const a = document\.createElement\("a"\); a\.href = mailtoUrl/.test(app));
-  c("Gmail buttons on lead, Value Guide, password reset and owner statement", /gmailLink\(l\.email, leadReplyEmail\(l\)\.subject/.test(app) && /gmailLink\(l\.email, "Your SEA ESTATES property value report"/.test(app) && /"Your new SEA ESTATES password"/.test(app) && /"Owner statement: " \+ st\.label/.test(app));
+  c("Gmail buttons on lead, Value Guide, password reset and owner statement", /gmailLink\(l\.email, leadReplyEmail\(l\)\.subject/.test(app) && /gmailLink\(l\.email, VG_REPORT_SUBJECT, mailBody/.test(app) && /const VG_REPORT_SUBJECT = "Your SEA ESTATES property value report";/.test(app) && /"Your new SEA ESTATES password"/.test(app) && /"Owner statement: " \+ st\.label/.test(app));
   c("the digest no longer calls the email function", !/functions\/v1\/notify-dispatch/.test(app.slice(app.indexOf("async function emailLeadDigest"), app.indexOf("async function emailLeadDigest") + 2000)));
   // B1
   ["supabase/functions/listing-api/index.ts", "supabase/functions/location-report/index.ts"].forEach(f => {
