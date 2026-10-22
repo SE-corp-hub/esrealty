@@ -388,16 +388,6 @@ async function probe(base, p, fnName, optional) {
   } catch (e) { console.log("  INFO  skipped (" + (e && e.message || e) + ")"); }
   console.log("");
 
-  // 4c) Database and file storage use (D2). Needs SUPABASE_ACCESS_TOKEN.
-  console.log("=== USAGE ===\n");
-  let usageHigh = false;
-  try {
-    const use = await require("./check-usage.js").report(process.env.SUPABASE_ACCESS_TOKEN || "");
-    use.lines.forEach(l => console.log(l));
-    usageHigh = use.blocking;
-  } catch (e) { console.log("  INFO  skipped (" + (e && e.message || e) + ")"); }
-  console.log("");
-
   // 5) Status summary
   const total = out.length, passed = out.filter(r => r.ok).length;
   const failed = out.filter(r => !r.ok);
@@ -450,6 +440,5 @@ async function probe(base, p, fnName, optional) {
   console.log("  - Tables answering 200 with no rows are fine: row security hides them from an anonymous check.");
   console.log("  - 'ERR' (no HTTP status) usually means the function is NOT deployed at BASE.");
   if (deployStale) console.log("\nA function in the repository has waited more than 3 days for its deployment: run Actions > Deploy edge functions.");
-  if (usageHigh) console.log("\nThe database or stored files are above 80% of the plan's limit (see USAGE above).");
-  if (failed.some(r => !r.optional) || missingTables.length || vercelOpen.length || deployStale || usageHigh) { process.exit(1); }
+  if (failed.some(r => !r.optional) || missingTables.length || vercelOpen.length || deployStale) { process.exit(1); }
 })();

@@ -3,7 +3,6 @@
 const fs = require("fs");
 const path = require("path");
 const L = require("../js/pms_ledger.js");
-const U = require("../supabase/check-usage.js");
 const Rm = require("../tools/reminders.js");
 const read = f => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
 const checks = [];
@@ -56,20 +55,8 @@ const c = (name, ok, detail) => checks.push({ name, ok: !!ok, detail: detail || 
   c("migration changes no lead or licence", !/update public\.(crm_leads|compliance_records)/.test(mig) && !/delete from/.test(mig));
   const chk = read("supabase/check-backend.js");
   c("health check knows the two new functions", /fn: "viewing_reminder_sweep".*pending: "0011"/.test(chk) && /fn: "compliance_expiry_sweep".*pending: "0011"/.test(chk));
-  // D2 usage
-  const lim = U.limitsFrom({});
-  c("usage: free plan limits by default", lim.dbMb === 500 && lim.storageMb === 1024);
-  c("usage: limits follow the repository variables", U.limitsFrom({ USAGE_DB_LIMIT_MB: "8192", USAGE_STORAGE_LIMIT_MB: "x" }).dbMb === 8192 && U.limitsFrom({ USAGE_STORAGE_LIMIT_MB: "x" }).storageMb === 1024);
-  const low = U.usageLines({ dbBytes: 100 * 1048576, storageBytes: 200 * 1048576, files: 3 }, lim);
-  const high = U.usageLines({ dbBytes: 400 * 1048576, storageBytes: 0 }, lim);
-  c("usage under 80% passes", !low.blocking && /OK   Database: 100\.0 MB of 500 MB \(20%\)/.test(low.lines.join("\n")));
-  c("usage at 80% fails the nightly check", high.blocking && /FAIL  Database: 400\.0 MB of 500 MB \(80%\)/.test(high.lines.join("\n")));
-  c("without the token the usage part is skipped", (await U.report("")).lines[0].indexOf("skipped") !== -1);
-  const r = await U.report("", async q => { c("usage SQL reads database and stored file sizes", /pg_database_size/.test(q) && /storage\.objects/.test(q)); return [{ db_bytes: 1048576, storage_bytes: 0, files: 0 }]; });
-  c("usage report runs through the SQL tool", !r.blocking && r.lines.length === 4);
-  c("the health check fails on high usage", /usageHigh = use\.blocking/.test(chk) && /deployStale \|\| usageHigh\) \{ process\.exit\(1\); \}/.test(chk));
-  const bwf = read(".github/workflows/backend-check.yml");
-  c("the nightly check passes the plan limits", /USAGE_DB_LIMIT_MB: \$\{\{ vars\.USAGE_DB_LIMIT_MB \}\}/.test(bwf) && /USAGE_STORAGE_LIMIT_MB: \$\{\{ vars\.USAGE_STORAGE_LIMIT_MB \}\}/.test(bwf));
+  // D2 usage: its own nightly job (tests/usage_check_node.js covers the details).
+  c("storage use has its own nightly job, not the health check", fs.existsSync(path.join(__dirname, "..", ".github/workflows/usage-check.yml")) && !/check-usage/.test(chk));
   // Registered
   const tests = read(".github/workflows/tests.yml");
   c("phase 9 browser test is in CI", /-Test phase9_app_e2e/.test(tests));
