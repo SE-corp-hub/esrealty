@@ -31,8 +31,10 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
 
     /* ---- services mega-menu content ---- */
     const svc = drops.find(d => (d.querySelector("summary").textContent || "").indexOf("Services") === 0);
-    const svcItems = svc ? Array.from(svc.querySelectorAll(".sf-drop-panel a")) : [];
+    const svcItems = svc ? Array.from(svc.querySelectorAll(".sf-drop-panel a:not(.sf-drop-all)")) : [];
     chk("nav-services-nine-items", svcItems.length === 9, "count=" + svcItems.length);
+    const tour = svc && svc.querySelector(".sf-drop-panel a.sf-drop-all");
+    chk("nav-services-tour-first", !!tour && tour === svc.querySelector(".sf-drop-panel a") && tour.getAttribute("href") === "services-3d.html", tour ? tour.getAttribute("href") : "none");
     const svcLabels = svcItems.map(a => a.textContent.replace(/\s+/g, " ").trim());
     ["Buying a property", "Selling a property", "Renting / leasing", "Pre-selling & developer projects", "Property appraisal & valuation", "Talk to a licensed broker", "Property management", "Title & documentation", "Financing / Pag-IBIG & bank"]
       .forEach((label, i) => chk("nav-service-" + i + "-" + label.toLowerCase().replace(/[^a-z]/g, ""), (svcLabels[i] || "").indexOf(label) === 0, "got=" + svcLabels[i]));
@@ -47,7 +49,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
 
     /* ---- Project B.T merges shophouse + project, both to coming soon ---- */
     const bt = drops.find(d => (d.querySelector("summary").textContent || "").indexOf("Project B.T") === 0);
-    const btItems = bt ? Array.from(bt.querySelectorAll(".sf-drop-panel a")) : [];
+    const btItems = bt ? Array.from(bt.querySelectorAll(".sf-drop-panel a:not(.sf-drop-all)")) : [];
     chk("nav-bt-two-items", btItems.length === 2, "count=" + btItems.length);
     chk("nav-bt-both-route-to-coming-soon", btItems.every(a => a.getAttribute("href") === "#/project-bt"), JSON.stringify(btItems.map(a => a.getAttribute("href"))));
 
@@ -141,8 +143,9 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     /* The nav dropdown and the homepage section must offer the same set of
        destinations, or the marketing copy silently diverges from the nav. */
     const svcHrefs = svcCards.map(a => a.getAttribute("href")).sort().join("|");
-    const dropHrefs = Array.from(svc.querySelectorAll(".sf-drop-panel a")).map(a => a.getAttribute("href")).sort().join("|");
+    const dropHrefs = Array.from(svc.querySelectorAll(".sf-drop-panel a:not(.sf-drop-all)")).map(a => a.getAttribute("href")).sort().join("|");
     chk("home-services-match-nav", svcHrefs === dropHrefs, "section=" + svcHrefs + " nav=" + dropHrefs);
+    chk("home-services-tour-link", !!svcSection.querySelector('.sf-services-tour a[href="services-3d.html"]'), "");
     chk("home-services-no-dead-links", svcCards.every(a => (a.getAttribute("href") || "").length > 3), "empty href");
 
     /* ---- #/home?section=services must actually scroll to it ---- */

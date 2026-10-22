@@ -157,9 +157,18 @@
     return '<svg class="sf-chev" width="10" height="7" viewBox="0 0 10 7" aria-hidden="true" focusable="false"><path d="M1 1.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   }
 
-  function dropDown(label, items, extraClass) {
+  /* The services overview page (services-3d.html): the first row of the Services menu
+   * and the link under the homepage services cards. Kept out of SERVICES so the nine
+   * service rows, cards and explorer pieces still line up one to one. */
+  var SERVICES_TOUR = { href: "services-3d.html", label: "All nine services", note: "See every service and what happens next." };
+  function tourLink(cls) {
+    return '<a class="' + cls + ' sf-drop-all" href="' + esc(SERVICES_TOUR.href) + '"><span>' + esc(SERVICES_TOUR.label) +
+      (cls === "sf-drop-cta" ? '<small>' + esc(SERVICES_TOUR.note) + '</small>' : '') + '</span></a>';
+  }
+
+  function dropDown(label, items, extraClass, first) {
     return '<details class="sf-drop ' + (extraClass || "") + '" data-sf-drop><summary class="sf-drop-summary">' +
-      esc(label) + navChevron() + '</summary><div class="sf-drop-panel">' +
+      esc(label) + navChevron() + '</summary><div class="sf-drop-panel">' + (first || "") +
       items.map(function (item) {
         return '<a href="' + esc(item.href) + '"' + (item.cta ? ' class="sf-drop-cta"' : "") + '><span>' + esc(item.label) +
           (item.note ? '<small>' + esc(item.note) + '</small>' : '') + '</span></a>';
@@ -176,10 +185,10 @@
    *
    * Uses .sf-menu-acc-* rather than .sf-drop-* so the desktop panel's absolute
    * positioning does not leak in. */
-  function menuGroup(title, items) {
+  function menuGroup(title, items, first) {
     return '<details class="sf-menu-acc" data-sf-drop>' +
       '<summary class="sf-menu-acc-sum">' + esc(title) + navChevron() + '</summary>' +
-      '<div class="sf-menu-acc-body">' + items.map(navLink).join("") + '</div>' +
+      '<div class="sf-menu-acc-body">' + (first || "") + items.map(navLink).join("") + '</div>' +
       '</details>';
   }
 
@@ -187,13 +196,13 @@
     return '<header class="sf-header"><a class="sf-brand" href="#/home" aria-label="SEA ESTATES home">' +
       '<span class="sf-brand-mark">S.E</span><span><b>SEA ESTATES</b><small>Property &amp; local guidance.</small></span></a>' +
       '<nav class="sf-nav" aria-label="Primary">' + NAV.map(navLink).join("") +
-      dropDown("Services", SERVICES) + dropDown("Project B.T", PROJECT_BT) + '</nav>' +
+      dropDown("Services", SERVICES, "", tourLink("sf-drop-cta")) + dropDown("Project B.T", PROJECT_BT) + '</nav>' +
       /* No public Sign in / Create account: visitors need no account. Agents sign
          in from the footer. */
       '<div class="sf-header-actions">' +
       '<button class="sf-menu-btn" data-sf-menu aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button></div>' +
       '<div class="sf-menu" data-sf-menu-panel>' + NAV.map(navLink).join("") +
-      menuGroup("Services", SERVICES) + menuGroup("Project B.T", PROJECT_BT) + '</div></header>';
+      menuGroup("Services", SERVICES, tourLink("sf-nav-cta")) + menuGroup("Project B.T", PROJECT_BT) + '</div></header>';
   }
 
   function footer() {
@@ -1178,7 +1187,8 @@
          section stays short on a phone. */
       '<div class="sf-services-grid">' + SERVICES.slice(0, 3).map(serviceCard).join("") + '</div>' +
       '<details class="sf-services-more"><summary>See all ' + SERVICES.length + ' services</summary>' +
-      '<div class="sf-services-grid">' + SERVICES.slice(3).map(function (item, i) { return serviceCard(item, i + 3); }).join("") + '</div></details></section>';
+      '<div class="sf-services-grid">' + SERVICES.slice(3).map(function (item, i) { return serviceCard(item, i + 3); }).join("") + '</div></details>' +
+      '<p class="sf-services-tour"><a class="sf-outline-btn" href="' + esc(SERVICES_TOUR.href) + '">Open the full services page</a></p></section>';
   }
 
   function serviceCard(item, i) {
