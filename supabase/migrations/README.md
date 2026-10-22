@@ -52,6 +52,9 @@ co-broke in the change log, one open co-broke per listing and partner) follows `
 brokers in turn; off until switched on in Users & Access) follows `0008`.
 `0010_handover_retention.sql` (hand over a person's records before deleting the account, the
 change log outlives accounts, old-data clean-up that is off until switched on) follows `0009`.
+`0011_reminders.sql` (viewing reminders at the time picked on the calendar entry, licence and
+permit renewal reminders from Compliance; sent by the `reminders` job once `REMINDER_ALERTS` is
+on) follows `0010`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses
