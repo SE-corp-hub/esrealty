@@ -14,6 +14,6 @@ ok("every PMS table is checked, and must refuse visitors", pms.every(t => new Re
 ok("a PMS table that answers visitors fails the check", /const ok = entry\.anonDenied \? \(got === 401 \|\| got === 403\)/.test(src));
 ok("the tenant and broker functions are checked", ["pms_books", "pms_find_login", "pms_tenant_send_payment", "pms_tenant_request_repair", "pms_my_repair_requests"].every(f => src.indexOf('fn: "' + f + '"') !== -1));
 ok("a function visitors can call fails the check", /const ok = got === 401 \|\| got === 403;\s*(?:if \(entry\.pending && got === 404\)[^\n]*\n\s*)?const extra = got === 404/.test(src));
-ok("the Vercel endpoints must refuse callers without a secret or sign-in", /\/api\/agent-dispatch/.test(src) && /\/api\/ad-perf/.test(src) && /vercelOpen\.length(?: \|\| deployStale)?\) \{ process\.exit\(1\); \}/.test(src));
+ok("the Vercel endpoints must refuse callers without a secret or sign-in", /\/api\/agent-dispatch/.test(src) && /\/api\/ad-perf/.test(src) && /vercelOpen\.length(?: \|\| deployStale)?(?: \|\| usageHigh)?\) \{ process\.exit\(1\); \}/.test(src));
 
 console.log("\ncheck_backend_node: " + passed + " checks passed");

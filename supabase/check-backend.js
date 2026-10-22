@@ -199,6 +199,8 @@ const REST_RPCS = [
   { fn: "admin_announce", note: "staff announcements, Super Admin only (migrations/0007)", pending: "0007" },
   { fn: "lead_response_sweep", note: "lead response alerts, server only (migrations/0008)", pending: "0008" },
   { fn: "admin_records_owned", note: "account handover check, Super Admin only (migrations/0010)", pending: "0010" },
+  { fn: "viewing_reminder_sweep", note: "viewing reminders, server only (migrations/0011)", pending: "0011", body: { p_dry_run: true } },
+  { fn: "compliance_expiry_sweep", note: "licence renewal reminders, server only (migrations/0011)", pending: "0011", body: { p_dry_run: true } },
 ];
 async function probeRpc(entry) {
   try {
@@ -386,6 +388,16 @@ async function probe(base, p, fnName, optional) {
   } catch (e) { console.log("  INFO  skipped (" + (e && e.message || e) + ")"); }
   console.log("");
 
+  // 4c) Database and file storage use (D2). Needs SUPABASE_ACCESS_TOKEN.
+  console.log("=== USAGE ===\n");
+  let usageHigh = false;
+  try {
+    const use = await require("./check-usage.js").report(process.env.SUPABASE_ACCESS_TOKEN || "");
+    use.lines.forEach(l => console.log(l));
+    usageHigh = use.blocking;
+  } catch (e) { console.log("  INFO  skipped (" + (e && e.message || e) + ")"); }
+  console.log("");
+
   // 5) Status summary
   const total = out.length, passed = out.filter(r => r.ok).length;
   const failed = out.filter(r => !r.ok);
@@ -438,5 +450,6 @@ async function probe(base, p, fnName, optional) {
   console.log("  - Tables answering 200 with no rows are fine: row security hides them from an anonymous check.");
   console.log("  - 'ERR' (no HTTP status) usually means the function is NOT deployed at BASE.");
   if (deployStale) console.log("\nA function in the repository has waited more than 3 days for its deployment: run Actions > Deploy edge functions.");
-  if (failed.some(r => !r.optional) || missingTables.length || vercelOpen.length || deployStale) { process.exit(1); }
+  if (usageHigh) console.log("\nThe database or stored files are above 80% of the plan's limit (see USAGE above).");
+  if (failed.some(r => !r.optional) || missingTables.length || vercelOpen.length || deployStale || usageHigh) { process.exit(1); }
 })();

@@ -23,8 +23,12 @@ jobs:
           node-version: 24
       - name: Run backend health check
         env:
-          # Only to list deployed functions and secret NAMES (never values). Without it that part is skipped.
+          # Lists deployed functions and secret NAMES (never values), and reads the database and file
+          # storage size (D2). Without it those parts are skipped.
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          # Plan limits in MB (defaults: the free plan, 500 and 1024). The check fails at 80%.
+          USAGE_DB_LIMIT_MB: ${{ vars.USAGE_DB_LIMIT_MB }}
+          USAGE_STORAGE_LIMIT_MB: ${{ vars.USAGE_STORAGE_LIMIT_MB }}
         run: node supabase/check-backend.js
 
       # A failed scheduled run used to be seen only by whoever opened the Actions tab.
