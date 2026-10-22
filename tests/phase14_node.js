@@ -1,0 +1,30 @@
+/* Phase 14: rental application on public rent listings (I10). */
+const fs = require("fs");
+const path = require("path");
+const read = f => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+const checks = [];
+const c = (name, ok, detail) => checks.push({ name, ok: !!ok, detail: detail || "" });
+const api = read("supabase/functions/listing-api/index.ts");
+const sf = read("js/storefront.js");
+const app = read("js/app.js");
+// The function's validator, run in Node (the TypeScript is plain enough to strip).
+const src = api.slice(api.indexOf("const INCOME_BANDS"), api.indexOf("const submitInquiry"));
+const js = src.replace(/: unknown/g, "").replace(/: JsonRecord/g, "").replace(/ as JsonRecord/g, "");
+const HttpError = class extends Error { constructor(status, msg) { super(msg); this.status = status; } };
+const stringValue = (value, max, field) => { const r = String(value ?? "").trim(); if (r.length > max) throw new HttpError(400, `${field} is too long`); return r; };
+const mod = new Function("HttpError", "stringValue", js + "\nreturn { rentalApplication, applicationSummary };")(HttpError, stringValue);
+const ok = mod.rentalApplication({ move_in: "2026-11-15", occupants: "3", employment: "Teacher", income: "40,000 to 79,999", lease_months: "12", pets: "cat", extra: "dropped" });
+c("a valid application is kept, unknown fields dropped", JSON.stringify(ok) === JSON.stringify({ move_in: "2026-11-15", occupants: 3, employment: "Teacher", income: "40,000 to 79,999", lease_months: 12, pets: "cat" }), JSON.stringify(ok));
+c("an empty application is nothing", mod.rentalApplication({}) === null && mod.rentalApplication(undefined) === null);
+const err = a => { try { mod.rentalApplication(a); return ""; } catch (e) { return e.message; } };
+c("wrong values are refused with the field's name", err({ move_in: "soon" }) === "application.move_in must be a date" && err({ occupants: 40 }) === "application.occupants must be 1 to 20" && err({ income: "a lot" }) === "application.income is not one of the choices" && err("x") === "application is invalid");
+c("the lead's note sums it up", mod.applicationSummary(ok) === "Rental application: move in 2026-11-15, 3 people, work: Teacher, income 40,000 to 79,999, 12 months, pets: cat.");
+c("the application is kept with the inquiry and the lead", /metadata: \{ userAgent: [^}]*\.\.\.\(application \? \{ application \} : \{\}\) \}/.test(api) && /\.\.\.\(application \? \{ application, serviceRequested: "Rental application" \} : \{\}\)/.test(api));
+c("the storefront offers it on listings for rent only", /\(listing\.offer_type === "rent" \? rentApplicationFields\(\) : ""\)/.test(sf));
+c("nothing is uploaded: IDs are shown at the viewing", !/type="file"/.test(sf.slice(sf.indexOf("function rentApplicationFields"), sf.indexOf("function servicesSection"))));
+c("the CRM shows the application on the lead", /data-lead-application/.test(app) && /Ask for an ID and proof of income at the viewing/.test(app));
+c("phase 14 browser test is in CI", /-Test phase14_app_e2e/.test(read(".github/workflows/tests.yml")));
+const failed = checks.filter(x => !x.ok);
+checks.forEach(x => console.log("  [" + (x.ok ? "PASS" : "FAIL") + "] " + x.name + (x.ok ? "" : " :: " + x.detail)));
+console.log(failed.length ? failed.length + " FAILED" : "ALL PASS");
+process.exit(failed.length ? 1 : 0);
