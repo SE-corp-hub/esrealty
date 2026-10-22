@@ -38,6 +38,15 @@ const st = K.statement(deals, { withholdingPct: 10 }, "Ana", "2026-10");
 c("statement: only that month's closed deals, matched by name", st.rows.map(x => x.transactionId).join() === "1,2", JSON.stringify(st.rows));
 c("statement totals: share, withholding, net", st.amount === 105000 && st.withheld === 10500 && st.net === 94500, JSON.stringify(st));
 c("people paid in a month, each once whatever the spelling", K.peopleIn(deals, {}, "2026-10").join() === "Ana,Ben", K.peopleIn(deals, {}, "2026-10").join());
+// J5 documents
+const D = require("../js/doc_templates.js");
+c("three starter documents", D.TEMPLATES.map(t => t.id).join() === "offer,reservation,authority");
+const filled = D.fill("offer", { buyer_name: "Carla", seller_name: "Sam", price: "P5,000,000" });
+c("filling uses the deal's details and leaves the rest as blank lines", /I, Carla, of ____________, offer to buy/.test(filled) && /To: Sam/.test(filled) && !/\{\{/.test(filled));
+c("every placeholder in each document has a label and is in its list of fields", D.TEMPLATES.every(t => (t.body.join("\n").match(/\{\{([a-z_]+)\}\}/g) || []).every(m => { const k = m.slice(2, -2); return D.LABEL[k] && t.uses.indexOf(k) !== -1; })));
+c("missing details are listed with their labels", D.missing("authority", { seller_name: "Sam" }).some(m => m.key === "broker_prc" && m.label === "Broker PRC licence no.") && !D.missing("authority", { seller_name: "Sam" }).some(m => m.key === "seller_name"));
+c("the dialog says it is not legal advice", /not legal advice\. Have your lawyer review it before anyone signs\./.test(read("js/app.js")));
+c("the documents module is loaded and cached", /<script src="js\/doc_templates\.js" defer><\/script>/.test(read("index.html")) && /"\.\/js\/doc_templates\.js"/.test(read("sw.js")));
 // app wiring
 const app = read("js/app.js");
 c("settings refuse shares that do not add to 100", /const problems = COMX\(\) \? COMX\(\)\.checkShares\(next\) : \[\];\s+if \(problems\.length\) \{ toast\(problems\[0\], "err"\); return; \}/.test(app));

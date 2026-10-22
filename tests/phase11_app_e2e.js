@@ -58,6 +58,24 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     chk("Ana's statement: share, withholding, net", !!st && /Ana Agent/.test(st.textContent) && /37,500/.test(st.textContent) && /3,750/.test(st.textContent) && /33,750/.test(st.textContent), st ? st.textContent.slice(0, 300) : "none");
     chk("it can be printed", !!q("[data-com-print]"));
     q("[data-com-close]").click(); await wait(200);
+    // J5: deal documents.
+    Object.assign(t, { buyerName: "Carla Buyer", sellerName: "Sam Seller", reservationFee: 50000, reservationDate: "2026-10-01" });
+    S.txDetail = t.id;
+    q('#nav [data-view="transactions"]').click(); await wait(800);
+    const db = q('[data-tx-docs="' + t.id + '"]');
+    chk("a deal has Documents", !!db);
+    db.click(); await wait(500);
+    const txt = () => (q("#docs-text") || {}).textContent || "";
+    chk("the offer to buy is filled from the deal", /LETTER OF INTENT TO PURCHASE/.test(txt()) && /Carla Buyer/.test(txt()) && /Sam Seller/.test(txt()) && /Five Million Pesos/.test(txt()), txt().slice(0, 300));
+    chk("unknown details are blank lines to fill in", /____________/.test(txt()) && /to fill in/.test((q(".docs-fields summary") || {}).textContent || ""));
+    chk("it says to have a lawyer review it", /not legal advice/.test(q("#docs-modal").textContent));
+    setVal("#docf-buyer_address", "12 Mabini St, Lipa"); await wait(100);
+    chk("typing updates the document", /12 Mabini St, Lipa/.test(txt()));
+    setVal("#docs-tpl", "authority"); await wait(500);
+    chk("the exclusive authority to sell names the broker and the commission", /EXCLUSIVE AUTHORITY TO SELL/.test(txt()) && /commission of 3%/.test(txt()) && /90 days/.test(txt()), txt().slice(0, 400));
+    chk("what was typed is kept on the deal", t.docFields && t.docFields.buyer_address === "12 Mabini St, Lipa", JSON.stringify(t.docFields));
+    chk("it can be printed or copied", !!q("[data-docs-print]") && !!q("[data-docs-copy]"));
+    q("[data-docs-close]").click(); await wait(200);
     chk("no sideways scroll", document.documentElement.scrollWidth <= window.innerWidth + 2, document.documentElement.scrollWidth + " > " + window.innerWidth);
   } catch (e) { window.__msChecks.push({ name: "runner", ok: false, detail: (e && e.stack || e.message || e) + "" }); }
   window.__msOk = window.__msChecks.every(c => c.ok);
