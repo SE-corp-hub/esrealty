@@ -1,0 +1,28 @@
+# Update pull requests for the things that run unattended. Monthly and grouped, so the
+# repository is not flooded; each one still has to pass the tests before it can be merged.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /market-scan/vercel
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      market-scan-vercel:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /market-scan/worker
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      market-scan-worker:
+        patterns: ["*"]

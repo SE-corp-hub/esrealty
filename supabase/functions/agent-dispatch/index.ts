@@ -13,6 +13,14 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Same-length comparison that doesn't stop at the first different character.
+function sameSecret(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
 function addDays(d: Date, n: number) {
   const t = new Date(d);
   t.setDate(t.getDate() + n);
@@ -48,8 +56,8 @@ Deno.serve(async (req) => {
   const secretHeader = req.headers.get("x-agent-dispatch-secret") ?? "";
   const DISPATCH_SECRET = Deno.env.get("AGENT_DISPATCH_SECRET") ?? "";
   const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const okSecret = !!DISPATCH_SECRET && secretHeader === DISPATCH_SECRET;
-  const okService = !!SERVICE_KEY && authHeader === "Bearer " + SERVICE_KEY;
+  const okSecret = !!DISPATCH_SECRET && sameSecret(secretHeader, DISPATCH_SECRET);
+  const okService = !!SERVICE_KEY && sameSecret(authHeader, "Bearer " + SERVICE_KEY);
   if (!okSecret && !okService) return json({ ok: false, error: "Unauthorized" }, 401);
 
   const url = Deno.env.get("SUPABASE_URL") ?? "";
@@ -61,7 +69,10 @@ Deno.serve(async (req) => {
   const pMax = Math.max(1, Math.min(25, Number(body?.max) || 10));
 
   const { data: claimed, error } = await supabase.rpc("agent_claim_due", { p_max: pMax });
-  if (error) return json({ ok: false, error: error.message }, 500);
+  if (error) {
+    console.error("agent-dispatch claim failed", error.message);
+    return json({ ok: false, error: "Could not claim tasks" }, 500);
+  }
   if (!Array.isArray(claimed) || claimed.length === 0) return json({ ok: true, claimed: 0, done: 0 });
 
   let done = 0, skipped = 0;

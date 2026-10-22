@@ -25,6 +25,9 @@ const BASE = `https://${REF}.supabase.co/functions/v1`;
 
 const fnDir = path.join(__dirname, "functions");
 
+// Every request gives up after 12 seconds, so one slow service cannot hang the nightly run.
+const fetchT = (url, opts) => fetch(url, Object.assign({ signal: AbortSignal.timeout(12000) }, opts || {}));
+
 // Each entry: name + the probe request(s) that exercise the deployed function
 // using only public/unauthenticated calls:
 //   { path, method, expect }  expect = HTTP status we assert to prove the
@@ -73,8 +76,9 @@ const FUNCTIONS = [
   },
   {
     name: "location-report",
-    // Value Guide report emails. Until it is deployed the app saves the lead
-    // through listing-api instead, so a miss is reported but not blocking.
+    // Value Guide report requests: saves the request as a CRM lead (it sends no email; the team
+    // sends the report by hand). Until it is deployed the app saves the lead through listing-api
+    // instead, so a miss is reported but not blocking.
     skipBlocking: true,
     deployHint: "Run the Deploy edge functions workflow (needs the SUPABASE_ACCESS_TOKEN repo secret), or: supabase functions deploy location-report --no-verify-jwt --project-ref " + REF,
     probes: [
@@ -152,21 +156,28 @@ const REST_TABLES = [
   { table: "pms_expenses", note: "PMS expenses", anonDenied: true },
   { table: "pms_documents", note: "PMS documents", anonDenied: true },
   { table: "pms_receipt_counters", note: "receipt numbers (migrations/0001)", anonDenied: true },
+  { table: "audit_events", note: "change log (visitors see no rows)" },
+  // Checked, but reported as "not applied yet" instead of failing, until the migration has been run.
+  { table: "push_subscriptions", note: "phone alerts (migrations/0003)", anonDenied: true, pending: "0003" },
+  { table: "push_config", note: "phone alert key (migrations/0003)", anonDenied: true, pending: "0003" },
+  { table: "site_settings", note: "website settings (migrations/0005)", pending: "0005" },
 ];
 
 // Columns other code depends on. A missing column answers 400 (42703).
 const REST_COLUMNS = [
   { table: "profiles", column: "email", note: "co-broke invites, fb-leads, notify-dispatch (supabase/archive/phase3_broken_features.sql)" },
+  { table: "notifications", column: "pushed_at", note: "phone alerts sender (migrations/0003)", pending: "0003" },
 ];
 
 async function probeTable(entry) {
   const url = `${REST.base}/${entry.table}?select=*&limit=1`;
   try {
-    const res = await fetch(url, { headers: REST.headers });
+    const res = await fetchT(url, { headers: REST.headers });
     const got = res.status;
     // anonDenied tables must refuse visitors outright: a 200 means their rights came back.
     const ok = entry.anonDenied ? (got === 401 || got === 403) : (got === 200 || got === 401 || got === 403);
     let extra = "";
+    if (entry.pending && got === 404) return { table: entry.table, note: entry.note, got, ok: true, pendingMissing: true, extra: "  [not applied yet: migrations/" + entry.pending + " - informational]" };
     if (got === 404) extra = "  <-- MISSING — run the matching supabase/*.sql";
     if (got === 401 || got === 403) extra = "  [present; no anonymous privilege]";
     if (entry.anonDenied && got === 200) extra = "  <-- VISITORS CAN QUERY THIS TABLE — run supabase/archive/pms_v2_tables.sql / phase1_security_rest.sql again";
@@ -184,12 +195,14 @@ const REST_RPCS = [
   { fn: "pms_tenant_send_payment", note: "tenant payment proof (migrations/0001)", body: { p_lease: "x", p_amount: 1, p_date: "2026-01-01", p_month: null, p_method: "Cash", p_reference: "", p_note: "" } },
   { fn: "pms_tenant_request_repair", note: "tenant repair request (migrations/0001)", body: { p_lease: "x", p_title: "x", p_details: "", p_category: "Other" } },
   { fn: "pms_my_repair_requests", note: "tenant's own requests (migrations/0001)" },
+  { fn: "listing_stale_sweep", note: "stale-listing alerts, server only (migrations/0005)", pending: "0005" },
 ];
 async function probeRpc(entry) {
   try {
-    const res = await fetch(`${REST.base}/rpc/${entry.fn}`, { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, REST.headers), body: JSON.stringify(entry.body || {}) });
+    const res = await fetchT(`${REST.base}/rpc/${entry.fn}`, { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, REST.headers), body: JSON.stringify(entry.body || {}) });
     const got = res.status;
     const ok = got === 401 || got === 403;
+    if (entry.pending && got === 404) return { table: "rpc " + entry.fn, note: entry.note, got, ok: true, pendingMissing: true, extra: "  [not applied yet: migrations/" + entry.pending + " - informational]" };
     const extra = got === 404 ? "  <-- MISSING — run the SQL in the note" : ok ? "  [present; visitors refused]" : "  <-- VISITORS CAN CALL THIS FUNCTION";
     return { table: "rpc " + entry.fn, note: entry.note, got, ok, extra };
   } catch (e) {
@@ -205,7 +218,7 @@ const VERCEL_PROBES = [
 ];
 async function probeVercel(p) {
   try {
-    const res = await fetch(VERCEL + p.path, { method: "GET" });
+    const res = await fetchT(VERCEL + p.path, { method: "GET" });
     const got = res.status;
     return { path: p.path, note: p.note, got, ok: got === 401 || got === 403, reachable: true };
   } catch (e) {
@@ -216,9 +229,10 @@ async function probeVercel(p) {
 async function probeColumn(entry) {
   const url = `${REST.base}/${entry.table}?select=${entry.column}&limit=0`;
   try {
-    const res = await fetch(url, { headers: REST.headers });
+    const res = await fetchT(url, { headers: REST.headers });
     const got = res.status;
     const ok = got === 200 || got === 401 || got === 403;
+    if (entry.pending && (got === 400 || got === 404)) return { table: entry.table + "." + entry.column, note: entry.note, got, ok: true, pendingMissing: true, extra: "  [not applied yet: migrations/" + entry.pending + " - informational]" };
     return { table: entry.table + "." + entry.column, note: entry.note, got, ok, extra: got === 400 ? "  <-- COLUMN MISSING" : "" };
   } catch (e) {
     return { table: entry.table + "." + entry.column, note: entry.note, got: "ERR", ok: false, extra: " [not reachable: " + (e && e.message || e) + "]" };
@@ -237,8 +251,8 @@ const KNOWN_VARS = new Map(Object.entries({
   META_PAGE_TOKEN: "fb-leads: Meta page access token (Graph API)",
   META_APP_SECRET: "fb-leads: Meta app secret (signature verification)",
   FB_LEADS_DEFAULT_BROKER_EMAIL: "fb-leads: default broker to auto-assign Facebook leads",
-  RESEND_API_KEY: "notify-dispatch, location-report: Resend API key for email",
-  MAIL_FROM: "notify-dispatch, location-report: from address on a domain verified in Resend (defaults to onboarding@resend.dev, which can only email the Resend account owner)",
+  RESEND_API_KEY: "notify-dispatch: Resend API key for email (only the \"email me this\" mode sends today)",
+  MAIL_FROM: "notify-dispatch: from address on a domain verified in Resend (defaults to onboarding@resend.dev, which can only email the Resend account owner)",
   SEMAPHORE_API_KEY: "notify-dispatch: Semaphore API key for PH SMS",
   SEMAPHORE_SENDER: "notify-dispatch: Semaphore sender name (defaults ESRealty)",
   NOTIFY_DISPATCH_SECRET: "notify-dispatch: shared secret authorizing /notify-dispatch POSTs",
@@ -259,7 +273,7 @@ function extractEnvRefs(file) {
 async function probe(base, p, fnName, optional) {
   const url = base + p.path;
   try {
-    const res = await fetch(url, {
+    const res = await fetchT(url, {
       method: p.method,
       headers: { "Content-Type": "application/json" },
       body: p.body !== undefined ? JSON.stringify(p.body) : undefined,
@@ -365,6 +379,8 @@ async function probe(base, p, fnName, optional) {
   const missingTables = tableResults.filter(r => !r.ok);
   console.log("=== SUMMARY ===\n");
   console.log("Probes: " + passed + "/" + total + "   Tables and columns present: " + (tableResults.length - missingTables.length) + "/" + tableResults.length);
+  const notApplied = tableResults.filter(r => r.pendingMissing);
+  if (notApplied.length) console.log("Waiting for a migration (not a failure): " + notApplied.map(r => r.table).join(", "));
 
   if (failed.length) {
     const blocking = failed.filter(r => !r.optional);

@@ -772,6 +772,8 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     state.listingFilters = {};
     state.listingDetail = null;
     await loadCloudPms();
+    if (roleIs("super-admin")) syncSiteSettings();
+    syncComplianceRecords();
   }
 
   function loadUser() {
@@ -5456,6 +5458,46 @@ function bindPerView() {
     if (/SHOPHOUSE SPECIALIST/i.test(String(state.siteContact.eyebrow || ""))) { state.siteContact.eyebrow = real.eyebrow; state.siteContact.title = real.title; state.siteContact.description = real.description; }
     return state.siteContact;
   }
+  /* Website settings table (migration 0005, backend roadmap K1). The Contact Us details and the
+   * Value Guide factors used to live only in one super-admin's private data, so they went with that
+   * account. They are now also written to site_settings, which the public site reads first. This is
+   * best effort: the copy in the account's own data stays the working copy, and a missing table
+   * (migration not applied yet) or a refused write is ignored. */
+  async function publishSiteSetting(key, value) {
+    if (!SB || !currentUser || !roleIs("super-admin") || !value) return false;
+    try {
+      const { error } = await SB.from("site_settings").upsert({ key: key, value: JSON.parse(JSON.stringify(value)), is_public: true }, { onConflict: "key" });
+      return !error;
+    } catch (e) { return false; }
+  }
+  /* After a super-admin signs in, the table and the account's own copy are brought together:
+   * a setting the table has is adopted (so a second super-admin sees and edits what the first one
+   * saved, instead of an older copy that would overwrite it), and a setting the table lacks is
+   * copied into it once. What the public site shows does not change, because it already showed
+   * these same saved values. */
+  async function syncSiteSettings() {
+    if (!SB || !currentUser || !roleIs("super-admin")) return;
+    try {
+      const { data, error } = await SB.from("site_settings").select("key,value").in("key", ["siteContact", "valueGuide"]);
+      if (error || !Array.isArray(data)) return;
+      const have = {};
+      data.forEach(r => { if (r && r.value && typeof r.value === "object" && !Array.isArray(r.value)) have[r.key] = r.value; });
+      let changed = false;
+      if (have.siteContact) {
+        const next = Object.assign(siteContactDefaults(), have.siteContact);
+        if (JSON.stringify(next) !== JSON.stringify(state.siteContact)) { state.siteContact = next; changed = true; }
+      } else await publishSiteSetting("siteContact", siteContactData());
+      if (have.valueGuide) {
+        const d = defaultState().valueGuide, g = have.valueGuide;
+        const next = Object.assign({}, d, g, {
+          proxyFactors: Object.assign({}, d.proxyFactors, g.proxyFactors), marketBandMid: Object.assign({}, d.marketBandMid, g.marketBandMid),
+          construction: Object.assign({}, d.construction, g.construction)
+        });
+        if (JSON.stringify(next) !== JSON.stringify(state.valueGuide)) { state.valueGuide = next; changed = true; }
+      } else await publishSiteSetting("valueGuide", valueGuideSettings());
+      if (changed) { save(); render(); }
+    } catch (e) { /* not available yet */ }
+  }
   function renderSiteContactAdmin() {
     if (!roleIs("super-admin")) return "";
     const c = siteContactData();
@@ -5488,6 +5530,7 @@ function bindPerView() {
       c.eyebrow = value("sc-eyebrow"); c.title = value("sc-title"); c.description = value("sc-description"); c.phone = value("sc-phone"); c.email = value("sc-email"); c.address = value("sc-address"); c.hours = value("sc-hours");
       const modal = $("#site-contact-modal"); if (modal) modal.remove();
       save(); render(); toast("Contact Us details updated");
+      publishSiteSetting("siteContact", c);
     });
   }
   function renderListingAccountDashboard() {
@@ -13432,13 +13475,17 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     const ppsm = listingPriceSqm(l);
     const dropAmt = (C.num(l.previousPrice, 0) > 0 && C.num(l.price, 0) > 0 && C.num(l.price, 0) < C.num(l.previousPrice, 0)) ? (C.num(l.previousPrice, 0) - C.num(l.price, 0)) : 0;
     const ageDays = Math.floor((Date.now() - new Date(l.createdAt || Date.now()).getTime()) / 86400000);
-    const isStale = (l.isPublished !== false || !!l.autoUnpublishedAt) && ["available", "rfo"].indexOf(l.status) >= 0 && ageDays >= 90;
+    /* "Stale" counts days since the listing was last saved, the same measure the server reminder
+     * (listing_stale_sweep, 75 days) and the 90-day auto-draft use. It used to count from creation,
+     * so a listing edited yesterday could still be marked stale. */
+    const idleDays = Math.floor((Date.now() - new Date(l.updatedAt || l.createdAt || Date.now()).getTime()) / 86400000);
+    const isStale = (l.isPublished !== false || !!l.autoUnpublishedAt) && ["available", "rfo"].indexOf(l.status) >= 0 && idleDays >= 75;
     const area = (C.num(l.lotArea, 0) > 0 ? C.num(l.lotArea, 0).toLocaleString() + " sqm" : "") + (C.num(l.floorArea, 0) > 0 ? (C.num(l.lotArea, 0) > 0 ? " · " : "") + C.num(l.floorArea, 0).toLocaleString() + " sqm floor" : "");
     return '<div class="ls-card card card-pad" data-ls-open="' + esc(l.id) + '">' +
       '<div class="ls-photo">' +
         '<div class="ls-photo-ph">' + icon("home", 30) + "<span>" + esc(listTypeLabel(l.propertyType)) + "</span></div>" +
         (img ? '<img class="ls-photo-img" ' + thumbAttrs(img, "this.remove()") + ' alt="" loading="lazy">' : "") +
-        '<div class="ls-photo-top">' + (canBulk ? '<label style="margin-right:6px;background:#fff;border:1px solid #cbd4df;border-radius:5px;padding:2px 5px;cursor:pointer" title="Select for bulk actions"><input type="checkbox" data-ls-bulk="' + esc(l.id) + '"' + ((window._lsBulkSel || []).indexOf(l.id) >= 0 ? " checked" : "") + '></label>' : "") + listStatusBadge(l.status) + (l.isPublished === false ? '<span class="badge gold">Draft</span>' : "") + (dropAmt > 0 ? '<span class="badge green" title="Price reduced">▼ ' + esc(C.money(dropAmt)) + '</span>' : "") + (isStale ? '<span class="badge red" title="' + (l.autoUnpublishedAt ? "Auto-drafted after 90 days — refresh to republish" : "Listing is getting stale — refresh or adjust price") + '">' + ageDays + 'd' + (l.autoUnpublishedAt ? " auto-drafted" : " stale") + '</span>' : (ageDays >= 30 ? '<span class="badge gold">' + ageDays + 'd listed</span>' : "")) + (l.furnishing ? '<span class="badge blue" title="Furnishing">' + esc(({ bare: "Bare", semi: "Semi-Furn", full: "Fully Furn." })[l.furnishing] || l.furnishing) + '</span>' : "") + (l.petFriendly === "yes" ? '<span class="badge purple" title="Pet-friendly">Pets OK</span>' : "") + (l.balcony === "yes" ? '<span class="badge cyan">Balcony</span>' : "") + "</div>" +
+        '<div class="ls-photo-top">' + (canBulk ? '<label style="margin-right:6px;background:#fff;border:1px solid #cbd4df;border-radius:5px;padding:2px 5px;cursor:pointer" title="Select for bulk actions"><input type="checkbox" data-ls-bulk="' + esc(l.id) + '"' + ((window._lsBulkSel || []).indexOf(l.id) >= 0 ? " checked" : "") + '></label>' : "") + listStatusBadge(l.status) + (l.isPublished === false ? '<span class="badge gold">Draft</span>' : "") + (dropAmt > 0 ? '<span class="badge green" title="Price reduced">▼ ' + esc(C.money(dropAmt)) + '</span>' : "") + (isStale ? '<span class="badge red" title="' + (l.autoUnpublishedAt ? "Auto-drafted after 90 days — refresh to republish" : "Not updated for " + idleDays + " days — open it and save, or mark it sold or rented") + '">' + idleDays + 'd' + (l.autoUnpublishedAt ? " auto-drafted" : " stale") + '</span>' : (ageDays >= 30 ? '<span class="badge gold">' + ageDays + 'd listed</span>' : "")) + (l.furnishing ? '<span class="badge blue" title="Furnishing">' + esc(({ bare: "Bare", semi: "Semi-Furn", full: "Fully Furn." })[l.furnishing] || l.furnishing) + '</span>' : "") + (l.petFriendly === "yes" ? '<span class="badge purple" title="Pet-friendly">Pets OK</span>' : "") + (l.balcony === "yes" ? '<span class="badge cyan">Balcony</span>' : "") + "</div>" +
         (l.featured ? '<div class="ls-feat">' + icon("star", 12) + " Featured</div>" : "") +
         '<button class="ls-fav' + (lsFav(l.id) ? " on" : "") + '" data-ls-fav="' + esc(l.id) + '" title="Save to favorites">' + icon("star", 17) + "</button>" +
       "</div>" +
@@ -16151,12 +16198,55 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     document.body.appendChild(ov);
     ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
   }
+  /* The compliance registry also lives in the compliance_records table (backend roadmap A10), so the
+   * server renewal check (compliance_schedule_renewals) has something to read. Only what a person
+   * saved is copied: the sample rows every new account starts with (ids "cmp-seed-...") never are.
+   * Best effort, like the website settings: the account's own copy stays the working copy. */
+  const COMPLIANCE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  function complianceRow(r) {
+    return {
+      id: String(r.id), type: String(r.type || "broker_license"), name: String(r.name || ""), number: String(r.number || ""),
+      holder: String(r.holder || ""), notes: String(r.notes || ""), status: String(r.status || "active"),
+      issued_at: COMPLIANCE_DATE.test(String(r.issuedAt || "")) ? r.issuedAt : null,
+      expires_at: COMPLIANCE_DATE.test(String(r.expiresAt || "")) ? r.expiresAt : null
+    };
+  }
+  async function mirrorCompliance(r) {
+    if (!SB || !currentUser || !currentUser.id || !r || !r.id) return false;
+    try {
+      const { error } = await SB.from("compliance_records").upsert(complianceRow(r), { onConflict: "id" });
+      return !error;
+    } catch (e) { return false; }
+  }
+  async function unmirrorCompliance(id) {
+    if (!SB || !currentUser || !currentUser.id || !id || /^cmp-seed-/.test(String(id))) return false;
+    try {
+      const { error } = await SB.from("compliance_records").delete().eq("id", String(id));
+      return !error;
+    } catch (e) { return false; }
+  }
+  /* After sign-in: copy the saved records the table does not have yet (once per record). */
+  async function syncComplianceRecords() {
+    if (!SB || !currentUser || !currentUser.id) return;
+    const mine = (state.compliance || []).filter(r => r && r.id && !/^cmp-seed-/.test(String(r.id)));
+    if (!mine.length) return;
+    try {
+      const { data, error } = await SB.from("compliance_records").select("id").in("id", mine.map(r => String(r.id)));
+      if (error || !Array.isArray(data)) return;
+      const have = {}; data.forEach(x => { have[x.id] = true; });
+      const missing = mine.filter(r => !have[String(r.id)]).map(complianceRow);
+      if (missing.length) await SB.from("compliance_records").upsert(missing, { onConflict: "id" });
+    } catch (e) { /* table not available */ }
+  }
   function saveComplianceRecord() {
     const ov = $("#cmp-modal"); if (!ov) return;
     const id = ov.getAttribute("data-edit-id") || "";
     const name = String(($("#cmp-name") || { value: "" }).value || "").trim();
     if (!name) { toast("Record name is required", "err"); return; }
     const rec = (state.compliance || []).find(x => x.id === id) || { id: "cmp-" + Date.now() + "-" + Math.floor(Math.random() * 99999) };
+    /* Editing one of the sample rows makes it a real record: give it its own id, so it cannot collide
+     * with another account's copy of the same sample in the shared table. */
+    if (/^cmp-seed-/.test(String(rec.id))) rec.id = "cmp-" + Date.now() + "-" + Math.floor(Math.random() * 99999);
     rec.type = $("#cmp-type").value;
     rec.name = name;
     rec.number = String(($("#cmp-number") || { value: "" }).value || "").trim();
@@ -16172,12 +16262,14 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     ov.remove();
     render();
     toast("Compliance record saved", "ok");
+    mirrorCompliance(rec);
   }
   function delCompliance(id) {
     if (!state.compliance) return;
     state.compliance = state.compliance.filter(x => x.id !== id);
     save(); render();
     toast("Compliance record deleted", "ok");
+    unmirrorCompliance(id);
   }
   function complianceLadder(r) {
     const st = complianceStatusOf(r);
@@ -19095,6 +19187,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     v.approvedBy = (currentUser && (currentUser.email || currentUser.name)) || "super-admin";
     v.approvedAt = new Date().toISOString();
     save(); render(); toast("Value Guide factors approved and saved");
+    publishSiteSetting("valueGuide", v);
   }
   let adminHooked = false;
   function bindAdmin() {
@@ -19667,6 +19760,16 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       }
       return false;
     },
+    setListingUpdatedAt: function(id, updatedAt) {
+      if (!state.listings) return false;
+      const idx = state.listings.findIndex(x => x.id === id);
+      if (idx >= 0) {
+        state.listings[idx].updatedAt = updatedAt;
+        save();
+        return true;
+      }
+      return false;
+    },
     setListingPublished: function(id, published) {
       if (!state.listings) return false;
       const idx = state.listings.findIndex(x => x.id === id);
@@ -19677,6 +19780,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       }
       return false;
     },
+    syncSiteSettings: function() { return syncSiteSettings(); },
     getState: function() { return state; },
     persistTransaction: function(id) { return persistTransactionToCloud((state.transactions || []).find(t => t.id === id)); }
   };

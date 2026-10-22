@@ -55,6 +55,10 @@ class HttpError extends Error {
   }
 }
 
+// Public lists and settings may be kept by the browser for a minute. A single listing is not
+// (its view count and price must stay current).
+const PUBLIC_CACHE = { "Cache-Control": "public, max-age=60" };
+
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
@@ -66,6 +70,22 @@ const stringValue = (value: unknown, max: number, field: string, required = fals
   if (required && !result) throw new HttpError(400, `${field} is required`);
   if (result.length > max) throw new HttpError(400, `${field} is too long`);
   return result;
+};
+
+// A text filter that matches the whole word, not a pattern: % and _ are escaped for ILIKE,
+// and * (which the API treats as %) is dropped. Place names contain none of these.
+const likeLiteral = (value: string) => value.replace(/[\\%_]/g, "\\$&").replace(/\*/g, "");
+
+// A phone number as people type it, kept as typed. At least seven digits and not one digit
+// repeated ("0000000"), so an empty or made-up value is refused. Landlines and two numbers are fine.
+const looksLikePhone = (text: string) => {
+  const digits = text.replace(/\D/g, "");
+  return digits.length >= 7 && !/^(\d)\1+$/.test(digits);
+};
+const phoneValue = (value: unknown, required: boolean) => {
+  const text = stringValue(value, 50, "phone", required);
+  if (text && !looksLikePhone(text)) throw new HttpError(400, "phone is invalid");
+  return text;
 };
 
 const numberValue = (value: unknown, field: string, min: number, max: number, fallback: number | null) => {
@@ -112,9 +132,13 @@ const imageUrls = (value: unknown, fallback: string[] = []) => {
   return [...new Set(urls)];
 };
 
-const parseBody = async (req: Request) => {
+// Listings carry photo links and details (up to 1 MB). The public forms are a few lines of text.
+const MAX_LISTING_BODY = 1_000_000;
+const MAX_FORM_BODY = 32_000;
+
+const parseBody = async (req: Request, maxBytes = MAX_LISTING_BODY) => {
   const contentLength = Number(req.headers.get("content-length") || 0);
-  if (contentLength > 1_000_000) throw new HttpError(413, "Request body is too large");
+  if (contentLength > maxBytes) throw new HttpError(413, "Request body is too large");
   if (!req.body) throw new HttpError(400, "Request body is required");
   try {
     const reader = req.body.getReader();
@@ -125,7 +149,7 @@ const parseBody = async (req: Request) => {
       const chunk = await reader.read();
       if (chunk.done) break;
       size += chunk.value.byteLength;
-      if (size > 1_000_000) {
+      if (size > maxBytes) {
         await reader.cancel();
         throw new HttpError(413, "Request body is too large");
       }
@@ -317,9 +341,9 @@ const listListings = async (url: URL, admin: SupabaseClient) => {
   const beds = numberValue(url.searchParams.get("beds"), "beds", 0, 100, null);
   const baths = numberValue(url.searchParams.get("baths"), "baths", 0, 99.9, null);
 
-  if (city) query = query.ilike("city", city);
-  if (region) query = query.ilike("region", region);
-  if (state) query = query.ilike("province", state);
+  if (city) query = query.ilike("city", likeLiteral(city));
+  if (region) query = query.ilike("region", likeLiteral(region));
+  if (state) query = query.ilike("province", likeLiteral(state));
   if (propertyType) query = query.eq("property_type", enumValue(propertyType, propertyTypes, "", "property_type"));
   if (offerType) query = query.eq("offer_type", enumValue(offerType, offerTypes, "", "offer_type"));
   if (status) query = query.eq("status", enumValue(status, listingStatuses, "", "status"));
@@ -339,7 +363,7 @@ const listListings = async (url: URL, admin: SupabaseClient) => {
   const { data, error, count } = await query.range(from, from + perPage - 1);
   if (error) throw new Error(error.message);
   const total = Number(count || 0);
-  return json({ data: data || [], page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) });
+  return json({ data: data || [], page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) }, 200, PUBLIC_CACHE);
 };
 
 const getListing = async (req: Request, id: string, admin: SupabaseClient, pepper: string) => {
@@ -365,6 +389,19 @@ const getListing = async (req: Request, id: string, admin: SupabaseClient, peppe
   return json({ data });
 };
 
+// Change log for edits made through this API. Listings are saved with the server key, so the
+// database cannot tell who made the change; this function knows. A failed log never fails the edit.
+const logListingChange = async (admin: SupabaseClient, actorId: string, event: string, listingId: string, detail: JsonRecord) => {
+  try {
+    const { error } = await admin.from("audit_events").insert({
+      owner_id: actorId, event_type: event, entity_type: "listing", entity_id: listingId, detail,
+    });
+    if (error) console.error("audit_events insert failed", event, error.message);
+  } catch (error) {
+    console.error("audit_events insert failed", event, error);
+  }
+};
+
 const createListing = async (req: Request, admin: SupabaseClient) => {
   const auth = await authenticate(req, admin) as AuthContext;
   requirePublisher(auth);
@@ -375,6 +412,9 @@ const createListing = async (req: Request, admin: SupabaseClient) => {
     console.error(error);
     throw new HttpError(error.code === "23505" ? 409 : 400, error.code === "23505" ? "Listing already exists" : "Could not create listing");
   }
+  await logListingChange(admin, auth.id, "listing_created", String(data.id), {
+    price: Number(data.price), published: Boolean(data.is_published), status: data.status,
+  });
   return json({ data: { ...data, payload: undefined } }, 201);
 };
 
@@ -403,6 +443,16 @@ const updateListing = async (req: Request, id: string, admin: SupabaseClient) =>
     console.error(error);
     throw new HttpError(400, "Could not update listing");
   }
+  const owner = existing.owner_id;
+  if (Number(existing.price) !== Number(data.price)) {
+    await logListingChange(admin, auth.id, "listing_price", id, { from: Number(existing.price), to: Number(data.price), owner_id: owner });
+  }
+  if (Boolean(existing.is_published) !== Boolean(data.is_published)) {
+    await logListingChange(admin, auth.id, "listing_published", id, { from: Boolean(existing.is_published), to: Boolean(data.is_published), owner_id: owner });
+  }
+  if (String(existing.status) !== String(data.status)) {
+    await logListingChange(admin, auth.id, "listing_status", id, { from: existing.status, to: data.status, owner_id: owner });
+  }
   return json({ data: { ...data, payload: undefined } });
 };
 
@@ -411,7 +461,7 @@ const deleteListing = async (req: Request, id: string, admin: SupabaseClient) =>
   requirePublisher(auth);
   const { data: existing, error: findError } = await admin
     .from("shared_listings")
-    .select("id,owner_id")
+    .select("id,owner_id,status,price,is_published")
     .eq("id", id)
     .maybeSingle();
   if (findError) throw new Error(findError.message);
@@ -421,6 +471,9 @@ const deleteListing = async (req: Request, id: string, admin: SupabaseClient) =>
   }
   const { error } = await admin.from("shared_listings").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  await logListingChange(admin, auth.id, "listing_deleted", id, {
+    owner_id: existing.owner_id, status: existing.status, price: Number(existing.price), published: Boolean(existing.is_published),
+  });
   return json({ ok: true });
 };
 
@@ -470,7 +523,24 @@ const getFavorites = async (req: Request, admin: SupabaseClient) => {
   return json({ data: ids.map((id) => byId.get(id)).filter(Boolean) });
 };
 
+// Website settings saved in the site_settings table (migration 0005). Returns {} when the table is
+// not there yet or has no public rows, and the caller falls back to the super-admin's saved data.
+const readSettingsTable = async (admin: SupabaseClient): Promise<Record<string, JsonRecord>> => {
+  try {
+    const { data, error } = await admin.from("site_settings").select("key,value").eq("is_public", true).in("key", ["siteContact", "valueGuide"]);
+    if (error || !Array.isArray(data)) return {};
+    const out: Record<string, JsonRecord> = {};
+    for (const row of data) {
+      if (row && typeof row.value === "object" && row.value && !Array.isArray(row.value)) out[String(row.key)] = row.value as JsonRecord;
+    }
+    return out;
+  } catch (_error) {
+    return {};
+  }
+};
+
 const getSiteSettings = async (admin: SupabaseClient) => {
+  const table = await readSettingsTable(admin);
   const { data: adminProfile, error: profileError } = await admin
     .from("profiles")
     .select("id")
@@ -492,12 +562,12 @@ const getSiteSettings = async (admin: SupabaseClient) => {
     .eq("owner_id", adminProfile.id)
     .maybeSingle();
   if (stateError) throw new Error(stateError.message);
-  const saved = appState?.payload && typeof appState.payload === "object" && !Array.isArray(appState.payload)
+  const saved = table.siteContact ?? (appState?.payload && typeof appState.payload === "object" && !Array.isArray(appState.payload)
     ? (appState.payload as JsonRecord).siteContact
-    : null;
-  const savedGuide = appState?.payload && typeof appState.payload === "object" && !Array.isArray(appState.payload)
+    : null);
+  const savedGuide = table.valueGuide ?? (appState?.payload && typeof appState.payload === "object" && !Array.isArray(appState.payload)
     ? (appState.payload as JsonRecord).valueGuide
-    : null;
+    : null);
   const contact = saved && typeof saved === "object" && !Array.isArray(saved) ? saved as JsonRecord : {};
   const guide = savedGuide && typeof savedGuide === "object" && !Array.isArray(savedGuide) ? savedGuide as JsonRecord : {};
   const proxy = guide.proxyFactors && typeof guide.proxyFactors === "object" ? guide.proxyFactors as JsonRecord : {};
@@ -523,7 +593,7 @@ const getSiteSettings = async (admin: SupabaseClient) => {
       wood_prefab: safeNumber(construction.wood_prefab, 16000, 1000, 200000), mixed_chb: safeNumber(construction.mixed_chb, 25000, 1000, 200000), rca_steel: safeNumber(construction.rca_steel, 32000, 1000, 200000),
     },
   };
-  return json({ data: { ...DEFAULT_SITE_CONTACT, ...contact, valueGuide } });
+  return json({ data: { ...DEFAULT_SITE_CONTACT, ...contact, valueGuide } }, 200, PUBLIC_CACHE);
 };
 
 const sha256 = async (value: string) => {
@@ -539,9 +609,9 @@ const callerAddress = (req: Request) => req.headers.get("cf-connecting-ip")
   || "unknown";
 
 const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pepper: string) => {
-  const body = await parseBody(req);
+  const body = await parseBody(req, MAX_FORM_BODY);
   const fullName = stringValue(body.full_name, 160, "full_name", true);
-  const phone = stringValue(body.phone, 50, "phone", true);
+  const phone = phoneValue(body.phone, true);
   const email = stringValue(body.email, 254, "email").toLowerCase();
   const contactType = stringValue(body.contact_type || "buyer", 40, "contact_type");
   const message = stringValue(body.message, 5000, "message");
@@ -620,15 +690,19 @@ const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pe
     payload: leadPayload,
     created_by: listing.agent_id,
   });
-  if (!leadError) {
-    await admin.from("listing_inquiries").update({ crm_lead_id: leadId }).eq("id", created.id);
+  if (leadError) {
+    // The inquiry itself is saved; only the CRM copy is missing. Say so in the function log.
+    console.error("listing inquiry saved but CRM lead failed", created.id, leadError.message);
+  } else {
+    const { error: linkError } = await admin.from("listing_inquiries").update({ crm_lead_id: leadId }).eq("id", created.id);
+    if (linkError) console.error("listing inquiry not linked to its lead", created.id, linkError.message);
   }
 
   return json({ id: created.id, message: "Inquiry submitted" }, 201);
 };
 
 const submitContact = async (req: Request, admin: SupabaseClient, pepper: string) => {
-  const body = await parseBody(req);
+  const body = await parseBody(req, MAX_FORM_BODY);
   const inquiryType = String(body.inquiry_type || "consult").trim().toLowerCase();
   // What each public form records on the CRM lead.
   const CONTACT_TYPES: Record<string, { interest: string; activity: string; phone: boolean; email: boolean }> = {
@@ -644,7 +718,7 @@ const submitContact = async (req: Request, admin: SupabaseClient, pepper: string
   const isGuide = inquiryType === "guide";
   const isProjectBt = inquiryType === "project-bt";
   const fullName = isGuide ? "" : stringValue(body.full_name, 160, "full_name", true);
-  const phone = isGuide ? "" : stringValue(body.phone, 50, "phone", kind.phone);
+  const phone = isGuide ? "" : phoneValue(body.phone, kind.phone);
   const email = stringValue(body.email, 254, "email");
   const message = stringValue(body.message, 5000, "message");
   if (kind.email && !email) throw new HttpError(400, "email is required");

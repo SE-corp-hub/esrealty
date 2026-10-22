@@ -40,6 +40,9 @@ Current baseline: live schema exported 2026-10-18, after `0001` and `0002` were
 applied (both are included in it). `0003_phone_alerts.sql` (phone alerts and lead
 alerts) and `0004_alerts_and_access_fixes.sql` (alerts for website inquiries and leads,
 plus four access-rule fixes) came after it and are applied with the workflow above.
+`0005_broker_access_audit_ledger_settings.sql` (broker team access follows the broker's
+current role, indexes on the foreign keys, a change log, a lock on posted ledger entries,
+the `site_settings` table and stale-listing alerts) follows `0004`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses

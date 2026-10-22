@@ -41,7 +41,10 @@ function load(file, env) {
   dispatch = load("agent-dispatch.js", { CRON_SECRET: null, AGENT_EDGE_URL: null, AGENT_EDGE_TOKEN: null });
   res = fakeRes();
   await dispatch({ method: "GET", headers: {} }, res);
-  ok("dispatch: without CRON_SECRET set it keeps working (until the secret is added in Vercel)", res.statusCode === 200);
+  ok("dispatch: without CRON_SECRET set it refuses everyone (fails closed)", res.statusCode === 401);
+  res = fakeRes();
+  await dispatch({ method: "GET", headers: { authorization: "Bearer " } }, res);
+  ok("dispatch: an empty bearer is not a secret", res.statusCode === 401);
 
   // ad-perf
   const adPerf = load("ad-perf.js", { AD_PERF_SOURCE_URL: null });

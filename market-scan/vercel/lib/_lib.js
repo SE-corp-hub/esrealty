@@ -299,60 +299,20 @@ async function invokeMyProperty(query) {
   return { status, count: all.length, error: lastErr, listings: all };
 }
 
-// ------------------------------------------------------------ social media (probes)
+// ------------------------------------------------------------ sources that cannot be scanned
+// These four never returned a listing: Facebook and Instagram sit behind a login, TikTok serves a
+// script-only feed, and Lamudi refuses automated requests. Each scan used to fetch their pages anyway
+// (up to 8 seconds each, from the server's address) only to report "blocked". They are listed as not
+// available without calling them. The Market Scan screen still shows each one as a chip.
+const UNSCANNABLE = {
+  lamudi: { label: "Lamudi", status: "blocked", error: "blocks automated requests (HTTP 401); no listings can be read" },
+  facebook: { label: "Facebook Marketplace", status: "blocked", error: "requires a Facebook login; not scrapeable without authentication" },
+  instagram: { label: "Instagram (#property)", status: "js-only", error: "login wall; no listings exposed to plain requests" },
+  tiktok: { label: "TikTok (#property)", status: "js-only", error: "client-rendered feed; no structured property listings" }
+};
+const unscannable = (name) => Object.assign({ name, count: 0 }, UNSCANNABLE[name]);
 
-async function invokeFacebook() {
-  return getProbe("facebook", async () => {
-    try {
-      const html = await fetchHtml("https://www.facebook.com/marketplace/", 8);
-      if (!html || html.length < 500) {
-        return { status: "blocked", count: 0, error: "requires Facebook login (session cookie); not scrapeable without authentication", listings: [] };
-      }
-      return { status: "blocked", count: 0, error: "login-walled; Marketplace listings are not exposed to anonymous clients", listings: [] };
-    } catch (err) {
-      return { status: "blocked", count: 0, error: String(err && err.message || err), listings: [] };
-    }
-  });
-}
-
-async function invokeInstagram() {
-  return getProbe("instagram", async () => {
-    try {
-      const html = await fetchHtml("https://www.instagram.com/explore/tags/property/", 8);
-      if (!html) return { status: "js-only", count: 0, error: "serves a JavaScript-only shell (login wall); no listings exposed to plain requests", listings: [] };
-      return { status: "blocked", count: 0, error: "no public listing data parseable", listings: [] };
-    } catch (err) {
-      return { status: "blocked", count: 0, error: String(err && err.message || err), listings: [] };
-    }
-  });
-}
-
-async function invokeTikTok() {
-  return getProbe("tiktok", async () => {
-    try {
-      const html = await fetchHtml("https://www.tiktok.com/tag/property", 8);
-      if (html.length < 10000) return { status: "blocked", count: 0, error: "access denied", listings: [] };
-      return { status: "js-only", count: 0, error: "client-rendered feed; no structured property listings", listings: [] };
-    } catch (err) {
-      return { status: "blocked", count: 0, error: String(err && err.message || err), listings: [] };
-    }
-  });
-}
-
-// ------------------------------------------------------------ lamudi / zipmatch
-
-async function invokeLamudi() {
-  return getProbe("lamudi", async () => {
-    try {
-      const html = await fetchHtml("https://www.lamudi.com.ph/for-sale/", 6);
-      const n = (html.match(/data-id="[^"]+"/g) || []).length;
-      if (n > 0) return { status: "ok", count: 0, error: "parsed but schema not implemented", listings: [] };
-      return { status: "blocked", count: 0, error: "HTTP 401 / access denied (site blocks scrapers)", listings: [] };
-    } catch (err) {
-      return { status: "blocked", count: 0, error: String(err && err.message || err), listings: [] };
-    }
-  });
-}
+// ------------------------------------------------------------ zipmatch
 
 async function invokeZipMatch() {
   return getProbe("zipmatch", async () => {
@@ -697,11 +657,7 @@ async function runMarketScan(query) {
         facebookpublic: invokeFacebookPublicSearch(q),
         onepropertee: invokeIndexedListingSite(q, "onepropertee.com", "OnePropertee"),
         carousell: invokeIndexedListingSite(q, "carousell.ph", "Carousell Philippines"),
-        lamudi: invokeLamudi(),
-        zipmatch: invokeZipMatch(),
-        facebook: invokeFacebook(),
-        instagram: invokeInstagram(),
-        tiktok: invokeTikTok()
+        zipmatch: invokeZipMatch()
       };
       const settled = {};
       await Promise.all(Object.keys(jobs).map(async k => {
@@ -728,20 +684,12 @@ async function runMarketScan(query) {
         for (const l of siteResult.listings) { l.source = site.key; l.sourceLabel = site.label + " · " + eng; listings.push(l); }
       }
 
-      const lam = settled.lamudi;
-      sources.push({ name: "lamudi", label: "Lamudi", status: lam.status, count: lam.count, error: lam.error });
+      sources.push(unscannable("lamudi"));
 
       const zip = settled.zipmatch;
       sources.push({ name: "zipmatch", label: "ZipMatch", status: zip.status, count: zip.count, error: zip.error });
 
-      const fb = settled.facebook;
-      sources.push({ name: "facebook", label: "Facebook Marketplace", status: fb.status, count: fb.count, error: fb.error });
-
-      const ig = settled.instagram;
-      sources.push({ name: "instagram", label: "Instagram (#property)", status: ig.status, count: ig.count, error: ig.error });
-
-      const tt = settled.tiktok;
-      sources.push({ name: "tiktok", label: "TikTok (#property)", status: tt.status, count: tt.count, error: tt.error });
+      sources.push(unscannable("facebook"), unscannable("instagram"), unscannable("tiktok"));
     }
   }
 

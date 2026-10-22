@@ -5,16 +5,16 @@
    Builds the Batangas Value Guide as a downloadable PDF in the
    browser, using a vendored copy of pdf-lib (vendor/pdf-lib/).
 
-   WHY THIS IS NOT THE PUBLIC EMAIL PIPELINE
-   The public guide is delivered through the Supabase
-   location-report edge function, which INSERTs a CRM lead and
-   emails the PDF via Resend as a side effect. That is right for a
-   website enquiry and wrong for an internal tool: an operator
-   generating a guide for a client would silently create a lead
-   every time. This renderer has no network calls at all - the
-   only inputs are the estimate and the tax figures the estimator
-   already produced, so it cannot reach the CRM, the mailer, or
-   the database.
+   WHY THIS IS NOT THE PUBLIC REQUEST PATH
+   A website visitor's guide request goes to the Supabase
+   location-report edge function, which saves it as a CRM lead (it
+   sends no email; the team calls the customer, builds the report
+   here and sends it themselves). That is right for a website
+   enquiry and wrong for an internal tool: an operator generating
+   a guide for a client would silently create a lead every time.
+   This renderer has no network calls at all - the only inputs are
+   the estimate and the tax figures the estimator already produced,
+   so it cannot reach the CRM, the mailer, or the database.
 
    REPORT STRUCTURE
    Ten parts, and the cover states them so a reader knows what

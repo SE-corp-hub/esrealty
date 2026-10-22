@@ -20,14 +20,19 @@
     var newListing = state.listings && state.listings[0];
     if (newListing) {
       window.__ESREALTY_TEST_HELPERS.setListingCreatedAt(newListing.id, new Date(Date.now() - 100 * 86400000).toISOString());
+      // Stale counts from the last save, not from creation: a listing saved just now is not stale.
       window.__ESREALTY_TEST_HELPERS.setListingPublished(newListing.id, true);
     }
+    document.querySelector('[data-view="listings"]').click(); await wait(800);
+    var fresh = document.querySelector("#content").innerHTML;
+    checks.push({name:"created 100 days ago but saved just now: not stale", ok:/Aged House QC/.test(fresh) && !/\d+d stale/.test(fresh), detail:(fresh.match(/\d+d stale/)||["none"])[0]});
+    checks.push({name:"... and still shows how long it has been listed", ok:/100d listed/.test(fresh), detail:(fresh.match(/\d+d listed/)||["none"])[0]});
+    if (newListing) window.__ESREALTY_TEST_HELPERS.setListingUpdatedAt(newListing.id, new Date(Date.now() - 80 * 86400000).toISOString());
     // Re-render listings view
     document.querySelector('[data-view="listings"]').click(); await wait(800);
     html=document.querySelector("#content").innerHTML;
     checks.push({name:"aged listing shown", ok:/Aged House QC/.test(html), detail:""});
-    checks.push({name:"stale badge", ok:/\d+d (stale|auto-drafted)/.test(html), detail:(html.match(/\d+d (stale|auto-drafted)/)||["none"])[0]});
-    checks.push({name:"age chip 100d", ok:/100d listed|100d/.test(html), detail:(html.match(/\d+d listed/)||["none"])[0]});
+    checks.push({name:"stale badge counts from the last save (80 days)", ok:/80d stale/.test(html), detail:(html.match(/\d+d (stale|auto-drafted)/)||["none"])[0]});
     checks.push({name:"financing chip row intact", ok:/Pag-IBIG|Available/i.test(html)||true, detail:""});
     ok=checks.every(c=>c.ok);
   } catch(e){ log.push("ERR:"+e.message); ok=false; }
