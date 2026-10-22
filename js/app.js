@@ -14749,6 +14749,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         turnover_date: rec.turnoverDate || "",
         developer: rec.developer || "",
         license_to_sell: rec.licenseToSell || "",
+        pms_unit_id: rec.pmsUnitId || "",
         hoa_dues: Number(rec.hoaDues || 0),
         condo_dues: Number(rec.condoDues || 0),
         video_url: rec.videoUrl || ""
@@ -17935,6 +17936,11 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     const statusClass = u.registration_status === "approved" ? "green" : u.registration_status === "rejected" ? "red" : "gold";
     const reqRole = u.requested_role ? '<span class="user-requested">Requested role: ' + esc(roleLabel(u.requested_role)) + '</span>' : "";
     const extra = [];
+    if (u.registration_status === "approved" && Object.prototype.hasOwnProperty.call(u, "last_sign_in_at")) {
+      const ls = u.last_sign_in_at ? new Date(u.last_sign_in_at) : null;
+      const days = ls && !isNaN(ls.getTime()) ? Math.floor((Date.now() - ls.getTime()) / 86400000) : null;
+      extra.push('<span class="chip' + (days == null || days > 60 ? " chip-warn" : "") + '" data-last-signin>' + (days == null ? "Never signed in" : days === 0 ? "Signed in today" : "Last signed in " + days + " day" + (days === 1 ? "" : "s") + " ago") + "</span>");
+    }
     if (u.agency) extra.push('<span class="chip">' + esc(u.agency) + "</span>");
     if (u.prc) extra.push('<span class="chip">PRC ' + esc(u.prc) + "</span>");
     if (u.resa) extra.push('<span class="chip">' + esc(u.resa) + "</span>");
@@ -18118,6 +18124,87 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
   }
 
   /* ---- Staff announcements (K8): one notice to the bell of every approved account with the chosen roles. */
+  /* ---- Find a person (B2): what we hold about someone, export it for them, erase leads and
+   * inquiries on request (migration 0013). Super Admin only. ---- */
+  let personQuery = "", personRows = null, personErr = "", personBusy = false;
+  const PERSON_DEMO = [
+    { source: "lead", record_id: "lead-seed-2", name: "Maria Santos", email: "maria.santos@example.com", phone: "+63 917 555 0123", created_at: "2026-10-09T00:00:00Z", note: "contacted · LD-0002" },
+    { source: "listing inquiry", record_id: "demo-inq", name: "Maria Santos", email: "maria.santos@example.com", phone: "09175550123", created_at: "2026-10-08T00:00:00Z", note: "" }
+  ];
+  function personCard() {
+    const rows = personRows || [];
+    const bySrc = {};
+    rows.forEach(r => { (bySrc[r.source] = bySrc[r.source] || []).push(r); });
+    const exact = /@/.test(personQuery) || String(personQuery).replace(/\D/g, "").length >= 7;
+    return '<div class="card card-pad"><h3>Find a person</h3>' +
+      '<p class="dim mt-8">When someone asks what you hold about them, or asks to be removed (Data Privacy Act), search by phone, email or name. Their leads, website inquiries, Property Management records and account show together.</p>' +
+      '<form class="row mt-8" style="gap:8px;flex-wrap:wrap" data-person-form><input class="input" id="person-q" type="search" style="flex:1;min-width:220px" placeholder="Phone, email or name" value="' + esc(personQuery) + '" autocomplete="off">' +
+      '<button class="btn btn-primary" type="submit"' + (personBusy ? " disabled" : "") + ">" + icon("search", 14) + " Search</button></form>" +
+      (personErr ? '<div class="notice-banner warn mt-8">' + esc(personErr) + "</div>" : "") +
+      (personRows ? (rows.length
+        ? '<div class="table-wrap mt-16"><table class="data"><tr><th>Where</th><th>Name</th><th>Email</th><th>Phone</th><th>Added</th><th>Note</th></tr>' +
+          Object.keys(bySrc).map(k => bySrc[k].map(r => "<tr><td>" + esc(r.source) + "</td><td>" + esc(r.name || "—") + "</td><td>" + esc(r.email || "—") + "</td><td>" + esc(r.phone || "—") + "</td><td>" + esc(String(r.created_at || "").slice(0, 10)) + "</td><td>" + esc(r.note || "") + "</td></tr>").join("")).join("") + "</table></div>" +
+          '<div class="row mt-16" style="gap:8px;flex-wrap:wrap">' +
+            (exact ? '<button class="btn btn-ghost" data-person-export>' + icon("download", 14) + " Download everything (for the person)</button>" +
+              '<button class="btn btn-ghost danger" data-person-erase>' + icon("trash", 14) + " Erase leads and inquiries…</button>"
+              : '<span class="dim tiny">To download or erase, search by their phone number or email (a name can match other people).</span>') + "</div>" +
+          '<p class="dim tiny mt-8">Erase removes their leads and website inquiries only. Property Management records, accounts, deals and pre-selling reservations are business and tax records: change them in their own screens. Ask your privacy officer or lawyer what must be kept. Old bell notices with their name go with the monthly clean-up.</p>'
+        : '<p class="dim mt-16">Nobody found for that search.</p>') : "") + "</div>";
+  }
+  async function personSearch() {
+    personQuery = String(($("#person-q") || {}).value || "").trim();
+    personErr = ""; personBusy = true; render();
+    try {
+      if (currentUser && currentUser.demo) personRows = PERSON_DEMO.filter(r => [r.name, r.email, r.phone].join(" ").toLowerCase().indexOf(personQuery.toLowerCase().replace(/^0/, "")) >= 0 || (AT && AT.normPhone(r.phone) && AT.normPhone(r.phone) === AT.normPhone(personQuery)));
+      else {
+        const r = await SB.rpc("admin_person_find", { p_query: personQuery });
+        if (r.error) throw r.error;
+        personRows = r.data || [];
+      }
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      personErr = /admin_person_find/.test(msg) && /not find|does not exist|schema cache/i.test(msg) ? "Apply database update 0013 first." : friendlyErr(msg);
+      personRows = null;
+    }
+    personBusy = false; render();
+  }
+  async function personExport() {
+    try {
+      let data;
+      if (currentUser && currentUser.demo) data = { exportedAt: new Date().toISOString(), records: { leads: PERSON_DEMO.filter(r => r.source === "lead") } };
+      else {
+        const r = await SB.rpc("admin_person_export", { p_query: personQuery });
+        if (r.error) throw r.error;
+        data = r.data;
+      }
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+      const a = document.createElement("a"); a.href = url; a.download = "personal-data-" + new Date().toISOString().slice(0, 10) + ".json";
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast("Downloaded. Send it to the person through a channel you trust.");
+    } catch (e) { toast("Could not export: " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
+  }
+  async function personErase() {
+    let plan;
+    try {
+      if (currentUser && currentUser.demo) plan = [{ what: "leads", rows_found: (personRows || []).filter(r => r.source === "lead").length }, { what: "listing inquiries", rows_found: (personRows || []).filter(r => r.source === "listing inquiry").length }];
+      else { const r = await SB.rpc("admin_person_erase", { p_query: personQuery, p_dry_run: true }); if (r.error) throw r.error; plan = r.data || []; }
+    } catch (e) { toast("Could not check: " + esc(friendlyErr(String((e && e.message) || e))), "err"); return; }
+    const total = plan.reduce((t, x) => t + Number(x.rows_found || 0), 0);
+    if (!total) { toast("No leads or inquiries to erase for that phone or email"); return; }
+    const ok = await confirmModal({ title: "Erase this person's leads and inquiries?", danger: true, confirmLabel: "Erase",
+      message: plan.filter(x => x.rows_found > 0).map(x => x.rows_found + " " + x.what).join(", ") + " will be deleted for good. This cannot be undone.", typeToConfirm: "ERASE" });
+    if (!ok) return;
+    try {
+      if (currentUser && currentUser.demo) {
+        const ids = (personRows || []).filter(r => r.source === "lead").map(r => r.record_id);
+        state.leads = (state.leads || []).filter(l => ids.indexOf(l.id) < 0); save();
+      } else { const r = await SB.rpc("admin_person_erase", { p_query: personQuery, p_dry_run: false }); if (r.error) throw r.error; }
+      toast("Erased " + total + " record" + (total === 1 ? "" : "s"));
+      if (!(currentUser && currentUser.demo)) await loadCloudLeads().catch(() => {});
+      await personSearch();
+    } catch (e) { toast("Could not erase: " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
+  }
+
   function announceCard() {
     const pick = ["broker", "agent"];
     return '<div class="card card-pad announce-card"><h3>Send an announcement</h3><p class="dim tiny">It arrives in the bell of every approved account with the roles you tick (and on phones that turned alerts on). You get a copy. The change log records who sent it, to whom and how many, not the text.</p>' +
@@ -18270,7 +18357,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       const pending = statusCount("pending");
       const approved = statusCount("approved");
       const rejected = statusCount("rejected");
-      const tab = (["pending", "approved", "rejected", "all", "log", "roles", "announce", "routing"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
+      const tab = (["pending", "approved", "rejected", "all", "log", "roles", "announce", "routing", "person"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
       const srcBadge = currentUser.demo ? '<span class="chip">Demo data</span>' : (roleIs("super-admin") ? '<span class="chip">Live Supabase</span>' : "");
       const shown = tab === "all" ? remoteProfiles : remoteProfiles.filter(u => u.registration_status === tab);
       const filteredShown = shown.filter(u => (!userFiltQ || [u.full_name, u.email, u.agency].join(" ").toLowerCase().indexOf(userFiltQ) >= 0) && (!userFiltRole || u.role === userFiltRole));
@@ -18282,14 +18369,15 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         '<button class="tab' + (tab === "log" ? " active" : "") + '" data-users-tab="log">Change log</button>' +
         '<button class="tab' + (tab === "roles" ? " active" : "") + '" data-users-tab="roles">Who can do what</button>' +
         '<button class="tab' + (tab === "announce" ? " active" : "") + '" data-users-tab="announce">Announcement</button>' +
-        '<button class="tab' + (tab === "routing" ? " active" : "") + '" data-users-tab="routing">Lead routing</button></div>';
+        '<button class="tab' + (tab === "routing" ? " active" : "") + '" data-users-tab="routing">Lead routing</button>' +
+        (roleIs("super-admin") ? '<button class="tab' + (tab === "person" ? " active" : "") + '" data-users-tab="person">Find a person</button>' : "") + "</div>";
       const roleFilterOpts = '<option value="">All roles</option>' + ROLES.map(r => '<option value="' + esc(r.value) + '">' + esc(r.label) + '</option>').join("");
       const toolsHtml = '<div class="users-tools"><div class="users-search">' + icon("search", 15) + '<input id="users-search" type="search" placeholder="Search name, email, agency..." autocomplete="off"></div><select class="input" id="users-role-filter">' + roleFilterOpts + '</select><span class="dim tiny" id="users-visible-count">' + shown.length + ' account' + (shown.length === 1 ? "" : "s") + '</span></div>';
       let cloudHtml = '<section class="users-access"><div class="hero"><div><h1>Users &amp; Access</h1><p>Approve registrations and assign server-enforced roles. ' + srcBadge + '</p></div>' +
         '<div class="actions"><button class="btn btn-primary" data-cloud-user-new>' + icon("plus", 15) + " Add Account</button></div></div>" +
         '<div class="ls-stat-row">' + lsStat("Registrations", remoteProfiles.length) + lsStat("Pending approval", pending) + lsStat("Approved", approved) + lsStat("Rejected", rejected) + '</div>' +
         '<div class="notice-banner mt-16">' + icon("shield", 14) + ' <span>New accounts cannot access SEA ESTATES until a Super Admin assigns a role and approves the registration.</span></div>';
-      cloudHtml += '<div class="users-directory card">' + tabsHtml + (["log", "roles", "announce", "routing"].indexOf(tab) >= 0 ? "" : toolsHtml) + '</div>';
+      cloudHtml += '<div class="users-directory card">' + tabsHtml + (["log", "roles", "announce", "routing", "person"].indexOf(tab) >= 0 ? "" : toolsHtml) + '</div>';
       let gridHtml;
       if (remoteProfilesError) {
         const low = String(remoteProfilesError).toLowerCase();
@@ -18311,6 +18399,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       else if (tab === "roles") cloudHtml += '<div class="mt-16" id="role-matrix">' + roleMatrixCard() + "</div>";
       else if (tab === "announce") cloudHtml += '<div class="mt-16" id="announce">' + announceCard() + "</div>";
       else if (tab === "routing") cloudHtml += '<div class="mt-16" id="routing">' + routingCard() + "</div>";
+      else if (tab === "person") cloudHtml += '<div class="mt-16" id="person-find">' + personCard() + "</div>";
       else cloudHtml += '<div class="user-grid mt-16" id="users-grid">' + gridHtml + '</div><div class="card card-pad empty mt-16" id="users-filter-empty" style="display:none"><h3>No matching accounts</h3><p class="dim">Try a different name, email, or role.</p></div>';
       const pendingResets = passwordResetRequests.filter(r => r.user_id);
       if (pendingResets.length && ["log", "roles", "announce", "routing"].indexOf(tab) < 0) {
@@ -18426,7 +18515,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       { id: "demo-pending-1", email: "juan@esrealty.ph", full_name: "Juan Dela Cruz", role: "buyer", registration_status: "pending", requested_role: "agent" },
       { id: "demo-pending-2", email: "maria@esrealty.ph", full_name: "Maria Santos", role: "buyer", registration_status: "pending", requested_role: "broker" },
       { id: "demo-pending-3", email: "carlos@esrealty.ph", full_name: "Carlos Reyes", role: "buyer", registration_status: "pending", requested_role: "owner" },
-      { id: "demo-approved-1", email: "ana@esrealty.ph", full_name: "Ana Lopez", role: "agent", registration_status: "approved", requested_role: "agent", broker: "demo-approved-2", agency: "Villanueva & Co." },
+      { id: "demo-approved-1", email: "ana@esrealty.ph", full_name: "Ana Lopez", role: "agent", registration_status: "approved", last_sign_in_at: new Date(Date.now() - 3 * 86400000).toISOString(), requested_role: "agent", broker: "demo-approved-2", agency: "Villanueva & Co." },
       { id: "demo-approved-2", email: "broker@esrealty.ph", full_name: "Marco Villanueva", role: "broker", registration_status: "approved", requested_role: "broker", prc: "0012345", resa: "RESA-2024-0881", agency: "Villanueva & Co." },
       { id: "demo-rejected-1", email: "pedro@esrealty.ph", full_name: "Pedro Garcia", role: "buyer", registration_status: "rejected", requested_role: "tenant" }
     ];
@@ -18731,6 +18820,9 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     if (SB && currentUser && currentUser.id && !currentUser.demo) loadPasswordResets();
     if (!usersHooked) {
       usersHooked = true;
+      document.addEventListener("submit", e => {
+        if (e.target && e.target.closest && e.target.closest("[data-person-form]")) { e.preventDefault(); personSearch(); }
+      });
       document.addEventListener("click", e => {
         const nw = e.target.closest("[data-user-new]");
         if (nw) { openUserEditor(); return; }
@@ -18744,6 +18836,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         if (dl) { userDeleteForm(dl.getAttribute("data-user-del")); return; }
         const access = e.target.closest("[data-profile-action]");
         if (access) { setCloudProfileAccess(access.getAttribute("data-profile-id"), access.getAttribute("data-profile-action")); return; }
+        if (e.target.closest("[data-person-export]")) { personExport(); return; }
+        if (e.target.closest("[data-person-erase]")) { personErase(); return; }
         const utab = e.target.closest("[data-users-tab]");
         if (utab) { state.usersTab = utab.getAttribute("data-users-tab"); save(); render(); return; }
         const agrp = e.target.closest("[data-audit-group]");
@@ -20908,6 +21002,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   window.__ESREALTY_TEST_HELPERS = {
     selectAllPages: selectAllPages,
     pmsAgeing: function (leases) { return pmsAgeing(leases); },
+    personState: function () { return { query: personQuery, rows: personRows, err: personErr }; },
     vgLeadFinishHtml: function (d) { return vgLeadFinishHtml(d); },
     leadDuplicateGroups: function () { return leadDuplicateGroups(); },
     teamTargets: function () { return { cfg: targetsCfg, state: targetsState, rows: teamTargetsRows() }; },
