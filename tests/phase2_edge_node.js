@@ -76,7 +76,7 @@ ok("notify-dispatch: the mail error text is not passed on", !/error: String\(e\)
 
 // ---- agent-dispatch ----------------------------------------------------------------------------
 const ad = read("supabase/functions/agent-dispatch/index.ts");
-const sameSecretSrc = /function sameSecret\([\s\S]*?\n}\n/.exec(ad)[0].replace(/: (string|boolean)/g, "");
+const sameSecretSrc = require("./ts_module").stripTs(/function sameSecret\([\s\S]*?\n}\n/.exec(ad)[0]);
 const { sameSecret } = new Function(sameSecretSrc + "\nreturn { sameSecret };")();
 ok("agent-dispatch: equal secrets match", sameSecret("abc", "abc") === true);
 ok("agent-dispatch: different secrets do not", sameSecret("abc", "abd") === false);

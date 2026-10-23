@@ -190,11 +190,15 @@ insert into results select 'nothing shows until a Super Admin approves it', json
 reset role;
 insert into results select 'the review keeps first name and initial, and the town and month come from the deal',
   (select client_label = 'Rhea D.' and town = 'Lipa City' and month = '2025-03' and status = 'submitted' from public.agent_reviews where deal_id = 'pf-d1'), (select row_to_json(r)::text from public.agent_reviews r where deal_id = 'pf-d1');
+create temp table rid as select id from public.agent_reviews where deal_id = 'pf-d1';
+grant all on rid to authenticated;
 select pg_temp.as_user('11111111-1111-1111-1111-111111111111');
 set local role authenticated;
-insert into results select 'an agent cannot approve their own review', pg_temp.fails($q$select public.review_moderate((select id from public.agent_reviews limit 1), 'approved')$q$) = 'refused', '';
-insert into results select 'nor see it before it is published', (select count(*) from public.agent_reviews) = 0, '';
-insert into results select 'the link''s hash cannot be read from the app', pg_temp.fails($q$select token_hash from public.agent_reviews$q$) = 'refused', '';
+insert into results select 'an agent cannot approve their own review', pg_temp.fails(format($q$select public.review_moderate(%L, 'approved')$q$, (select id from rid))) = 'refused', '';
+insert into results select 'nor see it before it is published', jsonb_array_length(public.agent_site_reviews()) = 0, '';
+-- Since 0019 the table cannot be read from the app at all (so nor the link's hash).
+insert into results select 'the link''s hash cannot be read from the app',
+  pg_temp.fails($q$select token_hash from public.agent_reviews$q$) = 'refused' and pg_temp.fails($q$select id from public.agent_reviews$q$) = 'refused', '';
 reset role;
 select pg_temp.as_user('77777777-7777-7777-7777-777777777777');
 select public.review_moderate((select id from public.agent_reviews where deal_id = 'pf-d1'), 'approved');

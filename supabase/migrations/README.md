@@ -77,6 +77,9 @@ listings leaving the public catalog) follows `0016`.
 `0018_agent_sites_tidy.sql` (agent websites, tidy-up after the code review: one rule for a public
 page, typed deal columns kept from the deal and fixed at closing, one rule for the closed deals that
 credit an agent, and saving a licence check in one call) follows `0017`.
+`0019_agent_sites_followup.sql` (agent websites, follow-up with no new behaviour: the Super Admin's
+review list read through `agent_reviews_admin`, licence checks written only through
+`licence_check_save`, and one "next in turn" for lead routing) follows `0018`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses

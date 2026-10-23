@@ -328,8 +328,8 @@
       if (!t || !root.contains(t)) return;
       if (t.hasAttribute("data-ag-sell")) {
         if (preview) { e.preventDefault(); return; }
-        // The Value Guide names the agent while the visitor stays in it (storefront reads this).
-        try { sessionStorage.setItem("esrealty_vg_agent_v1", JSON.stringify({ slug: p.slug, name: p.name })); } catch (err) {}
+        // The Value Guide names the agent while the visitor stays in it.
+        if (window.ESREALTY_EST && window.ESREALTY_EST.setAgent) window.ESREALTY_EST.setAgent({ slug: p.slug, name: p.name });
         return;
       }
       if (t.hasAttribute("data-ag-jump")) {

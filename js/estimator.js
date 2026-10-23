@@ -2749,10 +2749,25 @@ return {
     return String(window.ESREALTY_API_BASE).replace(/\/listing-api\/api$/, "/location-report");
   }
 
-  function vgAgent() {
-    var a = typeof window !== "undefined" && window.ESREALTY_VG_AGENT;
-    return { slug: a && a.slug ? String(a.slug) : "", name: a && a.name ? String(a.name) : "" };
+  /* The agent whose page started this Value Guide (#/home?agent=<slug>): the server sends the
+     request to them. The agent's page names them (setAgent, kept for this browser tab); the home
+     page confirms the address (useAgent), which is the authority; the request reads vgAgent(). */
+  var VG_AGENT_KEY = "esrealty_vg_agent_v1";
+  var vgAgentNow = { slug: "", name: "" };
+  function setAgent(a) {
+    var saved = { slug: a && a.slug ? String(a.slug) : "", name: a && a.name ? String(a.name) : "" };
+    try { sessionStorage.setItem(VG_AGENT_KEY, JSON.stringify(saved)); } catch (e) {}
+    return saved;
   }
+  function useAgent(slug) {
+    slug = String(slug || "").toLowerCase();
+    if (slug.length > 70 || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) { vgAgentNow = { slug: "", name: "" }; return vgAgentNow; }
+    var name = "";
+    try { var saved = JSON.parse(sessionStorage.getItem(VG_AGENT_KEY) || "null"); if (saved && saved.slug === slug) name = String(saved.name || ""); } catch (e) {}
+    vgAgentNow = { slug: slug, name: name };
+    return vgAgentNow;
+  }
+  function vgAgent() { return vgAgentNow; }
 
   function submitLead(form) {
     var status = form.querySelector("[data-est-lead-status]");
@@ -2785,8 +2800,8 @@ return {
         : "valuation-report",
       message: message.join(" | "),
       notes: notes ? String(notes) : "",
-      /* Started from an agent's page (storefront sets this from #/home?agent=<slug>): the
-         server sends the request to that agent. */
+      /* Started from an agent's page (useAgent, from #/home?agent=<slug>): the server sends
+         the request to that agent. */
       agent_slug: vgAgent().slug,
       report: {
         property: {
@@ -3339,6 +3354,9 @@ return {
     streets: streets,
     classificationsFor: classificationsFor,
     provenance: provenance,
+    setAgent: setAgent,
+    useAgent: useAgent,
+    agent: vgAgent,
     _data: function () { return DATA; },
     _state: function () { return est; },
     debug: debug

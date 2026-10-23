@@ -3460,8 +3460,8 @@ body.sf-menu-open .sf-sticky { display: none; }
 .ag-numbers dd { margin: 0; }
 .ag-form { flex: 1 1 440px; min-width: 0; background: #F7F3EE; border-radius: 24px; padding: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
 .ag-field { display: flex; flex-direction: column; gap: 6px; font-size: 15px; font-weight: 600; min-width: 0; }
-/* The site sets every label to 12px (!important); form text here stays readable. */
-.sf-site.ag .ag-field, .sf-site.ag .ag-field > span, .sf-site.ag .ag-field > label, .sf-site.ag .ag-consent, .sf-site.ag .ag-consent > span { font-size: 15px !important; }
+/* Form text stays readable (the site-wide 12px label rule leaves agent pages out). */
+.sf-site.ag .ag-field, .sf-site.ag .ag-field > span, .sf-site.ag .ag-field > label, .sf-site.ag .ag-consent, .sf-site.ag .ag-consent > span { font-size: 15px; }
 .ag-wide { grid-column: 1 / -1; }
 .ag .ag-input { width: 100%; min-height: 50px; border: 1.5px solid var(--ag-edge); border-radius: 12px; padding: 10px 14px; font: 16px var(--sf-font); background: #fff; color: var(--sf-ink); }
 textarea.ag-input { min-height: 96px; resize: vertical; }
@@ -3498,7 +3498,7 @@ textarea.ag-input { min-height: 96px; resize: vertical; }
 }
 /* In the editor's preview the page is a picture: nothing in it can be used or focused. */
 .ag-preview .ag-phonebar { position: static; display: none; }
-.sf-site.ag .ag-field > .ag-hint { font-size: 14px !important; font-weight: 400; }
+.sf-site.ag .ag-field > .ag-hint { font-size: 14px; font-weight: 400; }
 
 /* ==== Agent pages, Phases 2 and 3: seller box, Verified, track record, reviews ============== */
 .ag .ag-chip-verified { background: var(--ag-teal); border-color: var(--ag-teal); color: #fff; font-weight: 600; }
@@ -3506,8 +3506,8 @@ textarea.ag-input { min-height: 96px; resize: vertical; }
 .ag-card-verified svg { flex: none; margin-top: 2px; }
 .ag-sell-box { background: var(--ag-teal); color: #E3F1EF; border-radius: 28px; padding: 36px 40px; display: flex; flex-wrap: wrap; gap: 24px 40px; align-items: center; justify-content: space-between; }
 .ag-sell-box > div { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-/* styles.css colours every heading with !important; these two sit on teal. */
-.sf-site.ag .ag-sell-box h2 { color: #fff !important; }
+/* The heading sits on teal (styles.css leaves agent pages out of its heading colour). */
+.sf-site.ag .ag-sell-box h2 { color: #fff; }
 .ag-sell-box p { margin: 0; font-size: 17px; line-height: 1.6; color: #CFE6E3; max-width: 52ch; }
 .ag .ag-sell-box :focus-visible { outline-color: #fff; }
 .ag a.ag-btn-light { background: #fff; border-color: #fff; color: var(--sf-ink); min-height: 52px; font-size: 16px; }
@@ -3550,7 +3550,7 @@ textarea.ag-input { min-height: 96px; resize: vertical; }
 .sf-site .agd h1 { margin: 0; font-size: clamp(2.2rem, 1.5rem + 3vw, 3rem); line-height: 1.05; letter-spacing: -0.03em; font-weight: 800; }
 .agd-lede { margin: 0; font-size: 18px; line-height: 1.55; color: var(--sf-ink-soft); max-width: 60ch; }
 .agd-filters { background: #fff; border: 1px solid var(--sf-line); border-radius: 20px; padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 12px; align-items: end; }
-.sf-site .agd .agd-label { display: flex; flex-direction: column; gap: 6px; font-size: 14px !important; font-weight: 600; color: var(--sf-ink); }
+.sf-site .agd .agd-label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 600; color: var(--sf-ink); }
 .sf-site .agd .agd-input { width: 100%; min-height: 50px; border: 1.5px solid var(--agd-edge); border-radius: 12px; padding: 10px 14px; font: 16px var(--sf-font); background: #fff; color: var(--sf-ink); }
 .sf-site .agd .agd-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 20px; border-radius: 999px;
   font: 600 15px/1.2 var(--sf-font); text-decoration: none; cursor: pointer; border: 1.5px solid var(--agd-edge); background: #fff; color: var(--sf-ink); text-align: center; }
@@ -3593,7 +3593,7 @@ textarea.ag-input { min-height: 96px; resize: vertical; }
 .agd-fallback p { margin: 0; font-size: 15px; color: var(--sf-ink-soft); max-width: 60ch; }
 .agd-aside { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
 .agd-check { background: var(--agd-teal-soft); border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 90px; }
-.sf-site .agd .agd-check h2 { margin: 0; font-size: 22px; font-weight: 800; color: var(--agd-teal-ink) !important; }
+.sf-site .agd .agd-check h2 { margin: 0; font-size: 22px; font-weight: 800; color: var(--agd-teal-ink); }
 .agd-check > p, .agd-help { margin: 0; font-size: 15px; line-height: 1.55; color: #1F4D4F; }
 .agd-help { font-size: 14px; }
 .agd-check-form { display: flex; flex-direction: column; gap: 8px; }
@@ -3635,7 +3635,7 @@ textarea.ag-input { min-height: 96px; resize: vertical; }
 .sf-review > p, .sf-review-lede { font-size: 17px; line-height: 1.6; color: var(--sf-ink-soft); max-width: 60ch; }
 .sf-review-form { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; background: #F7F3EE; border-radius: 24px; padding: 24px; }
 .sf-review-form label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
-.sf-site .sf-review-form label, .sf-site .sf-review-form label > span { font-size: 15px !important; }
+.sf-site .sf-review-form label, .sf-site .sf-review-form label > span { font-size: 15px; }
 .sf-review-form input:not([type=checkbox]), .sf-review-form textarea { min-height: 50px; border: 1.5px solid #8C8279; border-radius: 12px; padding: 10px 14px; font: 16px var(--sf-font); background: #fff; color: var(--sf-ink); }
 .sf-review-form small { font-size: 14px; font-weight: 400; color: var(--sf-ink-mute); }
 .sf-review-form .sf-consent { flex-direction: row; align-items: flex-start; gap: 10px; font-weight: 400; color: var(--sf-ink-soft); line-height: 1.5; flex-wrap: wrap; }
@@ -3654,8 +3654,13 @@ textarea.ag-input { min-height: 96px; resize: vertical; }
 .agd-check-jump a { color: var(--agd-teal-ink); font-weight: 600; }
 .sf-site.ag p.ag-card-verified { font-size: 13px; }
 .sf-site.ag p.ag-reply { font-size: 15px; }
-.sf-site .sf-review-form small { font-size: 14px !important; }
+.sf-site .sf-review-form small { font-size: 14px; }
 .ag-reviews-head { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
 @media (max-width: 760px) { .sf-site.ag .ag-head-cta { display: none; } }
 .agd-acts { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
 @media (max-width: 760px) { .agd-acts { flex: 1 1 100%; flex-direction: row; } .sf-site .agd .agd-acts .agd-go { flex: 1 1 0; } }
+
+/* Agent pages and the agent directory are left out of the back office's global heading colour
+   (css/styles.css) so their own heading colours apply without !important; headings with no colour
+   of their own keep that same ink. */
+:is(.sf-site.ag, .sf-site .agd) :is(h1, h2, h3, h4, h5, h6) { color: var(--text); }

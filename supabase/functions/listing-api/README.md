@@ -18,6 +18,11 @@ supabase secrets set INQUIRY_RATE_LIMIT_SALT="GENERATE-A-LONG-RANDOM-VALUE" --pr
 supabase functions deploy listing-api --no-verify-jwt --project-ref YOUR_PROJECT_REF
 ```
 
+The function is three files, deployed together: `index.ts` (listings, favourites,
+inquiries, the contact form, site settings and the router), `agents.ts` (agent
+pages, the agent directory, check-an-agent and client reviews) and `limits.ts`
+(the rate limits every form shares).
+
 `--no-verify-jwt` is required because browsing and inquiries are public. The
 function validates bearer tokens itself on every protected route. Supabase
 provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` automatically; never put
