@@ -1921,7 +1921,7 @@
         notifyButton.disabled = true;
         if (notifyStatus) { notifyStatus.textContent = "Sending…"; notifyStatus.className = "sf-form-status"; }
         API.contact({
-          inquiry_type: "project-bt-notify",
+          inquiry_type: "project-bt",
           email: notifyData.get("email"),
           consent: notifyData.get("consent") === "on"
         }).then(function () {

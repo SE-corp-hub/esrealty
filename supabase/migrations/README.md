@@ -60,6 +60,9 @@ email as an earlier lead is marked as a possible duplicate and goes to the earli
 staff may read the team targets) follows `0011`.
 `0013_find_a_person.sql` (Super Admin: find where a person appears, export it for them, erase their
 leads and inquiries on request; last sign-in in Users & Access) follows `0012`.
+`0014_agent_sites_prep.sql` (agent websites, Phase 0: the time a lead first moves past New is
+stamped by the database for reply times; an approved broker's or agent's name can only be changed
+by a Super Admin) follows `0013`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses
