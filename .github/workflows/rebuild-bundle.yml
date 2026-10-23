@@ -1,0 +1,43 @@
+name: Rebuild app bundle
+
+# Run by hand: Actions -> Rebuild app bundle -> Run workflow, and pick the
+# branch. It rebuilds js/app.min.js from js/app.js with terser (the same way
+# the tests check it) and commits the bundle to that branch when it changed.
+# It never runs on main: build on a branch, then merge.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rebuild-bundle-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Install terser
+        run: npm install --no-save terser@5
+      - name: Build and check
+        run: |
+          node build_app.js
+          node build_app.js --check
+      - name: Commit the bundle if it changed
+        run: |
+          if git diff --quiet -- js/app.min.js; then
+            echo "js/app.min.js is already in sync."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add js/app.min.js
+          git commit -m "Rebuild js/app.min.js from js/app.js"
+          git push
