@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, idempotency-key",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Max-Age": "86400",
 };
@@ -904,6 +904,131 @@ const routeParts = (url: URL) => {
   return route;
 };
 
+// Agent pages (agent websites plan, Phase 1). The database decides who is public: public_agent()
+// returns a page only for an approved broker or agent with a current licence check (and, for a
+// salesperson, an accepted, licensed supervising broker), and only the fields meant for visitors.
+const AGENT_TAP_KINDS = new Set(["call", "viber", "whatsapp", "messenger", "save"]);
+const AGENT_WANTS: Record<string, string> = { viewing: "Wants a viewing", call: "Wants a call back", question: "Has a question" };
+
+const agentSlug = (value: string) => {
+  const slug = String(value || "").trim().toLowerCase();
+  if (slug.length > 70 || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) throw new HttpError(404, "Agent not found");
+  return slug;
+};
+
+const findAgent = async (admin: SupabaseClient, slug: string) => {
+  const { data, error } = await admin.rpc("public_agent", { p_slug: agentSlug(slug) });
+  if (error) throw new Error(error.message);
+  if (!data || !(data as JsonRecord).agent_id) throw new HttpError(404, "Agent not found");
+  return data as JsonRecord;
+};
+
+// Once per visitor per agent per day (and per button for taps): the limiter remembers who counted.
+const countAgentOnce = async (req: Request, admin: SupabaseClient, pepper: string, agentId: string, kind: string) => {
+  const key = await sha256(`${pepper}:agent-${kind}:${agentId}:${callerAddress(req)}`);
+  const { data: first, error } = await admin.rpc("consume_listing_inquiry_rate_limit", { p_request_key_hash: key, p_limit: 1, p_window_seconds: 86400 });
+  if (error) { console.error(error); return; }
+  if (!first) return;
+  const { error: countError } = await admin.rpc("agent_page_count", { p_agent: agentId, p_kind: kind });
+  if (countError) console.error(countError);
+};
+
+const getAgent = async (req: Request, slug: string, admin: SupabaseClient, pepper: string) => {
+  const { agent_id, ...page } = await findAgent(admin, slug);
+  // The site's Worker reads the page to write its title into the HTML (?count=0); that is not a visit.
+  if (new URL(req.url).searchParams.get("count") !== "0") await countAgentOnce(req, admin, pepper, String(agent_id), "view");
+  return json({ data: page });
+};
+
+const recordAgentTap = async (req: Request, slug: string, admin: SupabaseClient, pepper: string) => {
+  const body = await parseBody(req, 2_000);
+  const kind = String(body.kind || "");
+  if (!AGENT_TAP_KINDS.has(kind)) throw new HttpError(400, "kind is invalid");
+  const agent = await findAgent(admin, slug);
+  await countAgentOnce(req, admin, pepper, String(agent.agent_id), kind);
+  return json({ ok: true }, 202);
+};
+
+const submitAgentInquiry = async (req: Request, slug: string, admin: SupabaseClient, pepper: string) => {
+  const body = await parseBody(req, MAX_FORM_BODY);
+  // A hidden field people never see; a bot that fills it is told "sent" and nothing is saved.
+  if (String(body.website || "").trim()) return json({ id: null, message: "Sent" }, 201);
+  if (body.consent !== true) throw new HttpError(400, "consent is required");
+  const fullName = stringValue(body.full_name, 160, "full_name", true);
+  const phone = phoneValue(body.phone, true);
+  const email = stringValue(body.email, 254, "email");
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new HttpError(400, "email is invalid");
+  const message = stringValue(body.message, 2000, "message");
+  const want = enumValue(body.want, new Set(Object.keys(AGENT_WANTS)), "question", "want");
+  const section = enumValue(body.section, new Set(["contact", "listing", "header"]), "contact", "section");
+  const listingId = stringValue(body.listing_id, 80, "listing_id");
+  const idemKey = stringValue(req.headers.get("idempotency-key"), 100, "Idempotency-Key");
+
+  const agent = await findAgent(admin, slug);
+  const agentId = String(agent.agent_id);
+  if (idemKey) {
+    // A resend after a weak signal: the first message already arrived.
+    const { data: earlier } = await admin.from("crm_leads").select("id").eq("payload->>idempotencyKey", idemKey).maybeSingle();
+    if (earlier) return json({ id: earlier.id, message: "Sent" }, 201);
+  }
+  const keyHash = await sha256(`${pepper}:agent-inquiry:${agentId}:${callerAddress(req)}`);
+  const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", {
+    p_request_key_hash: keyHash, p_limit: 5, p_window_seconds: 3600,
+  });
+  if (rateError) throw new Error(rateError.message);
+  if (!permitted) throw new HttpError(429, "Too many messages. Please try again later");
+
+  const { data: adminAccount, error: adminError } = await admin.from("profiles").select("id")
+    .eq("role", "super-admin").order("created_at", { ascending: true }).limit(1).maybeSingle();
+  if (adminError || !adminAccount) throw new HttpError(500, "No super-admin account is configured");
+
+  const listings = Array.isArray(agent.listings) ? agent.listings as JsonRecord[] : [];
+  const listing = listingId ? listings.find((l) => l.id === listingId) : undefined;
+  const now = new Date().toISOString();
+  const leadId = `lead-${crypto.randomUUID()}`;
+  const ref = `AG-${leadId.slice(-8).toUpperCase()}`;
+  const agentName = String(agent.name || "");
+  const interest = listing ? `${AGENT_WANTS[want]}: ${listing.title}` : AGENT_WANTS[want];
+  const lead = {
+    id: leadId,
+    ref,
+    name: fullName,
+    // Assigned to the agent whose page it came from: the routing and duplicate rules leave an
+    // assigned lead alone, and the agent gets the usual "New lead for you" alert.
+    assigned_to: agentName,
+    assigned_to_id: agentId,
+    created_by: adminAccount.id,
+    updated_at: now,
+    payload: {
+      id: leadId, ref, name: fullName, phone, email,
+      type: "buyer",
+      source: "agent page",
+      status: "new",
+      consent: true,
+      consentRecord: { at: now, notice: PRIVACY_NOTICE_VERSION, channel: "agent-page" },
+      origin: "storefront",
+      channel: "agent-page",
+      agentSlug: String(agent.slug || ""),
+      section,
+      listingId: listing ? listing.id : "",
+      propertyInterest: interest,
+      notes: message,
+      idempotencyKey: idemKey || undefined,
+      assignedTo: agentName,
+      assignedToId: agentId,
+      createdBy: adminAccount.id,
+      createdAt: now,
+      updatedAt: now,
+      activity: [{ date: now, text: `Message from ${agentName}'s page: ${interest}.` }],
+    },
+  };
+  const { error: leadError } = await admin.from("crm_leads").insert(lead);
+  if (leadError) throw new Error(leadError.message);
+  const { error: countError } = await admin.rpc("agent_page_count", { p_agent: agentId, p_kind: "message" });
+  if (countError) console.error(countError);
+  return json({ id: leadId, message: "Sent" }, 201);
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -949,6 +1074,15 @@ Deno.serve(async (req) => {
     }
     if (parts.length === 1 && parts[0] === "contacts" && req.method === "POST") {
       return await submitContact(req, admin, pepper);
+    }
+    if (parts.length === 2 && parts[0] === "agents" && req.method === "GET") {
+      return await getAgent(req, parts[1], admin, pepper);
+    }
+    if (parts.length === 3 && parts[0] === "agents" && parts[2] === "inquiries" && req.method === "POST") {
+      return await submitAgentInquiry(req, parts[1], admin, pepper);
+    }
+    if (parts.length === 3 && parts[0] === "agents" && parts[2] === "taps" && req.method === "POST") {
+      return await recordAgentTap(req, parts[1], admin, pepper);
     }
     throw new HttpError(404, "Endpoint not found");
   } catch (error) {
