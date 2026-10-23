@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh workflow run deploy-functions.yml:*)",
+      "Bash(gh workflow run db-migrate.yml:*)"
+    ]
+  }
+}
