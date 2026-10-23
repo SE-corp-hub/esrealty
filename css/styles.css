@@ -2529,3 +2529,4 @@ a.btn, a.btn:hover { text-decoration: none; }
 .modal-body .print-root.docs-print { display: block !important; margin-top: 12px; border: 1px solid var(--stroke); border-radius: 10px; padding: 16px; background: #fff; color: #16202E; max-height: 50vh; overflow: auto; }
 .docs-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: Georgia, "Times New Roman", serif; font-size: 14px; line-height: 1.55; margin: 0; }
 @media print { .print-root.docs-print { max-height: none !important; overflow: visible !important; border: 0 !important; padding: 0 !important; } .docs-text { font-size: 12pt; } }
+.chip.chip-warn { border-color: var(--gold); color: var(--gold); }

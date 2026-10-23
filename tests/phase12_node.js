@@ -1,0 +1,27 @@
+/* Phase 12: Find a person (B2), last sign-in (K4), and the listing's unit link kept on the server. */
+const fs = require("fs");
+const path = require("path");
+const read = f => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+const checks = [];
+const c = (name, ok, detail) => checks.push({ name, ok: !!ok, detail: detail || "" });
+const mig = read("supabase/migrations/0013_find_a_person.sql");
+c("all three functions are Super Admin only", (mig.match(/if not public\.is_super_admin\(\) then raise exception 'Super Admin access required' using errcode = '42501'; end if;/g) || []).length === 3);
+c("export and erase need a phone or an email, never a name alone", /Export needs a phone number or an email/.test(mig) && /Erase needs a phone number or an email/.test(mig));
+c("erase deletes only leads and inquiries", (mig.match(/delete from public\.(\w+)/g) || []).map(x => x.split(".")[1]).sort().join() === "crm_leads,listing_inquiries,storefront_inquiries");
+c("erase is a dry run unless asked", /p_dry_run boolean default true/.test(mig));
+c("the change log gets counts, not personal data", /'person_erased', 'person', '', jsonb_build_object\('by', case when qp\.q_email is not null then 'email' else 'phone' end\)\)/.test(mig));
+c("visitors cannot call them", /revoke all on function public\.admin_person_find\(text\) from public, anon, authenticated;/.test(mig));
+c("the account list keeps its fields and adds last sign-in", /'created_at', p\.created_at::text,\s+'last_sign_in_at'/.test(mig) && /'added_by_role'/.test(mig));
+const app = read("js/app.js");
+c("Find a person is a Super Admin tab", /\(roleIs\("super-admin"\) \? '<button class="tab' \+ \(tab === "person"/.test(app));
+c("erase needs ERASE typed and shows what will go", /typeToConfirm: "ERASE"/.test(app) && /p_dry_run: true/.test(app));
+c("a name search does not offer download or erase", /const exact = \/@\/\.test\(personQuery\) \|\| String\(personQuery\)\.replace\(\/\\D\/g, ""\)\.length >= 7;/.test(app));
+c("last sign-in shows on approved accounts", /data-last-signin/.test(app) && /Never signed in/.test(app));
+c("listing unit link is sent to the server", /pms_unit_id: rec\.pmsUnitId \|\| ""/.test(app));
+c("and kept by the listing function", /pmsUnitId: stringValue\(details\.pms_unit_id \?\? oldPayload\.pmsUnitId, 80, "details\.pms_unit_id"\)/.test(read("supabase/functions/listing-api/index.ts")));
+c("health check knows the new function", /fn: "admin_person_find".*pending: "0013"/.test(read("supabase/check-backend.js")));
+c("phase 12 browser test is in CI", /-Test phase12_app_e2e/.test(read(".github/workflows/tests.yml")));
+const failed = checks.filter(x => !x.ok);
+checks.forEach(x => console.log("  [" + (x.ok ? "PASS" : "FAIL") + "] " + x.name + (x.ok ? "" : " :: " + x.detail)));
+console.log(failed.length ? failed.length + " FAILED" : "ALL PASS");
+process.exit(failed.length ? 1 : 0);

@@ -201,6 +201,7 @@ const REST_RPCS = [
   { fn: "admin_records_owned", note: "account handover check, Super Admin only (migrations/0010)", pending: "0010" },
   { fn: "viewing_reminder_sweep", note: "viewing reminders, server only (migrations/0011)", pending: "0011", body: { p_dry_run: true } },
   { fn: "compliance_expiry_sweep", note: "licence renewal reminders, server only (migrations/0011)", pending: "0011", body: { p_dry_run: true } },
+  { fn: "admin_person_find", note: "find a person, Super Admin only (migrations/0013)", pending: "0013", body: { p_query: "0917 000 0000" } },
 ];
 async function probeRpc(entry) {
   try {
