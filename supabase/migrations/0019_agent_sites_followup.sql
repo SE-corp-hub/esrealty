@@ -134,15 +134,18 @@ end $function$;
 
 -- Deals closed now are marked, once, without touching their saved time or the audit log. (A deal
 -- reopened before this migration has no record of having closed and starts again from here.)
-do $$ begin
+do $$
+declare
+  quiet text[];
+  t text;
+begin
   if to_regclass('pg_temp.broker_transactions_fix_once') is null then return; end if;
-  alter table public.broker_transactions disable trigger broker_transactions_set_updated_at;
-  alter table public.broker_transactions disable trigger broker_transactions_audit;
-  alter table public.broker_transactions disable trigger broker_transactions_typed;
+  -- As in 0018: pause whatever triggers the table has, by what is there.
+  select coalesce(array_agg(tgname::text), '{}') into quiet from pg_trigger
+   where tgrelid = 'public.broker_transactions'::regclass and not tgisinternal and tgenabled <> 'D';
+  foreach t in array quiet loop execute format('alter table public.broker_transactions disable trigger %I', t); end loop;
   update public.broker_transactions set agents_fixed = true where closed_on is not null;
-  alter table public.broker_transactions enable trigger broker_transactions_set_updated_at;
-  alter table public.broker_transactions enable trigger broker_transactions_audit;
-  alter table public.broker_transactions enable trigger broker_transactions_typed;
+  foreach t in array quiet loop execute format('alter table public.broker_transactions enable trigger %I', t); end loop;
   drop table pg_temp.broker_transactions_fix_once;
 end $$;
 

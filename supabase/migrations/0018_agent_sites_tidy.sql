@@ -156,11 +156,17 @@ create trigger broker_transactions_typed before insert or update on public.broke
 
 -- Fill the columns for existing deals without touching their saved time or the audit log. The old
 -- closing date (last save) is kept as the closing date.
-do $$ begin
+do $$
+declare
+  quiet text[];
+  t text;
+begin
   if to_regclass('pg_temp.broker_transactions_fill_once') is null then return; end if;
-  alter table public.broker_transactions disable trigger broker_transactions_set_updated_at;
-  alter table public.broker_transactions disable trigger broker_transactions_audit;
-  alter table public.broker_transactions disable trigger broker_transactions_typed;
+  -- Every trigger on the table is paused for the fill (saved time, audit log and the new one), by
+  -- what is there: trigger names differ between the live database and a fresh one.
+  select coalesce(array_agg(tgname::text), '{}') into quiet from pg_trigger
+   where tgrelid = 'public.broker_transactions'::regclass and not tgisinternal and tgenabled <> 'D';
+  foreach t in array quiet loop execute format('alter table public.broker_transactions disable trigger %I', t); end loop;
   execute $q$ update public.broker_transactions set
     buyer_agent_id = public.deal_agent(payload ->> 'buyerAgentId'),
     seller_agent_id = public.deal_agent(payload ->> 'sellerAgentId'),
@@ -168,9 +174,7 @@ do $$ begin
     show_price = coalesce(payload ->> 'showDeal', '') = 'true' and coalesce(payload ->> 'showPrice', '') = 'true',
     deal_kind = case when payload ->> 'dealKind' = 'rental' then 'rental' else 'sale' end,
     closed_on = case when coalesce(payload ->> 'stage', '') in ('doas', 'done') then public.deal_closed_on(payload, updated_at) end $q$;
-  alter table public.broker_transactions enable trigger broker_transactions_set_updated_at;
-  alter table public.broker_transactions enable trigger broker_transactions_audit;
-  alter table public.broker_transactions enable trigger broker_transactions_typed;
+  foreach t in array quiet loop execute format('alter table public.broker_transactions enable trigger %I', t); end loop;
   drop table pg_temp.broker_transactions_fill_once;
 end $$;
 
