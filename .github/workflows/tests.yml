@@ -361,6 +361,8 @@ jobs:
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test phase13_app_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test phase13_app_e2e
       - name: e2e phase14_app_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test phase14_app_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test phase14_app_e2e
+      - name: e2e phase15_app_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test phase15_app_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test phase15_app_e2e
       - name: e2e market_filters_mobile_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test market_filters_mobile_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test market_filters_mobile_e2e
       - name: e2e market_index_e2e

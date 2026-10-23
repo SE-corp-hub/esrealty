@@ -1182,6 +1182,18 @@
   /* Rental application (roadmap I10): on a listing for rent, the inquiry can carry the details an
    * agent asks first. All optional; nothing is uploaded (IDs and payslips are shown at the
    * viewing). The listing function keeps them with the inquiry and the lead. */
+  /* Trust details on a listing page (roadmap H9), from the listing function: exclusive authority,
+   * documents seen, and the agent's PRC number (shown in advertising under RA 9646). */
+  function trustBadges(listing) {
+    var d = listing.details || {};
+    var badges = [];
+    if (d.exclusive) badges.push('<span class="sf-trust-badge">Exclusive with SEA ESTATES</span>');
+    if (d.docs_checked) badges.push('<span class="sf-trust-badge">Title and tax declaration seen by the agent</span>');
+    var agent = listing.agent_name ? 'Listed by ' + esc(listing.agent_name) + (d.agent_prc ? ', PRC no. ' + esc(d.agent_prc) : '') : (d.agent_prc ? 'PRC no. ' + esc(d.agent_prc) : '');
+    if (!badges.length && !agent) return '';
+    return '<section class="sf-trust" data-sf-trust>' + (badges.length ? '<div class="sf-trust-badges">' + badges.join('') + '</div>' : '') + (agent ? '<p class="sf-trust-agent">' + agent + '</p>' : '') + '</section>';
+  }
+
   function rentApplicationFields() {
     return '<details class="sf-apply" data-sf-apply><summary>Applying to rent? Add your details (optional)</summary>' +
       '<label>Move-in date<input type="date" name="move_in"></label>' +
@@ -1444,6 +1456,7 @@
       '<div class="sf-detail-layout"><article class="sf-detail-copy"><p class="sf-eyebrow">' + esc(typeLabel(listing.property_type)) + ' · ' + esc(listing.offer_type === "rent" ? "FOR RENT" : "FOR SALE") + '</p>' +
       '<h1>' + esc(listing.title) + '</h1><p class="sf-detail-location">' + esc(locationText(listing)) + '</p><div class="sf-key-stats">' + propertyFacts(listing, true) + '</div>' +
       '<section><h2>About this property</h2><p class="sf-description">' + esc(listing.description || "Contact the listing agent for complete property information.") + '</p></section>' +
+      trustBadges(listing) +
       (listing.details && listing.details.license_to_sell ? '<section class="sf-dhsud"><span class="sf-badge">' + esc(listing.details.license_to_sell) + '</span> DHSUD License to Sell number for this property.</section>' : '') +
       '<section><h2>Location</h2><div class="sf-detail-map" id="sf-detail-map"><span>' + esc(locationText(listing)) + '</span></div></section></article>' +
       '<aside class="sf-contact-card"><p>Listed at</p><h2>' + esc(money(listing.display_price, listing.offer_type === "rent" ? "/mo" : "")) + '</h2>' +

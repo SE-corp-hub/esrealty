@@ -14287,6 +14287,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         '<div class="field-hint">JPG, PNG or WebP - photos are compressed automatically, so any camera photo works. The first photo is the cover shown on listings and cards. Uploads are public.</div></div>' +
       '<div class="field col-full mt-8"><label>Virtual tour / video URL</label>' + lsTxt("ls-video", l.videoUrl) + "</div>" +
       '<div class="field col-full mt-8"><label>Featured listing</label><label class="ms-chk"><input type="checkbox" id="ls-feat"' + (l.featured ? " checked" : "") + "> Show as featured</label><div class='field-hint'>Featured slots require at least one photo.</div></div>" +
+      '<div class="field col-full mt-8"><label>Shown to buyers</label>' +
+        '<label class="ms-chk ls-trust-chk"><input type="checkbox" id="ls-exclusive"' + (l.exclusive ? " checked" : "") + "> Exclusive: we hold a signed authority to sell</label>" +
+        '<label class="ms-chk ls-trust-chk"><input type="checkbox" id="ls-docs-checked"' + (l.docsChecked ? " checked" : "") + "> Documents checked: we have seen the title and tax declaration</label>" +
+        '<div class="field-hint">These show as badges on the public listing, with the PRC number from your profile. Tick only what is true.</div></div>' +
       '<div class="field col-full mt-8"><label>Publication</label><label class="ms-chk"><input type="checkbox" id="ls-published"' + (l.isPublished ? " checked" : "") + '> Publish on the public property website</label><div class="field-hint">Leave unchecked to keep this listing as a private draft.</div></div>' +
       '<div class="field col-full mt-8"><label>Pin on map</label>' +
         '<div class="row" style="align-items:center;gap:8px"><input class="input" id="ls-map-q" type="text" placeholder="Search address / place" style="flex:1"><button class="btn btn-ghost btn-sm" id="ls-map-btn" type="button">' + icon("search", 14) + " Find</button></div>" +
@@ -14363,6 +14367,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     rec.videoUrl = $v("ls-video");
     rec.featured = $("#ls-feat") ? $("#ls-feat").checked : false;
     rec.isPublished = $("#ls-published") ? $("#ls-published").checked : false;
+    rec.exclusive = $("#ls-exclusive") ? $("#ls-exclusive").checked : rec.exclusive === true;
+    rec.docsChecked = $("#ls-docs-checked") ? $("#ls-docs-checked").checked : rec.docsChecked === true;
     if (rec.featured && !(rec.photos && rec.photos.length)) {
       toast("Featured listings need at least one photo — attach a photo or untick Featured", "err");
       return;
@@ -14891,6 +14897,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         developer: rec.developer || "",
         license_to_sell: rec.licenseToSell || "",
         pms_unit_id: rec.pmsUnitId || "",
+        exclusive: rec.exclusive === true,
+        docs_checked: rec.docsChecked === true,
         hoa_dues: Number(rec.hoaDues || 0),
         condo_dues: Number(rec.condoDues || 0),
         video_url: rec.videoUrl || ""
@@ -17216,14 +17224,35 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   function listingIsPresell(l) {
     return l.status === "pre-selling" || l.rfo === "pre-selling" || l.rfo === "preselling" || l.rfo === "pre-sell";
   }
+  /* Who the ad names. RA 9646 asks real estate ads to carry the broker's name and PRC licence
+   * number (and a salesperson's accreditation). The BIZ_* constants were never filled in, so ads
+   * said "SEA ESTATES Brokerage" twice with no licence; they now come from the accounts: the
+   * signed-in broker, or an agent's linked broker plus the agent's own PRC number. */
+  function listingAdPeople(l) {
+    const me = currentUser || {};
+    const role = typeof userRole === "function" ? userRole() : "";
+    let broker = null, agent = null;
+    if (role === "broker" || (role === "super-admin" && me.prc)) broker = { name: me.name || "", prc: me.prc || "", agency: me.agency || "" };
+    else if (role === "agent") {
+      const lb = agentLinkedBroker();
+      if (lb) broker = { name: lb.name || "", prc: lb.prc || "", agency: lb.agency || "" };
+      agent = { name: me.name || "", prc: me.prc || "" };
+    }
+    return {
+      firm: BIZ_FIRM || (broker && broker.agency) || me.agency || "SEA ESTATES",
+      brokerName: l.brokerName || BIZ_BROKER_NAME || (broker && broker.name) || "",
+      brokerLic: l.brokerLicense || BIZ_BROKER_LICENSE || (broker && broker.prc) || "",
+      agent: agent && agent.name ? agent : null
+    };
+  }
   function listingDisclosure(l) {
-    const firm = BIZ_FIRM || "SEA ESTATES Brokerage";
-    const brokerName = l.brokerName || BIZ_BROKER_NAME || firm;
-    const brokerLic = l.brokerLicense || BIZ_BROKER_LICENSE || "";
+    const who = listingAdPeople(l);
     const presell = listingIsPresell(l);
-    let s = "Listed by " + firm + " · " + brokerName + (brokerLic ? " · Licensed Real Estate Broker (PRC " + brokerLic + ")" : "");
+    let s = "Listed by " + who.firm + (who.brokerName && who.brokerName !== who.firm ? " · " + who.brokerName : "") +
+      (who.brokerLic ? " · Licensed Real Estate Broker (PRC " + who.brokerLic + ")" : "") +
+      (who.agent ? " · Salesperson " + who.agent.name + (who.agent.prc ? " (PRC " + who.agent.prc + ")" : "") : "");
     if (l.licenseToSell || presell) s += " · DHSUD License-to-Sell " + (l.licenseToSell || "(pending)");
-    s += ". Pre-selling shown for information only; not an offer to sell. Verify zoning, title, and financing with your broker before transacting.";
+    s += ". " + (presell ? "Pre-selling shown for information only; not an offer to sell. " : "") + "Verify zoning, title, and financing with your broker before transacting.";
     return s;
   }
   function listingAdCaption(l, style) {
@@ -17238,7 +17267,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   }
   function listingContactHtml(l) {
     const wa = l.businessWhatsApp || BIZ_WHATSAPP || state.businessWhatsApp || (IS_LOCAL_DEV ? "639171234567" : "") || "";
-    const tel = l.businessPhone || BIZ_PHONE || state.businessPhone || (IS_LOCAL_DEV ? "+63 917 123 4567" : "") || "";
+    const tel = l.businessPhone || BIZ_PHONE || state.businessPhone || siteContactData().phone || "";
     const prefill = encodeURIComponent("Hi! I'm interested in " + (l.title || "this listing") + " (" + (l.ref || "") + "). Please send me details.");
     return '<div class="mt-16" style="display:flex;gap:8px;flex-wrap:wrap">' +
       (wa ? '<a class="btn btn-primary btn-sm" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(wa).replace(/\D/g, "")) + '?text=' + prefill + '" data-listing-contact="whatsapp" data-listing-id="' + esc(l.id) + '">' + icon("chat", 13) + " WhatsApp</a>" : "") +
@@ -21155,6 +21184,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     leadDuplicateGroups: function () { return leadDuplicateGroups(); },
     teamTargets: function () { return { cfg: targetsCfg, state: targetsState, rows: teamTargetsRows() }; },
     listingPerformance: function (l, now) { return listingPerformance(l, now); },
+    listingToApi: function (rec) { return listingToApi(rec); },
+    listingDisclosure: function (l) { return listingDisclosure(l); },
     listingOwnerSummary: listingOwnerSummary,
     txClosingMissing: txClosingMissing,
     roleMatrixCard: function () { return roleMatrixCard(); },
