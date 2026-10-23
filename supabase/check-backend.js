@@ -206,6 +206,7 @@ const REST_RPCS = [
   { fn: "public_agent", note: "agent pages, listing function only (migrations/0015)", pending: "0015", body: { p_slug: "x" } },
   { fn: "agent_site_open", note: "My website, brokers and agents (migrations/0015)", pending: "0015" },
   { fn: "public_agents", note: "agent directory, listing function only (migrations/0016)", pending: "0016" },
+  { fn: "public_agent_count", note: "menu count for the directory, listing function only (migrations/0016)", pending: "0016" },
   { fn: "agent_check", note: "check an agent, listing function only (migrations/0016)", pending: "0016", body: { p_q: "0012345" } },
   { fn: "review_submit", note: "client reviews, listing function only (migrations/0016)", pending: "0016", body: { p_hash: "x", p_first: "x", p_initial: "", p_body: "x" } },
   { fn: "review_invite", note: "review links, Super Admin only (migrations/0016)", pending: "0016", body: { p_deal: "x", p_agent: "00000000-0000-0000-0000-000000000000" } },
