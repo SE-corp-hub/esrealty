@@ -45,6 +45,22 @@ insert into results select 'the broker cannot change the agents on a closed deal
   pg_temp.fails($q$update public.broker_transactions set payload = payload || '{"buyerAgentId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}' where id = 'td-1'$q$) = 'refused', '';
 insert into results select 'but can still edit the rest of it',
   pg_temp.fails($q$update public.broker_transactions set payload = payload || '{"notes":"keys handed over"}' where id = 'td-1'$q$) = 'ran', '';
+set local role authenticated;
+insert into results select 'a broker saves a deal from the app (signed in, not as the database owner)',
+  pg_temp.fails($q$insert into public.broker_transactions (id, ref, title, payload, broker_id, created_by) values ('td-app', 'TX-9', 'App deal', '{"stage":"reservation","buyerAgentId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')$q$) = 'ran'
+  and pg_temp.fails($q$update public.broker_transactions set payload = payload || '{"stage":"done"}' where id = 'td-app'$q$) = 'ran', '';
+insert into results select 'and still cannot change its agents once it closed, even by reopening it',
+  pg_temp.fails($q$update public.broker_transactions set payload = payload || '{"stage":"cts","buyerAgentId":""}' where id = 'td-app'$q$) = 'refused', '';
+reset role;
+-- A deal closed before the agent fields existed: the form now sends "" for both.
+alter table public.broker_transactions disable trigger broker_transactions_typed;
+insert into public.broker_transactions (id, ref, title, payload, broker_id, created_by, closed_on) values
+  ('td-old', 'TX-8', 'Old closed deal', '{"stage":"done"}', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '2024-05-01');
+alter table public.broker_transactions enable trigger broker_transactions_typed;
+set local role authenticated;
+insert into results select 'an older closed deal can still be edited: no agent and "" are the same nobody',
+  pg_temp.fails($q$update public.broker_transactions set payload = payload || '{"buyerAgentId":"","sellerAgentId":"","notes":"x"}' where id = 'td-old'$q$) = 'ran', '';
+reset role;
 select pg_temp.as_user('77777777-7777-7777-7777-777777777777');
 update public.broker_transactions set payload = payload || '{"sellerAgentId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}' where id = 'td-1';
 insert into results select 'a Super Admin can correct them',

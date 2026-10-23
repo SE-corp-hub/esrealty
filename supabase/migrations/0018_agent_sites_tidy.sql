@@ -6,8 +6,9 @@
 --                            blocking it). Every public lookup reads from it.
 --   Typed deal columns       broker_transactions gains buyer_agent_id, seller_agent_id, show_deal,
 --                            show_price, deal_kind and closed_on, kept in step with the payload by
---                            one trigger. Change 1: once a deal is closed only a Super Admin can
---                            change its agents ("credit is fixed at closing"), and a closed deal
+--                            one trigger. Change 1: once a deal has closed only a Super Admin can
+--                            change its agents, even after moving it back a stage ("credit is
+--                            fixed at closing"), and a closed deal
 --                            with no Deed of Sale date keeps the date it closed on instead of
 --                            moving to its last save.
 --   agent_closed_deals(a)    the one rule for "this closed deal credits this agent". The track
@@ -94,8 +95,16 @@ end $function$;
 create or replace function public.deal_closed_on(p jsonb, p_updated timestamptz) returns date language sql immutable as $$
   select coalesce(public.deal_date(p ->> 'doasDate'), (p_updated at time zone 'Asia/Manila')::date) $$;
 
-alter table public.broker_transactions add column if not exists buyer_agent_id uuid references public.profiles(id) on delete set null;
-alter table public.broker_transactions add column if not exists seller_agent_id uuid references public.profiles(id) on delete set null;
+-- First run only: the existing deals are filled below, once (a second run must not move closing dates).
+do $$ begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'broker_transactions' and column_name = 'closed_on') then
+    create temp table broker_transactions_fill_once as select 1 as yes;
+  end if;
+end $$;
+-- No foreign key: deleting an account would rewrite every deal naming it (new saved time, audit
+-- rows). deal_agent() keeps only ids of existing accounts, and a deleted agent has no public page.
+alter table public.broker_transactions add column if not exists buyer_agent_id uuid;
+alter table public.broker_transactions add column if not exists seller_agent_id uuid;
 alter table public.broker_transactions add column if not exists show_deal boolean not null default false;
 alter table public.broker_transactions add column if not exists show_price boolean not null default false;
 alter table public.broker_transactions add column if not exists deal_kind text not null default 'sale';
@@ -118,19 +127,20 @@ end $function$;
 -- Runs after broker_transactions_set_updated_at (triggers run in name order), so a deal closed with
 -- no Deed of Sale date takes the date of the save that closed it.
 create or replace function public.broker_transactions_typed()
-returns trigger language plpgsql set search_path to 'public' as $function$
+returns trigger language plpgsql security definer set search_path to 'public' as $function$
 declare
   closed boolean := coalesce(new.payload ->> 'stage', '') in ('doas', 'done');
 begin
-  -- Credit is fixed at closing: while a deal stays closed only a Super Admin changes its agents.
-  if tg_op = 'UPDATE' and closed and old.closed_on is not null
-     and ((new.payload ->> 'buyerAgentId', new.payload ->> 'sellerAgentId')
-          is distinct from (old.payload ->> 'buyerAgentId', old.payload ->> 'sellerAgentId'))
+  new.buyer_agent_id := public.deal_agent(new.payload ->> 'buyerAgentId');
+  new.seller_agent_id := public.deal_agent(new.payload ->> 'sellerAgentId');
+  -- Credit is fixed at closing: once a deal has closed, only a Super Admin changes its agents, even
+  -- if the deal is moved back to an earlier stage. Compared as accounts, so "" and a missing key
+  -- (deals saved before the agent fields existed) are the same "nobody".
+  if tg_op = 'UPDATE' and old.closed_on is not null
+     and (new.buyer_agent_id, new.seller_agent_id) is distinct from (old.buyer_agent_id, old.seller_agent_id)
      and auth.uid() is not null and not public.is_super_admin() then
     raise exception 'The agents on a closed deal are fixed. Ask a Super Admin to correct them.' using errcode = '42501';
   end if;
-  new.buyer_agent_id := public.deal_agent(new.payload ->> 'buyerAgentId');
-  new.seller_agent_id := public.deal_agent(new.payload ->> 'sellerAgentId');
   new.show_deal := coalesce(new.payload ->> 'showDeal', '') = 'true';
   new.show_price := new.show_deal and coalesce(new.payload ->> 'showPrice', '') = 'true';
   new.deal_kind := case when new.payload ->> 'dealKind' = 'rental' then 'rental' else 'sale' end;
@@ -146,19 +156,23 @@ create trigger broker_transactions_typed before insert or update on public.broke
 
 -- Fill the columns for existing deals without touching their saved time or the audit log. The old
 -- closing date (last save) is kept as the closing date.
-alter table public.broker_transactions disable trigger broker_transactions_set_updated_at;
-alter table public.broker_transactions disable trigger broker_transactions_audit;
-alter table public.broker_transactions disable trigger broker_transactions_typed;
-update public.broker_transactions set
-  buyer_agent_id = public.deal_agent(payload ->> 'buyerAgentId'),
-  seller_agent_id = public.deal_agent(payload ->> 'sellerAgentId'),
-  show_deal = coalesce(payload ->> 'showDeal', '') = 'true',
-  show_price = coalesce(payload ->> 'showDeal', '') = 'true' and coalesce(payload ->> 'showPrice', '') = 'true',
-  deal_kind = case when payload ->> 'dealKind' = 'rental' then 'rental' else 'sale' end,
-  closed_on = case when coalesce(payload ->> 'stage', '') in ('doas', 'done') then public.deal_closed_on(payload, updated_at) end;
-alter table public.broker_transactions enable trigger broker_transactions_set_updated_at;
-alter table public.broker_transactions enable trigger broker_transactions_audit;
-alter table public.broker_transactions enable trigger broker_transactions_typed;
+do $$ begin
+  if to_regclass('pg_temp.broker_transactions_fill_once') is null then return; end if;
+  alter table public.broker_transactions disable trigger broker_transactions_set_updated_at;
+  alter table public.broker_transactions disable trigger broker_transactions_audit;
+  alter table public.broker_transactions disable trigger broker_transactions_typed;
+  execute $q$ update public.broker_transactions set
+    buyer_agent_id = public.deal_agent(payload ->> 'buyerAgentId'),
+    seller_agent_id = public.deal_agent(payload ->> 'sellerAgentId'),
+    show_deal = coalesce(payload ->> 'showDeal', '') = 'true',
+    show_price = coalesce(payload ->> 'showDeal', '') = 'true' and coalesce(payload ->> 'showPrice', '') = 'true',
+    deal_kind = case when payload ->> 'dealKind' = 'rental' then 'rental' else 'sale' end,
+    closed_on = case when coalesce(payload ->> 'stage', '') in ('doas', 'done') then public.deal_closed_on(payload, updated_at) end $q$;
+  alter table public.broker_transactions enable trigger broker_transactions_set_updated_at;
+  alter table public.broker_transactions enable trigger broker_transactions_audit;
+  alter table public.broker_transactions enable trigger broker_transactions_typed;
+  drop table pg_temp.broker_transactions_fill_once;
+end $$;
 
 -- 4. One rule for "this closed deal credits this agent" ---------------------------------------------
 
