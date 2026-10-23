@@ -41,11 +41,12 @@ c("the QR library is vendored with its licence", /Kazuhiko Arase, MIT/.test(qr) 
 const qrcode = require(path.join(ROOT, "vendor/qrcode/qrcode.min.js"));
 const code = qrcode(0, "M"); code.addData("https://esrealty.tradersgag6.workers.dev/#/agents/maria-santos-dela-cruz"); code.make();
 c("it encodes an agent page address", code.getModuleCount() >= 25 && code.isDark(0, 0) === true);
-c("My website loads it only when Download QR is pressed", /s\.src = "vendor\/qrcode\/qrcode\.min\.js\?v=1"/.test(app) && !/vendor\/qrcode/.test(read("index.html")) && /data-site-qr/.test(app));
+const share = read("js/agent_share.js");
+c("My website loads it only when Download QR is pressed", /loadScriptOnce\("vendor\/qrcode\/qrcode\.min\.js\?v=1", "qrcode"\)/.test(share) && !/vendor\/qrcode/.test(read("index.html")) && /data-site-qr/.test(app));
 
 // Preview image at publish.
 c("publishing makes the 1200 x 630 preview image and keeps it in the page data",
-  /canvas\.width = 1200; canvas\.height = 630;/.test(app) && /og_image: await siteCardUpload\(sitePreviewData\(\)\)/.test(app)
+  /canvas\.width = 1200; canvas\.height = 630;/.test(share) && /SEA_AGENT_SHARE\.cardPng\(pv\)/.test(app) && /og_image: await siteCardUpload\(sitePreviewData\(\)\)/.test(app)
   && /og_image: \/\^https:\\\/\\\/\/\.test\(j\.og_image \|\| ""\) \? j\.og_image : ""/.test(app));
 
 // Pre-selling: licence to sell number and date before publishing.

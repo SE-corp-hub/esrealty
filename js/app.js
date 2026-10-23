@@ -18179,16 +18179,12 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
   /* Licence checks (agent websites, migration 0015): a Super Admin records what they checked on the
    * PRC record. An agent's or broker's public page needs a current one. */
   let licenceChecks = {};
-  const LICENCE_DEMO = {};
   async function loadLicenceChecks() {
     if (!roleIs("super-admin")) return;
-    if (currentUser.demo) { licenceChecks = LICENCE_DEMO; return; }
     try {
-      // "*" so the list still loads before migration 0016 adds the ID and phone checks.
-      const r = await SB.from("agent_verifications").select("*");
-      if (r.error) return; // migration 0015 not applied yet: the button explains when used
+      const rows = await agentCall("agent_verifications");
       licenceChecks = {};
-      (r.data || []).forEach(v => { licenceChecks[v.agent_id] = v; });
+      (rows || []).forEach(v => { licenceChecks[v.agent_id] = v; });
       if (state.view === "users") render({ keepScroll: true });
     } catch (e) { /* keep the list usable */ }
   }
@@ -18244,13 +18240,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       const problem = row.licence_no.length < 3 ? "Enter the licence or accreditation number." : row.prc_name.length < 3 ? "Enter the name as it appears on the PRC record." : !row.valid_until ? "Enter the date the licence is valid until." : "";
       if (problem) { err.textContent = problem; return; }
       try {
-        if (currentUser.demo) LICENCE_DEMO[u.id] = Object.assign({ checked_at: new Date().toISOString() }, row);
-        else {
-          // One call, one transaction: the database applies the date and re-check rules (migration 0018).
-          const r = await SB.rpc("licence_check_save", { p_agent: u.id, p_fields: row, p_recheck: recheck });
-          if (r.error) throw r.error;
-          licenceChecks[u.id] = r.data;
-        }
+        // One call, one transaction: the database applies the date and re-check rules (migration 0018).
+        licenceChecks[u.id] = await agentCall("licence_check_save", { p_agent: u.id, p_fields: row, p_recheck: recheck });
         close(); toast("Licence check saved"); render({ keepScroll: true });
       } catch (x) {
         const msg = String((x && x.message) || x || "");
@@ -18650,19 +18641,11 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
    * under the rule shown here. Agents may reply once and cannot remove a review. */
   const REVIEW_RULE = "We publish a review when it is about the client's own deal with this agent and is in the client's words. We decline a review that names other people, includes a phone number, link or price the client did not agree to show, or insults someone. We never decline a review because it is critical, and we do not edit reviews.";
   let reviewsRows = [], reviewsLoaded = false, reviewsLoading = false, reviewsError = "";
-  const REVIEWS_DEMO = [
-    { id: "demo-rv-1", agent_id: "demo-approved-1", status: "submitted", client_label: "Rhea D.", town: "Lipa City", month: "2026-09", body: "We were buying from Dubai. Ana did the viewing on video and sent the title and tax declaration before we paid anything.", submitted_at: new Date().toISOString() }
-  ];
   async function loadReviews() {
     if (reviewsLoading) return;
     reviewsLoading = true; reviewsError = "";
     try {
-      if (currentUser.demo) reviewsRows = REVIEWS_DEMO;
-      else {
-        const r = await SB.from("agent_reviews").select("id,agent_id,deal_id,status,client_label,town,month,body,reply,submitted_at,expires_at,created_at").order("created_at", { ascending: false }).limit(200);
-        if (r.error) throw r.error;
-        reviewsRows = r.data || [];
-      }
+      reviewsRows = (await agentCall("agent_reviews")) || [];
       reviewsLoaded = true;
     } catch (e) {
       const msg = String((e && e.message) || e || "");
@@ -18695,8 +18678,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
   }
   async function moderateReview(id, status) {
     try {
-      if (currentUser.demo) { const r = REVIEWS_DEMO.find(x => x.id === id); if (r) r.status = status; }
-      else { const r = await SB.rpc("review_moderate", { p_id: id, p_status: status }); if (r.error) throw r.error; }
+      await agentCall("review_moderate", { p_id: id, p_status: status });
       toast(status === "approved" ? "Review published" : "Review declined");
       reviewsLoaded = false; render({ keepScroll: true });
     } catch (e) { toast("Could not save: " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
@@ -20171,12 +20153,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const name = agentId === t.buyerAgentId ? t.buyerAgentName : t.sellerAgentName;
     let token = "";
     try {
-      if (currentUser.demo) token = "0".repeat(48) + "demo00000000demo";
-      else {
-        const r = await SB.rpc("review_invite", { p_deal: dealId, p_agent: agentId });
-        if (r.error) throw r.error;
-        token = String(r.data || "");
-      }
+      token = String((await agentCall("review_invite", { p_deal: dealId, p_agent: agentId })) || "");
     } catch (x) {
       const msg = String((x && x.message) || x || "");
       toast(/review_invite|schema cache|does not exist/i.test(msg) ? "Review links need database migration 0016 first." : esc(friendlyErr(msg)), "err");
@@ -21078,35 +21055,56 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       })
     };
   }
-  async function siteCall(fn, args) {
-    if (currentUser.demo) {
-      if (fn === "agent_site_save") SITE_DEMO.draft = siteClean(args.p_draft);
-      if (fn === "agent_site_publish") {
+  /* Every agent-website call goes through agentCall: in demo mode the AGENT_DEMO handler answers
+   * from memory, so the feature code has no demo branches. Reads of a table are listed in AGENT_READS. */
+  const AGENT_READS = {
+    // "*" so the list still loads before migration 0016 adds the ID and phone checks.
+    agent_verifications: () => SB.from("agent_verifications").select("*"),
+    agent_reviews: () => SB.from("agent_reviews").select("id,agent_id,deal_id,status,client_label,town,month,body,reply,submitted_at,expires_at,created_at").order("created_at", { ascending: false }).limit(200)
+  };
+  const AGENT_DEMO = (() => {
+    const licences = {};
+    const reviews = [
+      { id: "demo-rv-1", agent_id: "demo-approved-1", status: "submitted", client_label: "Rhea D.", town: "Lipa City", month: "2026-09", body: "We were buying from Dubai. Ana did the viewing on video and sent the title and tax declaration before we paid anything.", submitted_at: new Date().toISOString() }
+    ];
+    const ownReviews = [{ id: "demo-rv-2", label: "Jun M.", town: "Batangas City", month: "2026-07", body: "She told us honestly that our asking price was too high, then sold it in seven weeks at a price we were happy with.", reply: null }];
+    return {
+      agent_site_open: () => siteDemoOpen(),
+      agent_site_save: a => { SITE_DEMO.draft = siteClean(a.p_draft); return siteDemoOpen(); },
+      agent_site_publish: () => {
         const d = siteClean(SITE_DEMO.draft);
         if (!Object.keys(d.contacts).length) throw new Error("Add at least one way to contact you.");
         SITE_DEMO.data = d; SITE_DEMO.slug = SITE_DEMO.slug || String((currentUser && currentUser.name) || "agent").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
         SITE_DEMO.published_at = SITE_DEMO.published_at || new Date().toISOString();
-      }
-      if (fn === "agent_site_unpublish") SITE_DEMO.published_at = null;
-      return siteDemoOpen();
-    }
-    const r = await SB.rpc(fn, args || {});
+        return siteDemoOpen();
+      },
+      agent_site_unpublish: () => { SITE_DEMO.published_at = null; return siteDemoOpen(); },
+      agent_site_reviews: () => ownReviews,
+      review_reply: a => { const r = ownReviews.find(x => x.id === a.p_id); if (r) r.reply = a.p_text; },
+      agent_reviews: () => reviews,
+      review_moderate: a => { const r = reviews.find(x => x.id === a.p_id); if (r) r.status = a.p_status; },
+      review_invite: () => "0".repeat(48) + "demo00000000demo",
+      agent_verifications: () => Object.values(licences),
+      licence_check_save: a => (licences[a.p_agent] = Object.assign({ agent_id: a.p_agent, checked_at: new Date().toISOString() }, a.p_fields))
+    };
+  })();
+  async function agentCall(fn, args) {
+    if (currentUser.demo) return AGENT_DEMO[fn](args || {});
+    const r = await (AGENT_READS[fn] ? AGENT_READS[fn]() : SB.rpc(fn, args || {}));
     if (r.error) throw r.error;
     return r.data;
   }
   let siteReviews = null;
-  const SITE_REVIEWS_DEMO = [{ id: "demo-rv-2", label: "Jun M.", town: "Batangas City", month: "2026-07", body: "She told us honestly that our asking price was too high, then sold it in seven weeks at a price we were happy with.", reply: null }];
   async function loadSiteReviews() {
     try {
-      if (currentUser.demo) siteReviews = SITE_REVIEWS_DEMO;
-      else { const r = await SB.rpc("agent_site_reviews"); siteReviews = r.error ? null : (r.data || []); }
+      siteReviews = (await agentCall("agent_site_reviews")) || [];
     } catch (e) { siteReviews = null; } // before migration 0016 the card stays hidden
   }
   async function loadSite() {
     if (siteLoading) return;
     siteLoading = true; siteError = "";
     try {
-      siteData = await siteCall("agent_site_open");
+      siteData = await agentCall("agent_site_open");
       siteDraft = JSON.parse(JSON.stringify(siteData.draft || {}));
       await loadSiteReviews();
     } catch (e) {
@@ -21214,8 +21212,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       try { siteDraft = Object.assign({}, siteDraft, { og_image: await siteCardUpload(sitePreviewData()) }); } catch (e) { /* keep publishing */ }
     }
     try {
-      siteData = await siteCall("agent_site_save", { p_draft: siteClean(siteDraft || {}) });
-      if (publish) siteData = await siteCall("agent_site_publish");
+      siteData = await agentCall("agent_site_save", { p_draft: siteClean(siteDraft || {}) });
+      if (publish) siteData = await agentCall("agent_site_publish");
       siteDraft = JSON.parse(JSON.stringify(siteData.draft || {}));
       toast(publish ? "Published. Your page is live." : "Draft saved");
     } catch (e) {
@@ -21268,7 +21266,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       else if (e.target.closest("[data-site-publish]")) siteSave(true);
       else if (e.target.closest("[data-site-unpublish]")) {
         siteBusy = "save";
-        siteCall("agent_site_unpublish").then(r => { siteData = r; toast("Your page is down. Publish again any time."); })
+        agentCall("agent_site_unpublish").then(r => { siteData = r; toast("Your page is down. Publish again any time."); })
           .catch(err => toast("Could not take the page down: " + esc(friendlyErr(String((err && err.message) || err))), "err"))
           .then(() => { siteBusy = ""; render({ keepScroll: true }); });
       } else if (e.target.closest("[data-site-reply]")) {
@@ -21276,8 +21274,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
         const box = root.querySelector("#site-reply-" + CSS.escape(id));
         const text = box ? box.value.trim() : "";
         if (text.length < 2) { toast("Write your reply first", "err"); if (box) box.focus(); return; }
-        (currentUser.demo ? Promise.resolve({}) : SB.rpc("review_reply", { p_id: id, p_text: text })).then(r => {
-          if (r && r.error) throw r.error;
+        agentCall("review_reply", { p_id: id, p_text: text }).then(() => {
           const row = (siteReviews || []).find(x => String(x.id) === String(id)); if (row) row.reply = text;
           toast("Reply posted"); render({ keepScroll: true });
         }).catch(err => toast("Could not post the reply: " + esc(friendlyErr(String((err && err.message) || err))), "err"));
@@ -21290,38 +21287,10 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       }
     });
   }
-  /* The QR code for printed signs and flyers: the page address, with the agent's name under it. */
-  function siteQrLib() {
-    if (window.qrcode) return Promise.resolve(window.qrcode);
-    if (!siteQrLib._p) siteQrLib._p = new Promise((resolve, reject) => {
-      const s = document.createElement("script");
-      s.src = "vendor/qrcode/qrcode.min.js?v=1";
-      s.onload = () => (window.qrcode ? resolve(window.qrcode) : reject(new Error("QR library did not load")));
-      s.onerror = () => { siteQrLib._p = null; reject(new Error("Could not load the QR library")); };
-      document.head.appendChild(s);
-    });
-    return siteQrLib._p;
-  }
-  function siteQrCanvas(qrcode, text, name) {
-    const qr = qrcode(0, "M"); qr.addData(text); qr.make();
-    const n = qr.getModuleCount(), quiet = 4, cell = Math.floor(960 / (n + quiet * 2));
-    const size = cell * (n + quiet * 2);
-    const canvas = document.createElement("canvas");
-    canvas.width = size; canvas.height = size + 150;
-    const g = canvas.getContext("2d");
-    g.fillStyle = "#FFFFFF"; g.fillRect(0, 0, canvas.width, canvas.height);
-    g.fillStyle = "#1C1917";
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) g.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
-    g.textAlign = "center";
-    g.font = "700 46px Inter, Arial, sans-serif"; g.fillText(String(name || "").slice(0, 40), size / 2, size + 40);
-    g.font = "400 30px Inter, Arial, sans-serif"; g.fillStyle = "#443C36"; g.fillText("Scan to see my page \u00b7 SEA ESTATES", size / 2, size + 95);
-    return canvas;
-  }
   async function siteQr(address) {
     if (!address) return;
     try {
-      const canvas = siteQrCanvas(await siteQrLib(), address, sitePreviewData().name);
-      const blob = await new Promise(res => canvas.toBlob(res, "image/png"));
+      const blob = await window.SEA_AGENT_SHARE.qrPng(address, sitePreviewData().name);
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob); a.download = ((siteData && siteData.slug) || "my-page") + "-qr.png";
       document.body.appendChild(a); a.click(); a.remove();
@@ -21329,57 +21298,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       toast("QR code downloaded");
     } catch (e) { toast("Could not make the QR code: " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
   }
-  /* The page's preview image (1200 x 630): name, role, towns and the licence line on warm paper,
-   * with the photo when the browser may draw it. */
-  function siteCardCanvas(pv, photo) {
-    const P = window.SEA_AGENT_PAGE;
-    const canvas = document.createElement("canvas");
-    canvas.width = 1200; canvas.height = 630;
-    const g = canvas.getContext("2d");
-    const display = '"Schibsted Grotesk", Inter, Arial, sans-serif';
-    g.fillStyle = "#F7F3EE"; g.fillRect(0, 0, 1200, 630);
-    g.fillStyle = "#0E5F63"; g.fillRect(0, 530, 1200, 100);
-    const textRight = photo ? 760 : 1120;
-    const fit = (txt, font, max) => { g.font = font; let t = String(txt || ""); while (t.length > 3 && g.measureText(t).width > max) t = t.slice(0, -2); return t === String(txt || "") ? t : t.trim() + "\u2026"; };
-    g.fillStyle = "#1C1917"; g.textBaseline = "alphabetic";
-    let size = 84; g.font = "800 " + size + "px " + display;
-    while (size > 48 && g.measureText(pv.name || "").width > textRight - 80) { size -= 4; g.font = "800 " + size + "px " + display; }
-    g.fillText(fit(pv.name, "800 " + size + "px " + display, textRight - 80), 80, 200);
-    g.fillStyle = "#443C36";
-    g.fillText(fit(pv.role_label, "500 34px Inter, Arial, sans-serif", textRight - 80), 80, 262);
-    const towns = P ? P.labels(P.TOWNS, pv.towns || []).slice(0, 3) : [];
-    if (towns.length) g.fillText(fit(towns.join(", ") + ", Batangas", "400 32px Inter, Arial, sans-serif", textRight - 80), 80, 314);
-    g.fillStyle = "#9A4518"; g.fillText("with SEA ESTATES", 80, 380);
-    g.fillStyle = "#FFFFFF";
-    const lic = pv.licence;
-    g.fillText(fit(lic ? "Licence checked by SEA ESTATES on " + (P ? P.day(lic.checked_on) : lic.checked_on) + " \u00b7 Licence no. " + lic.no : "SEA ESTATES", "600 30px Inter, Arial, sans-serif", 1060), 80, 592);
-    if (photo) {
-      const w = 340, h = 420, x = 800, y = 70;
-      const scale = Math.max(w / photo.naturalWidth, h / photo.naturalHeight);
-      const sw = w / scale, sh = h / scale;
-      g.save(); g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, 28); else g.rect(x, y, w, h); g.clip();
-      g.drawImage(photo, (photo.naturalWidth - sw) / 2, (photo.naturalHeight - sh) / 2, sw, sh, x, y, w, h);
-      g.restore();
-    }
-    return canvas;
-  }
-  function siteLoadImage(url) {
-    return new Promise((resolve, reject) => {
-      const img = new Image(); img.crossOrigin = "anonymous";
-      img.onload = () => resolve(img); img.onerror = () => reject(new Error("photo did not load"));
-      img.src = url;
-    });
-  }
-  async function siteCardBlob(pv) {
-    try { if (document.fonts && document.fonts.load) await document.fonts.load('800 84px "Schibsted Grotesk"'); } catch (e) { /* Inter then */ }
-    let photo = null;
-    if (pv.photo) { try { photo = await siteLoadImage(pv.photo); } catch (e) { photo = null; } }
-    const toBlob = c => new Promise((res, rej) => { try { c.toBlob(b => (b ? res(b) : rej(new Error("no image"))), "image/png"); } catch (e) { rej(e); } });
-    try { return await toBlob(siteCardCanvas(pv, photo)); }
-    catch (e) { return toBlob(siteCardCanvas(pv, null)); } // a photo the browser may not read back
-  }
   async function siteCardUpload(pv) {
-    const blob = await siteCardBlob(pv);
+    const blob = await window.SEA_AGENT_SHARE.cardPng(pv);
     const path = currentUser.id + "/agent-card-" + Date.now() + ".png";
     const { error } = await storageUpload("listing-photos", path, blob, { contentType: "image/png", upsert: false, cacheControl: "31536000" });
     if (error) throw error;

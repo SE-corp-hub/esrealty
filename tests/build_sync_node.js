@@ -120,7 +120,7 @@ const FALLBACK_ALIASES = {
 const RETIRED_HOOKS = ["data-sf-sticky", "data-sf-sticky-call"];
 
 if (src !== null) {
-  const shipped = ["index.html", "js/app.js", "js/storefront.js", "js/agent_page.js", "js/agent_directory.js", "js/estimator.js", "js/agent_next.js",
+  const shipped = ["index.html", "js/app.js", "js/storefront.js", "js/agent_page.js", "js/agent_directory.js", "js/agent_share.js", "js/estimator.js", "js/agent_next.js",
     "js/portfolio_ledger.js", "js/portfolio_cloud.js", "js/pms_cloud.js", "js/pms_ledger.js", "js/compliance_due.js", "js/data.js", "js/core.js",
     "js/value_guide_flow.js"]
     .map(f => readOr(path.join(ROOT, f))).filter(Boolean).join("\n");

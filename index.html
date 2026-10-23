@@ -32,12 +32,13 @@
        fetched on first use rather than added to the startup payload every page
        load pays for. Same lazy pattern as Leaflet above. The promise resolves
        even on failure; callers check window.PDFLib and surface the error. -->
-  <script>window.ESREALTY_PDF_LIB = { ensure: function () { if (window.PDFLib) return Promise.resolve(window.PDFLib); if (!this._p) this._p = new Promise(function (resolve, reject) { var s = document.createElement("script"); s.src = "vendor/pdf-lib/pdf-lib.min.js?v=1"; s.onload = function () { window.PDFLib ? resolve(window.PDFLib) : reject(new Error("pdf-lib loaded without exposing PDFLib")); }; s.onerror = function () { reject(new Error("Could not load vendor/pdf-lib/pdf-lib.min.js")); }; document.head.appendChild(s); }); return this._p; } };</script>
+  <script>window.ESREALTY_PDF_LIB = { ensure: function () { return window.ESREALTY_UTIL.loadScriptOnce("vendor/pdf-lib/pdf-lib.min.js?v=1", "PDFLib"); } };</script>
   <script src="js/util.js" defer></script>
   <script src="js/supabase-config.js" defer></script>
   <script src="js/listings-api.js" defer></script>
   <script src="js/agent_page.js" defer></script>
   <script src="js/agent_directory.js" defer></script>
+  <script src="js/agent_share.js" defer></script>
   <script src="js/storefront.js" defer></script>
   <script src="js/data.js" defer></script>
   <script src="js/playbook_seed.js" defer></script>
