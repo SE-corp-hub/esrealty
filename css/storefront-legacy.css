@@ -474,8 +474,9 @@
 body .sf-brand small { font-size: 12px !important; color: #5a6978 !important; }
 
 .sf-footer .sf-brand small { color: #9aa4ae !important; }
-body label,
-body small,
+/* Agent pages, the agent directory and the review form size their own labels (css/storefront.css). */
+body label:not(:where(.ag, .agd, .sf-review) *),
+body small:not(:where(.ag, .agd, .sf-review) *),
 body .sf-search-form label,
 body .sf-search-form span { font-size: 12px !important; }
 
