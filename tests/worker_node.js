@@ -24,7 +24,8 @@ const LISTING = {
 
 const AGENT = { slug: "maria-santos", name: "Maria Santos <Dela Cruz>", role_label: "PRC-accredited real estate salesperson", pitch: "Lots and homes in Lipa.",
   towns: ["lipa-city", "malvar"], photo: "https://x.supabase.co/storage/v1/object/public/listing-photos/u/p.jpg", contacts: { call: "+639171234567" },
-  licence: { no: "0012345", valid_until: "2027-08-31", checked_on: "2026-10-12" } };
+  licence: { no: "0012345", valid_until: "2027-08-31", checked_on: "2026-10-12" },
+  og_image: "https://x.supabase.co/storage/v1/object/public/listing-photos/u/agent-card-1.png" };
 
 function setup(mode) {
   const calls = [];
@@ -110,7 +111,10 @@ function setup(mode) {
   res = await worker.fetch(new Request("https://sea.example/agents/maria-santos"), s.env);
   body = await res.text();
   c("an agent page answers 200 with the agent's name and role as the title", res.status === 200 && body.includes("<title>Maria Santos &lt;Dela Cruz&gt;, PRC-accredited real estate salesperson | SEA ESTATES</title>"));
-  c("Facebook gets the agent's pitch, photo and address", body.includes('<meta property="og:description" content="Lots and homes in Lipa.">') && body.includes('<meta property="og:image" content="https://x.supabase.co/storage/v1/object/public/listing-photos/u/p.jpg">') && body.includes('<link rel="canonical" href="https://sea.example/agents/maria-santos">'));
+  c("Facebook gets the agent's pitch, the 1200 x 630 preview image and the address", body.includes('<meta property="og:description" content="Lots and homes in Lipa.">')
+    && body.includes('<meta property="og:image" content="https://x.supabase.co/storage/v1/object/public/listing-photos/u/agent-card-1.png">') && body.includes('<meta property="og:image:width" content="1200">')
+    && body.includes('<link rel="canonical" href="https://sea.example/agents/maria-santos">'));
+  c("the photo is still the person's image in the page data", body.includes('"image":"https://x.supabase.co/storage/v1/object/public/listing-photos/u/p.jpg"'));
   const ald = JSON.parse((body.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/) || [])[1] || "{}");
   c("schema.org says it is a real estate agent serving those towns", ald["@type"] === "RealEstateAgent" && ald.areaServed && ald.areaServed[0].name === "Lipa City, Batangas" && ald.telephone === "+639171234567");
   c("agent pages carry noindex until the lawyer's OK", body.includes('<meta name="robots" content="noindex">'));

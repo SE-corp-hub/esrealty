@@ -153,6 +153,8 @@ export function agentPage(page, a, siteUrl, indexable) {
   const title = a.name + ", " + a.role_label + " | SEA ESTATES";
   const desc = String(a.pitch || "").trim() || (a.role_label + (towns.length ? " in " + towns.slice(0, 3).join(", ") + ", Batangas" : " in Batangas") + ", with SEA ESTATES.");
   const img = /^https:\/\//.test(a.photo || "") ? a.photo : "";
+  // The 1200 x 630 preview image made when the page was published (My website); the photo otherwise.
+  const share = /^https:\/\//.test(a.og_image || "") ? a.og_image : img;
   const ld = {
     "@context": "https://schema.org", "@type": "RealEstateAgent", name: a.name, url, description: desc,
     image: img || undefined,
@@ -165,12 +167,13 @@ export function agentPage(page, a, siteUrl, indexable) {
   out = setTag(out, /<meta name="description"[^>]*>/i, '<meta name="description" content="' + esc(desc) + '">');
   out = setTag(out, /<meta property="og:title"[^>]*>/i, '<meta property="og:title" content="' + esc(a.name + ", " + a.role_label) + '">');
   out = setTag(out, /<meta property="og:description"[^>]*>/i, '<meta property="og:description" content="' + esc(desc) + '">');
-  out = setTag(out, /<meta name="twitter:card"[^>]*>/i, '<meta name="twitter:card" content="' + (img ? "summary_large_image" : "summary") + '">');
+  out = setTag(out, /<meta name="twitter:card"[^>]*>/i, '<meta name="twitter:card" content="' + (share ? "summary_large_image" : "summary") + '">');
   out = out.replace(/<\/head>/i, [
     '<link rel="canonical" href="' + esc(url) + '">',
     '<meta property="og:url" content="' + esc(url) + '">',
     '<meta property="og:type" content="profile">',
-    img ? '<meta property="og:image" content="' + esc(img) + '">' : "",
+    share ? '<meta property="og:image" content="' + esc(share) + '">' : "",
+    share && share === a.og_image ? '<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">' : "",
     indexable ? "" : '<meta name="robots" content="noindex">',
     '<script type="application/ld+json">' + JSON.stringify(ld).replace(/</g, "\\u003c") + "</script>",
   ].filter(Boolean).join("\n") + "\n</head>");
