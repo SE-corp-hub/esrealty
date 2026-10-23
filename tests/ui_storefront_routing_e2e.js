@@ -58,6 +58,9 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     if (cards.length) {
       cards[0].click();
       await wait(2200);
+      // The live listing function can take longer than 2 s on a cold start: wait for the page itself,
+      // not its "Loading property" placeholder (which also carries .sf-detail).
+      for (let i = 0; i < 16 && document.querySelector(".sf-detail-loading"); i++) await wait(500);
       chk("route-detail-renders", !!document.querySelector(".sf-detail"), "detail=" + !!document.querySelector(".sf-detail"));
       chk("route-detail-has-jsonld", !!document.getElementById("sf-jsonld"), "jsonld=" + !!document.getElementById("sf-jsonld"));
       await go("#/home", 1800);

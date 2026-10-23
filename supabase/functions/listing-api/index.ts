@@ -442,11 +442,15 @@ const publicDetails = async (admin: SupabaseClient, id: string, agentId: string 
     if (p.exclusive === true) out.exclusive = true;
     if (p.docsChecked === true) out.docs_checked = true;
     if (agentId) {
-      const { data: prof } = await admin.from("profiles").select("prc").eq("id", agentId).maybeSingle();
+      // Both at once: the agent's PRC number, and their page address while the page is public, so
+      // "Listed by" links to it (agent websites, Phase 2).
+      const [{ data: prof }, { data: slug }] = await Promise.all([
+        admin.from("profiles").select("prc").eq("id", agentId).maybeSingle(),
+        // A failed page lookup only leaves the name unlinked; it never drops the PRC number.
+        Promise.resolve().then(() => admin.rpc("agent_public_slug", { p_agent: agentId })).catch(() => ({ data: null })),
+      ]);
       const prc = String(prof?.prc || "").trim();
       if (prc) out.agent_prc = prc.slice(0, 40);
-      // "Listed by" links to the agent's page while it is public (agent websites, Phase 2).
-      const { data: slug } = await admin.rpc("agent_public_slug", { p_agent: agentId });
       if (typeof slug === "string" && slug) out.agent_slug = slug;
     }
   } catch (e) {
