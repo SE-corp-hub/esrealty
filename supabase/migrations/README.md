@@ -70,6 +70,10 @@ the listing function reads a page only through `public_agent`) follows `0014`.
 Value Guide leads, the Verified badge from the office's ID and phone checks, check-an-agent, the
 track record from closed deals with the client's say on what is listed, and client reviews from
 one-time links that a Super Admin approves) follows `0015`.
+`0017_agent_sites_finish.sql` (agent websites, finishing work: rental deals counted on their own and
+a 3-year window on the track record, agents reading the deals that credit them, Viber on directory
+cards, the page's preview image, sign-up licence details in Users & Access, and expired pre-selling
+listings leaving the public catalog) follows `0016`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses

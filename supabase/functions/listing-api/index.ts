@@ -251,6 +251,20 @@ const listingInput = (body: JsonRecord, existing: JsonRecord | null, ownerId: st
   if (!Array.isArray(financingInput) || financingInput.length > 5 || financingInput.some((item) => !financingAllowed.has(String(item)))) {
     throw new HttpError(400, "details.financing is invalid");
   }
+  // Pre-selling: a published listing shows its DHSUD licence to sell and the date it is valid until,
+  // and the public catalog drops it after that date (migration 0017).
+  const licenseToSell = stringValue(details.license_to_sell ?? oldPayload.licenseToSell, 180, "details.license_to_sell");
+  const licenseToSellUntil = stringValue(details.license_to_sell_until ?? oldPayload.licenseToSellUntil, 10, "details.license_to_sell_until");
+  if (licenseToSellUntil && (!/^\d{4}-\d{2}-\d{2}$/.test(licenseToSellUntil)
+      || Number.isNaN(Date.parse(licenseToSellUntil + "T00:00:00Z")) || new Date(licenseToSellUntil + "T00:00:00Z").toISOString().slice(0, 10) !== licenseToSellUntil)) {
+    throw new HttpError(400, "details.license_to_sell_until must be a real date (YYYY-MM-DD)");
+  }
+  if (status === "pre-selling" && isPublished) {
+    const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10); // Manila
+    if (!licenseToSell) throw new HttpError(400, "A published pre-selling listing needs its DHSUD licence to sell number");
+    if (!licenseToSellUntil) throw new HttpError(400, "A published pre-selling listing needs the date its DHSUD licence to sell is valid until");
+    if (licenseToSellUntil < today) throw new HttpError(400, "The DHSUD licence to sell has expired. Renew it, or save the listing as not published");
+  }
   const videoUrl = stringValue(details.video_url ?? oldPayload.videoUrl, 1000, "details.video_url");
   if (videoUrl) {
     try { if (new URL(videoUrl).protocol !== "https:") throw new Error(); }
@@ -292,7 +306,8 @@ const listingInput = (body: JsonRecord, existing: JsonRecord | null, ownerId: st
     zoning: stringValue(details.zoning ?? oldPayload.zoning, 120, "details.zoning"),
     turnoverDate: stringValue(details.turnover_date ?? oldPayload.turnoverDate, 120, "details.turnover_date"),
     developer: stringValue(details.developer ?? oldPayload.developer, 180, "details.developer"),
-    licenseToSell: stringValue(details.license_to_sell ?? oldPayload.licenseToSell, 180, "details.license_to_sell"),
+    licenseToSell,
+    licenseToSellUntil,
     // The Property Management unit a rental listing was made from ("List for rent", roadmap I9).
     pmsUnitId: stringValue(details.pms_unit_id ?? oldPayload.pmsUnitId, 80, "details.pms_unit_id"),
     // Trust badges on the listing page (H9): exclusive authority, documents seen by the agent.
@@ -423,14 +438,19 @@ const publicDetails = async (admin: SupabaseClient, id: string, agentId: string 
     const { data: row } = await admin.from("shared_listings").select("payload").eq("id", id).maybeSingle();
     const p = (row?.payload && typeof row.payload === "object" ? row.payload : {}) as JsonRecord;
     if (typeof p.licenseToSell === "string" && p.licenseToSell.trim()) out.license_to_sell = p.licenseToSell.trim().slice(0, 180);
+    if (typeof p.licenseToSellUntil === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.licenseToSellUntil)) out.license_to_sell_until = p.licenseToSellUntil;
     if (p.exclusive === true) out.exclusive = true;
     if (p.docsChecked === true) out.docs_checked = true;
     if (agentId) {
-      const { data: prof } = await admin.from("profiles").select("prc").eq("id", agentId).maybeSingle();
+      // Both at once: the agent's PRC number, and their page address while the page is public, so
+      // "Listed by" links to it (agent websites, Phase 2).
+      const [{ data: prof }, { data: slug }] = await Promise.all([
+        admin.from("profiles").select("prc").eq("id", agentId).maybeSingle(),
+        // A failed page lookup only leaves the name unlinked; it never drops the PRC number.
+        Promise.resolve().then(() => admin.rpc("agent_public_slug", { p_agent: agentId })).catch(() => ({ data: null })),
+      ]);
       const prc = String(prof?.prc || "").trim();
       if (prc) out.agent_prc = prc.slice(0, 40);
-      // "Listed by" links to the agent's page while it is public (agent websites, Phase 2).
-      const { data: slug } = await admin.rpc("agent_public_slug", { p_agent: agentId });
       if (typeof slug === "string" && slug) out.agent_slug = slug;
     }
   } catch (e) {

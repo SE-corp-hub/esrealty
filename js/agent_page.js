@@ -163,6 +163,9 @@
       '<a class="ag-btn ag-btn-light" data-ag-sell href="#/home?section=estimator&amp;agent=' + encodeURIComponent(p.slug || "") + '"' + (preview ? ' tabindex="-1"' : "") + ">Start the Value Guide with " + esc(first) + "</a></div></section>";
   }
 
+  // "recorded since Mar 2025", or "in the last 3 years" once there are 36 months of records.
+  function recordSpan(rec) { return rec.window === "3y" ? "in the last 3 years" : "recorded since " + month(rec.since); }
+
   // Phase 3: counts from SEA ESTATES' closed deals, by side; rows only where the client agreed.
   function recordSection(p) {
     var rec = p.record || {};
@@ -171,17 +174,18 @@
     var sides = [];
     if (Number(rec.buyer) > 0) sides.push("<div><b>" + Number(rec.buyer) + "</b><span>as buyer\u2019s agent</span></div>");
     if (Number(rec.seller) > 0) sides.push("<div><b>" + Number(rec.seller) + "</b><span>as seller\u2019s agent</span></div>");
+    if (Number(rec.rentals) > 0) sides.push("<div><b>" + Number(rec.rentals) + "</b><span>rental" + (Number(rec.rentals) === 1 ? "" : "s") + "</span></div>");
     var rows = rec.rows || [];
-    var sideText = { buyer: "Buyer", seller: "Seller", both: "Buyer and seller" };
+    var sideText = { buyer: "Buyer", seller: "Seller", both: "Buyer and seller", rental: "Rental" };
     var table = rows.length ? '<div class="ag-table-wrap" role="region" aria-labelledby="ag-record-cap" tabindex="0"><table class="ag-table"><caption id="ag-record-cap">Deals shown with the client\u2019s agreement</caption>' +
       '<thead><tr><th scope="col">Closed</th><th scope="col">Property</th><th scope="col">Town</th><th scope="col">' + esc(first) + " acted for the</th><th scope=\"col\">Price</th></tr></thead><tbody>" +
       rows.map(function (r) {
         var size = Number(r.lot_sqm) > 0 ? ", " + Number(r.lot_sqm).toLocaleString("en-PH") + " sqm" : (Number(r.floor_sqm) > 0 ? ", " + Number(r.floor_sqm).toLocaleString("en-PH") + " sqm floor area" : "");
         return "<tr><td>" + esc(month(r.month)) + "</td><td>" + esc(typeText(r.type) + size) + "</td><td>" + esc(r.town || "") + "</td><td>" + esc(sideText[r.side] || "") + "</td><td>" +
-          (Number(r.price) > 0 ? '<span class="ag-num">' + esc(money(r.price)) + "</span>" : '<span class="ag-muted">Not shown</span>') + "</td></tr>";
+          (Number(r.price) > 0 ? '<span class="ag-num">' + esc(money(r.price)) + (r.side === "rental" ? " a month" : "") + "</span>" : '<span class="ag-muted">Not shown</span>') + "</td></tr>";
       }).join("") + "</tbody></table></div>" : "";
     return '<section class="ag-section ag-record" id="ag-record" aria-labelledby="ag-record-h"><div class="ag-record-text">' +
-      '<h2 id="ag-record-h">Track record</h2><p>' + plural(rec.deals, "deal") + " closed through SEA ESTATES since " + esc(month(rec.since)) + ", counted from our deal records.</p>" +
+      '<h2 id="ag-record-h">Track record</h2><p>' + plural(rec.deals, "deal") + " closed through SEA ESTATES " + (rec.window === "3y" ? "in the last 3 years" : "since " + esc(month(rec.since))) + ", counted from our deal records.</p>" +
       (sides.length ? '<div class="ag-stats ag-record-sides">' + sides.join("") + "</div>" : "") + "</div>" +
       '<div class="ag-record-rows">' + table + '<p class="ag-muted">' + (rows.length ? "Other deals are counted but not listed." : "Deals are listed only when the client agrees, so these are counted but not listed.") + "</p></div></section>";
   }
@@ -267,7 +271,7 @@
     var stats = [];
     if (Number(p.listing_count) > 0) stats.push('<div><b>' + Number(p.listing_count) + "</b><span>active listing" + (Number(p.listing_count) === 1 ? "" : "s") + "</span></div>");
     var rec = p.record || {};
-    if (Number(rec.deals) > 0) stats.push("<div><b>" + Number(rec.deals) + "</b><span>deal" + (Number(rec.deals) === 1 ? "" : "s") + " recorded since " + esc(month(rec.since)) + "</span></div>");
+    if (Number(rec.deals) > 0) stats.push("<div><b>" + Number(rec.deals) + "</b><span>deal" + (Number(rec.deals) === 1 ? "" : "s") + " " + esc(recordSpan(rec)) + "</span></div>");
     if ((p.reviews || []).length) stats.push("<div><b>" + p.reviews.length + "</b><span>client review" + (p.reviews.length === 1 ? "" : "s") + "</span></div>");
     if (p.reply) stats.push('<div class="ag-stat-words"><b>Replies ' + esc(p.reply) + "</b><span>typical first reply, last 90 days</span></div>");
     var c = p.contacts || {};
@@ -298,9 +302,17 @@
     var lines = ["BEGIN:VCARD", "VERSION:3.0", "FN:" + p.name, "ORG:SEA ESTATES", "TITLE:" + p.role_label];
     if (c.call) lines.push("TEL;TYPE=CELL:" + c.call);
     if (c.viber && c.viber !== c.call) lines.push("TEL;TYPE=CELL:" + c.viber);
-    if (p.slug) lines.push("URL:" + location.origin + "/agents/" + p.slug);
+    if (p.slug) lines.push("URL:" + pageUrl(p.slug));
     lines.push("END:VCARD");
     return lines.join("\r\n");
+  }
+
+  /* An agent page's shareable address. Until the site's Worker is live (pull request #32), only
+   * the #/ form opens the page; the Worker turns PATH_LINKS on so links read /agents/<slug>. */
+  var PATH_LINKS = false;
+  function pageUrl(slug) {
+    var base = location.origin + location.pathname.replace(/[^/]*$/, "");
+    return base + (PATH_LINKS ? "agents/" : "#/agents/") + encodeURIComponent(slug || "");
   }
 
   function key() {
@@ -402,5 +414,5 @@
   }
 
   window.SEA_AGENT_PAGE = { html: html, bind: bind, TOWNS: TOWNS, NEEDS: NEEDS, LANGUAGES: LANGUAGES, ACCENTS: ACCENTS, phoneText: phoneText,
-    labels: labels, day: day, month: month, initials: initials, firstName: firstName, icon: icon, joinWords: joinWords };
+    labels: labels, day: day, month: month, initials: initials, firstName: firstName, icon: icon, joinWords: joinWords, pageUrl: pageUrl };
 })();

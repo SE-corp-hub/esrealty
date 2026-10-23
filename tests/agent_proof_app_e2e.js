@@ -21,6 +21,17 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     const go = async view => { q('#nav [data-view="' + view + '"]').click(); await wait(900); };
     const tab = async name => { q('[data-users-tab="' + name + '"]').click(); await wait(700); };
 
+    // Sign-up: brokers and agents give their licence number; agents also name their broker.
+    localStorage.removeItem("esrealty_v1"); localStorage.removeItem("esrealty_user");
+    q("#auth-tab-register").click(); await wait(200);
+    chk("sign-up asks no licence number until a broker or agent role is chosen", q("#auth-prc-field").style.display === "none" && q("#auth-broker-field").style.display === "none");
+    q("#auth-request-role").value = "agent"; q("#auth-request-role").dispatchEvent(new Event("change")); await wait(100);
+    chk("an agent is asked for the licence number and supervising broker", q("#auth-prc-field").style.display === "" && q("#auth-broker-field").style.display === "");
+    q("#auth-request-role").value = "broker"; q("#auth-request-role").dispatchEvent(new Event("change")); await wait(100);
+    chk("a broker only for the licence number", q("#auth-prc-field").style.display === "" && q("#auth-broker-field").style.display === "none");
+    q("#auth-tab-login").click(); await wait(200);
+    chk("the fields hide again on Login", q("#auth-prc-field").style.display === "none");
+
     // An agent replies once to a published review.
     await signIn("agent");
     await go("website");
@@ -30,6 +41,23 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     replyBtn.click(); await wait(600);
     chk("a reply is posted once and can no longer be edited", /Your reply: Salamat po, Jun!/.test(text(".site-reviews")) && !q("[data-site-reply]") && !q(".site-reviews textarea"));
     chk("the editor explains when the record and reviews show", /closed deals that name you, and reviews our office published/.test(text(".site-editor")));
+    chk("This month shows the typical first reply, or when it will show", /Typical first reply \(90 days\)\s*Shows after 5 leads/.test(text(".site-month")));
+    // Publish (demo), then download the QR code for print.
+    const callBox = q("#site-c-call"); callBox.value = "0917 123 4567"; callBox.dispatchEvent(new Event("input", { bubbles: true })); await wait(100);
+    q("[data-site-publish]").click(); await wait(900);
+    chk("the page address uses the #/ link that works today", /#\/agents\/[a-z0-9-]+$/.test(text("[data-site-address]")), text("[data-site-address]"));
+    const downloads = [];
+    const realClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () { if (this.download) downloads.push({ name: this.download, href: this.href }); else realClick.call(this); };
+    q("[data-site-qr]").click(); await wait(1500);
+    HTMLAnchorElement.prototype.click = realClick;
+    chk("Download QR saves a PNG named after the page", downloads.length === 1 && /-qr\.png$/.test(downloads[0].name) && /^blob:/.test(downloads[0].href), JSON.stringify(downloads));
+    chk("the QR library loads only when asked", !!window.qrcode && !!document.querySelector('script[src^="vendor/qrcode/qrcode.min.js"]'));
+    // Filipino.
+    q("#language-toggle").click(); await wait(600);
+    chk("in Filipino, My website reads Aking website", /Aking website/.test(text(".site-editor h1")) && /I-download ang QR/.test(text(".site-editor")) && /Aking website/.test(text("#topbar-title")), text("#topbar-title"));
+    q("#language-toggle").click(); await wait(600);
+    chk("and back in English", /^My website$/.test(text(".site-editor h1").trim()));
 
     // A Super Admin records the Verified checks.
     await signIn("super-admin");
@@ -48,6 +76,9 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     q("#lc-phone").checked = true;
     q("[data-lc-save]").click(); await wait(700);
     chk("both checks show Verified on the account", !!card().querySelector("[data-verified-chip]"));
+
+    await tab("pending");
+    chk("a pending broker's sign-up licence number shows on their card", /Licence no\. given at sign-up: 0098765/.test(text('.user-grid')));
 
     // Reviews: the published rule, then publish one.
     await tab("reviews");
@@ -78,6 +109,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     q("[data-tx-edit]").click(); await wait(400);
     chk("the deal form names a buyer's agent and a seller's agent from the team", !!q("#tx-buyer-agent") && !!q('#tx-buyer-agent option[value="demo-approved-1"]') && !!q('#tx-seller-agent option[value="demo-approved-2"]'));
     chk("the client's choices start unticked", q("#tx-show-deal").checked === false && q("#tx-show-price").checked === false);
+    chk("a deal is a sale or a rental", !!q('#tx-kind option[value="rental"]') && q("#tx-kind").value === "sale");
     q("#tx-buyer-agent").value = "demo-approved-1"; q("#tx-seller-agent").value = "demo-approved-2";
     q("#tx-show-deal").checked = false; q("#tx-show-price").checked = true;
     q("[data-tx-save]").click(); await wait(700);
@@ -92,6 +124,10 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     links[0].click(); await wait(500);
     chk("the review link is shown to copy, and says it works once for 30 days", /#\/review\/[0-9a-z]{64}$/.test((q("#rv-link") || {}).value || "") && /works once, for 30 days/.test(text("#rv-modal")));
     q("[data-rv-close]").click(); await wait(200);
+    q("[data-tx-edit]").click(); await wait(400);
+    q("#tx-kind").value = "rental";
+    q("[data-tx-save]").click(); await wait(700);
+    chk("a rental says so and names the tenant's and landlord's agents", /Deal type\s*Rental \(lease\)/.test(text(".hero ~ .grid")) && /Tenant's agent\s*Ana Lopez/.test(text(".hero ~ .grid")) && /Landlord's agent\s*Marco Villanueva/.test(text(".hero ~ .grid")));
     chk("no sideways scroll", document.documentElement.scrollWidth <= window.innerWidth + 2, document.documentElement.scrollWidth + " > " + window.innerWidth);
   } catch (e) {
     chk("test ran without error", false, String(e && e.stack || e));
