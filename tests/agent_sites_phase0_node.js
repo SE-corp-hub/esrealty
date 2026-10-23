@@ -46,9 +46,7 @@ c("router: other paths still open the home page", routeAt("/", "") === "home" &&
 
 // The listing API: the Worker's read (?count=0) does not count a view; a visitor's read does.
 const api = read("supabase/functions/listing-api/index.ts");
-const getSrc = api.slice(api.indexOf("const getListing"), api.indexOf("// Trust details for a listing page"))
-  .replace(/: Request/g, "").replace(/: SupabaseClient/g, "").replace(/: string \| null/g, "").replace(/: string/g, "")
-  .replace(/ as JsonRecord/g, "").replace(/\(data as JsonRecord\)/g, "data").replace(/ as string \| null/g, "");
+const getSrc = require("./ts_module").stripTs(api.slice(api.indexOf("const getListing"), api.indexOf("// Trust details for a listing page")));
 const runGet = async (query) => {
   const rpcs = [];
   const admin = {

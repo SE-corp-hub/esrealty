@@ -42,7 +42,7 @@ c("long values are cut to the database limits", LI.toLeads(LI.parseCsv("Name,Pho
 const api = read("supabase/functions/listing-api/index.ts");
 const cut = re => re.exec(api)[0];
 const src = cut(/const SEARCH_COLUMNS = [^\n]*/) + "\n" + cut(/const searchWords = [\s\S]*?\n};/) + "\n" + cut(/const searchFilter = [^\n]*/);
-const { searchWords, searchFilter } = new Function(src.replace(/\(raw: string \| null\): string\[\]/, "(raw)").replace(/\(w\)/g, "(w)").replace("(word: string)", "(word)").replace(/\(c\)/g, "(c)") + "\nreturn { searchWords, searchFilter };")();
+const { searchWords, searchFilter } = new Function(require("./ts_module").stripTs(src) + "\nreturn { searchWords, searchFilter };")();
 c("words are split and short ones dropped", searchWords("pool  near a school").join("|") === "pool|near|school", searchWords("pool  near a school").join("|"));
 c("filter syntax and wildcards are removed", searchWords("a,b.c(d)*%_e:f").join("|") === "", searchWords("a,b.c(d)*%_e:f").join("|"));
 c("PostgREST punctuation never survives inside a word", searchWords("lot,price.eq.1 or(title)").every(w => !/[,.()*%:]/.test(w)), searchWords("lot,price.eq.1 or(title)").join("|"));

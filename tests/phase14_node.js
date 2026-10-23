@@ -9,7 +9,7 @@ const sf = read("js/storefront.js");
 const app = read("js/app.js");
 // The function's validator, run in Node (the TypeScript is plain enough to strip).
 const src = api.slice(api.indexOf("const INCOME_BANDS"), api.indexOf("const submitInquiry"));
-const js = src.replace(/: unknown/g, "").replace(/: JsonRecord/g, "").replace(/ as JsonRecord/g, "");
+const js = require("./ts_module").stripTs(src);  // Node strips the types
 const HttpError = class extends Error { constructor(status, msg) { super(msg); this.status = status; } };
 const stringValue = (value, max, field) => { const r = String(value ?? "").trim(); if (r.length > max) throw new HttpError(400, `${field} is too long`); return r; };
 const mod = new Function("HttpError", "stringValue", js + "\nreturn { rentalApplication, applicationSummary };")(HttpError, stringValue);

@@ -63,7 +63,7 @@ c("they are sent with the sign-up and shown in Users & Access", /requested_prc: 
 c("Join as an agent opens sign-up with the agent role chosen", /data-sf-auth="signup-agent"/.test(read("js/agent_directory.js")) && /mode === "signup-agent"/.test(app));
 
 // Filipino.
-c("My website has Filipino labels and a Filipino menu name", /website: \["My website", "Aking website"\]/.test(app) && /fw\("My website", "Aking website"\)/.test(app));
+c("My website has Filipino labels and a Filipino menu name", /website: \["My website", "Aking website"\]/.test(app) && /title: \["My website", "Aking website"\]/.test(app) && /const WEBSITE_TEXT = \{/.test(app));
 
 // Migration 0017.
 const m17 = read("supabase/migrations/0017_agent_sites_finish.sql");

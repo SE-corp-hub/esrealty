@@ -1563,12 +1563,12 @@
   }
 
   /* ---- The Value Guide started from an agent's page (#/home?agent=<slug>) ------------------ */
+  // The Value Guide keeps the agent (js/estimator.js, useAgent); the address is the authority.
   function showValueGuideAgent(params) {
-    var slug = String(params.get("agent") || "").toLowerCase();
-    if (slug.length > 70 || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) { window.ESREALTY_VG_AGENT = null; return; }
-    var name = "";
-    try { var saved = JSON.parse(sessionStorage.getItem("esrealty_vg_agent_v1") || "null"); if (saved && saved.slug === slug) name = String(saved.name || ""); } catch (e) {}
-    window.ESREALTY_VG_AGENT = { slug: slug, name: name };
+    var EST = window.ESREALTY_EST;
+    var agent = EST && EST.useAgent ? EST.useAgent(params.get("agent")) : { slug: "", name: "" };
+    if (!agent.slug) return;
+    var slug = agent.slug, name = agent.name;
     var guide = host && host.querySelector("#sf-estimator");
     if (!guide || host.querySelector(".sf-vg-agent")) return;
     guide.insertAdjacentHTML("beforebegin", '<div class="sf-vg-agent" role="note"><p>Your Value Guide request goes to ' + (name ? '<b>' + esc(name) + '</b>, whose page you came from' : 'the agent whose page you came from') +

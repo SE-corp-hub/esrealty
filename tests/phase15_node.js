@@ -9,7 +9,7 @@ const sf = read("js/storefront.js");
 const app = read("js/app.js");
 // The function's reader, run in Node against a fake database.
 const src = api.slice(api.indexOf("const publicDetails"), api.indexOf("// Change log for edits"));
-const js = src.replace(/: SupabaseClient/g, "").replace(/: string \| null/g, "").replace(/: string/g, "").replace(/: JsonRecord/g, "").replace(/ as JsonRecord/g, "").replace(/\(e as Error\)/g, "e");
+const js = require("./ts_module").stripTs(src);
 const fake = (payload, prc, fail) => ({
   from: table => ({ select: () => ({ eq: () => ({ maybeSingle: async () => {
     if (fail) throw new Error("down");

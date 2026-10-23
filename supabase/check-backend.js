@@ -210,6 +210,8 @@ const REST_RPCS = [
   { fn: "agent_check", note: "check an agent, listing function only (migrations/0016)", pending: "0016", body: { p_q: "0012345" } },
   { fn: "review_submit", note: "client reviews, listing function only (migrations/0016)", pending: "0016", body: { p_hash: "x", p_first: "x", p_initial: "", p_body: "x" } },
   { fn: "review_invite", note: "review links, Super Admin only (migrations/0016)", pending: "0016", body: { p_deal: "x", p_agent: "00000000-0000-0000-0000-000000000000" } },
+  { fn: "licence_check_save", note: "licence checks, Super Admin only (migrations/0018)", pending: "0018", body: { p_agent: "00000000-0000-0000-0000-000000000000", p_fields: {}, p_recheck: false } },
+  { fn: "agent_reviews_admin", note: "review moderation list, Super Admin only (migrations/0019)", pending: "0019" },
 ];
 async function probeRpc(entry) {
   try {

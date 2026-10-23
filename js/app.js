@@ -17884,7 +17884,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   }
 
   /* ================= BROKERAGE: ROLES, i18n, USERS ================= */
-  const FIL_TITLES = { website: "Aking website", dashboard: "Dashboard", wizard: "Bagong Investment", deal: "Pagsusuri ng Deal", portfolio: "Portfolio", pms: "Pamamahala ng Ari-arian", assistant: "AI Katulong", reports: "Mga Ulat", appraisal: "Pagtatasa", "value-guide": "Value Guide", market: "Market Scan", listings: "Mga Listahan", leads: "CRM / Mga Leads", transactions: "Mga Transaksyon", financing: "Pagpopondo", playbook: "Sales Playbook", users: "Mga User at Access", admin: "Brokerage", website: "Aking website", settings: "Mga Setting" };
+  const FIL_TITLES = { dashboard: "Dashboard", wizard: "Bagong Investment", deal: "Pagsusuri ng Deal", portfolio: "Portfolio", pms: "Pamamahala ng Ari-arian", assistant: "AI Katulong", reports: "Mga Ulat", appraisal: "Pagtatasa", "value-guide": "Value Guide", market: "Market Scan", listings: "Mga Listahan", leads: "CRM / Mga Leads", transactions: "Mga Transaksyon", financing: "Pagpopondo", playbook: "Sales Playbook", users: "Mga User at Access", admin: "Brokerage", website: "Aking website", settings: "Mga Setting" };
   const LANG_NAV = { website: ["My website", "Aking website"], dashboard: ["Dashboard", "Dashboard"], wizard: ["New Investment", "Bagong Investment"], deal: ["Deal Analysis", "Pagsusuri ng Deal"], appraisal: ["Appraisal", "Pagtatasa"], "value-guide": ["Value Guide", "Gabay sa Halaga"], market: ["Market Scan", "Market Scan"], leads: ["CRM / Leads", "CRM / Mga Leads"], listings: ["Listings", "Mga Listahan"], portfolio: ["Portfolio", "Portfolio"], pms: ["Property Manager", "Pamamahala ng Ari-arian"], assistant: ["AI Assistant", "AI Katulong"], reports: ["Reports", "Mga Ulat"], transactions: ["Transactions", "Mga Transaksyon"], financing: ["Financing", "Pagpopondo"], playbook: ["Sales Playbook", "Sales Playbook"], users: ["Users", "Mga User"], admin: ["Brokerage", "Brokerage"], settings: ["Settings", "Mga Setting"] };
   const LANG_SECTIONS = { ANALYSIS: ["ANALYSIS", "PAGSUSURI"], WORKSPACE: ["WORKSPACE", "WORKSPACE"], BROKERAGE: ["BROKERAGE", "BROKERAGE"], ACCOUNT: ["ACCOUNT", "ACCOUNT"] };
   let lang = "en";
@@ -18645,11 +18645,11 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     if (reviewsLoading) return;
     reviewsLoading = true; reviewsError = "";
     try {
-      reviewsRows = (await agentCall("agent_reviews")) || [];
+      reviewsRows = (await agentCall("agent_reviews_admin")) || [];
       reviewsLoaded = true;
     } catch (e) {
       const msg = String((e && e.message) || e || "");
-      reviewsError = /agent_reviews|does not exist|schema cache/i.test(msg) ? "Reviews need database migration 0016 first." : friendlyErr(msg);
+      reviewsError = /agent_reviews_admin|does not exist|schema cache/i.test(msg) ? "Reviews need database migration 0019 first." : friendlyErr(msg);
     }
     reviewsLoading = false;
     if (state.view === "users" && state.usersTab === "reviews") render({ keepScroll: true });
@@ -21059,8 +21059,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
    * from memory, so the feature code has no demo branches. Reads of a table are listed in AGENT_READS. */
   const AGENT_READS = {
     // "*" so the list still loads before migration 0016 adds the ID and phone checks.
-    agent_verifications: () => SB.from("agent_verifications").select("*"),
-    agent_reviews: () => SB.from("agent_reviews").select("id,agent_id,deal_id,status,client_label,town,month,body,reply,submitted_at,expires_at,created_at").order("created_at", { ascending: false }).limit(200)
+    agent_verifications: () => SB.from("agent_verifications").select("*")
   };
   const AGENT_DEMO = (() => {
     const licences = {};
@@ -21081,7 +21080,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       agent_site_unpublish: () => { SITE_DEMO.published_at = null; return siteDemoOpen(); },
       agent_site_reviews: () => ownReviews,
       review_reply: a => { const r = ownReviews.find(x => x.id === a.p_id); if (r) r.reply = a.p_text; },
-      agent_reviews: () => reviews,
+      agent_reviews_admin: () => reviews,
       review_moderate: a => { const r = reviews.find(x => x.id === a.p_id); if (r) r.status = a.p_status; },
       review_invite: () => "0".repeat(48) + "demo00000000demo",
       agent_verifications: () => Object.values(licences),
@@ -21129,69 +21128,137 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     return '<fieldset class="site-checks"><legend>' + esc(name) + '</legend><div class="site-check-grid">' + list.map(x =>
       '<label class="site-check"><input type="checkbox" data-site-list="' + esc(name) + '" value="' + esc(x[0]) + '"' + ((chosen || []).indexOf(x[0]) >= 0 ? " checked" : "") + "> " + esc(x[1]) + "</label>").join("") + "</div></fieldset>";
   }
-  function renderWebsite() {
-    if (!roleIs("broker") && !roleIs("agent")) return '<div class="card card-pad empty"><h3>My website is for brokers and agents</h3><p class="dim">Each approved broker and agent gets a public page here.</p></div>';
-    if (!siteData && !siteError) { setTimeout(loadSite, 0); return '<div class="card card-pad empty">Loading your page…</div>'; }
-    if (siteError) return '<div class="card card-pad empty"><h3>Could not open My website</h3><p class="dim">' + esc(siteError) + '</p><button class="btn btn-primary mt-8" data-site-retry>' + icon("refresh", 14) + " Try again</button></div>";
+  /* My website's headings and notes in English and Filipino; the menu's language picks. */
+  const WEBSITE_TEXT = {
+    title: ["My website", "Aking website"],
+    intro: ["Your own page on SEA ESTATES. Visitors can message you, call or chat, and see your licence and listings.", "Ang sarili mong page sa SEA ESTATES. Puwede kang i-message, tawagan o i-chat ng mga bisita, at makikita nila ang lisensya at mga listing mo."],
+    liveChanged: ["Live, with changes not published yet", "Live, may mga pagbabagong hindi pa naka-publish"],
+    notPublished: ["Not published", "Hindi pa naka-publish"],
+    viewPage: ["View my page", "Tingnan ang aking page"],
+    saving: ["Saving…", "Sine-save…"],
+    saveDraft: ["Save draft", "I-save ang draft"],
+    publishing: ["Publishing…", "Pinapublish…"],
+    publishChanges: ["Publish changes", "I-publish ang mga pagbabago"],
+    publishPage: ["Publish my page", "I-publish ang aking page"],
+    blocked: ["Your page cannot go public yet.", "Hindi pa puwedeng ilabas ang page mo."],
+    address: ["Page address", "Address ng page"],
+    copyLink: ["Copy link", "Kopyahin ang link"],
+    downloadQr: ["Download QR", "I-download ang QR"],
+    addressFixed: ["Set once from the name on your licence check, so printed links and QR codes keep working.", "Isang beses lang itinatakda mula sa pangalan sa licence check mo, kaya gagana pa rin ang mga naka-print na link at QR."],
+    addressLater: ["Your address is made when you first publish, from the name on your licence check (for example agents/maria-santos).", "Gagawin ang address mo sa unang pag-publish, mula sa pangalan sa licence check mo (halimbawa agents/maria-santos)."],
+    nameLicence: ["Name and licence", "Pangalan at lisensya"],
+    about: ["About you", "Tungkol sa iyo"],
+    where: ["Where and what", "Saan at ano"],
+    contacts: ["Contact buttons", "Mga button para makontak ka"],
+    contactsHint: ["Only the numbers you add here show on your page. Leave a box empty to hide that button.", "Ang mga numerong ilalagay mo lang dito ang lalabas sa page mo. Iwanang blangko para itago ang button."],
+    shows: ["What your page shows", "Ano ang makikita sa page mo"],
+    reviews: ["Client reviews", "Mga review ng kliyente"],
+    takeDown: ["Take my page down", "Alisin ang aking page"],
+    takeDownHint: ["Your page stops showing to visitors. Your draft stays here.", "Hindi na makikita ng mga bisita ang page mo. Maiiwan dito ang draft mo."],
+    ready: ["Ready for visitors", "Handa na para sa mga bisita"],
+    month: ["This month", "Ngayong buwan"],
+    views: ["Page views", "Mga bumisita sa page"],
+    taps: ["Taps on contact buttons", "Mga pindot sa contact button"],
+    messages: ["Messages from your page", "Mga mensahe mula sa page mo"],
+    replyTime: ["Typical first reply (90 days)", "Karaniwang unang sagot (90 araw)"],
+    replyLater: ["Shows after 5 leads", "Lalabas pagkatapos ng 5 lead"],
+    preview: ["Preview", "Silip"],
+    previewHint: ["How visitors will see your page after you publish.", "Ganito makikita ng mga bisita ang page mo pagka-publish."]
+  };
+  function websiteText() {
+    const i = lang === "fil" ? 1 : 0, t = {};
+    Object.keys(WEBSITE_TEXT).forEach(k => { t[k] = WEBSITE_TEXT[k][i]; });
+    return t;
+  }
+  function siteStatusText(T) { return siteData.published_at ? (siteData.unpublished_changes ? T.liveChanged : "Live") : T.notPublished; }
+
+  /* My website, one card at a time. */
+  function siteHead(T) {
+    const live = !!siteData.published_at, blockers = siteData.blockers || [];
+    return '<div class="hero"><div><h1>' + T.title + "</h1><p>" + T.intro + "</p></div>" +
+      '<div class="actions"><span class="site-status' + (live ? " is-live" : "") + '" data-site-status>' + esc(siteStatusText(T)) + "</span>" +
+      (live && siteData.slug ? '<a class="btn btn-ghost" href="#/agents/' + esc(siteData.slug) + '">' + T.viewPage + "</a>" : "") +
+      '<button class="btn btn-ghost" data-site-save' + (siteBusy ? " disabled" : "") + ">" + (siteBusy === "save" ? T.saving : T.saveDraft) + "</button>" +
+      '<button class="btn btn-primary" data-site-publish' + (siteBusy || blockers.length ? " disabled" : "") + ">" + (siteBusy === "publish" ? T.publishing : live ? T.publishChanges : T.publishPage) + "</button></div></div>" +
+      (blockers.length ? '<div class="notice-banner mt-16 site-blockers" role="status">' + icon("shield", 14) + " <div><b>" + T.blocked + "</b><ul>" + blockers.map(b => "<li>" + esc(b) + "</li>").join("") + "</ul></div></div>" : "");
+  }
+  function siteAddressCard(T) {
     const P = window.SEA_AGENT_PAGE;
-    const fw = (en, fil) => (lang === "fil" ? fil : en); // My website in Filipino when the menu is
-    const d = siteDraft || {};
-    const c = d.contacts || {};
-    const live = !!siteData.published_at;
-    const blockers = siteData.blockers || [];
-    const ready = siteReadiness(siteClean(d));
-    const done = ready.filter(r => r[1]).length;
     const address = siteData.slug && P ? P.pageUrl(siteData.slug) : "";
-    const status = live ? (siteData.unpublished_changes ? fw("Live, with changes not published yet", "Live, may mga pagbabagong hindi pa naka-publish") : "Live") : fw("Not published", "Hindi pa naka-publish");
-    const month = siteData.month || {};
-    const taps = ["call", "viber", "whatsapp", "messenger", "save"].reduce((n, k) => n + Number(month[k] || 0), 0);
-    const sections = d.sections || [];
-    const pv = sitePreviewData();
+    return '<div class="card card-pad"><h3>' + T.address + "</h3>" + (address
+      ? '<div class="site-address"><code data-site-address>' + esc(address) + '</code><button class="btn btn-ghost btn-sm" data-site-copy>' + icon("copy", 14) + " " + T.copyLink + "</button>" +
+        '<button class="btn btn-ghost btn-sm" data-site-qr>' + icon("download", 14) + " " + T.downloadQr + "</button></div>" +
+        '<p class="dim tiny">' + T.addressFixed + "</p>"
+      : '<p class="dim">' + T.addressLater + "</p>") + "</div>";
+  }
+  function siteNameCard(T, pv) {
     const lic = pv.licence;
-    let html = '<section class="site-editor"' + (lang === "fil" ? ' lang="fil"' : "") + '><div class="hero"><div><h1>' + fw("My website", "Aking website") + "</h1><p>" + fw("Your own page on SEA ESTATES. Visitors can message you, call or chat, and see your licence and listings.", "Ang sarili mong page sa SEA ESTATES. Puwede kang i-message, tawagan o i-chat ng mga bisita, at makikita nila ang lisensya at mga listing mo.") + "</p></div>" +
-      '<div class="actions"><span class="site-status' + (live ? " is-live" : "") + '" data-site-status>' + esc(status) + "</span>" +
-      (live && siteData.slug ? '<a class="btn btn-ghost" href="#/agents/' + esc(siteData.slug) + '">' + fw("View my page", "Tingnan ang aking page") + "</a>" : "") +
-      '<button class="btn btn-ghost" data-site-save' + (siteBusy ? " disabled" : "") + ">" + (siteBusy === "save" ? fw("Saving…", "Sine-save…") : fw("Save draft", "I-save ang draft")) + "</button>" +
-      '<button class="btn btn-primary" data-site-publish' + (siteBusy || blockers.length ? " disabled" : "") + ">" + (siteBusy === "publish" ? fw("Publishing…", "Pinapublish…") : live ? fw("Publish changes", "I-publish ang mga pagbabago") : fw("Publish my page", "I-publish ang aking page")) + "</button></div></div>";
-    if (blockers.length) html += '<div class="notice-banner mt-16 site-blockers" role="status">' + icon("shield", 14) + " <div><b>" + fw("Your page cannot go public yet.", "Hindi pa puwedeng ilabas ang page mo.") + "</b><ul>" + blockers.map(b => "<li>" + esc(b) + "</li>").join("") + "</ul></div></div>";
-    html += '<div class="site-grid"><div class="site-form">';
-    html += '<div class="card card-pad"><h3>' + fw("Page address", "Address ng page") + "</h3>" + (address
-      ? '<div class="site-address"><code data-site-address>' + esc(address) + '</code><button class="btn btn-ghost btn-sm" data-site-copy>' + icon("copy", 14) + " " + fw("Copy link", "Kopyahin ang link") + "</button>" +
-        '<button class="btn btn-ghost btn-sm" data-site-qr>' + icon("download", 14) + " " + fw("Download QR", "I-download ang QR") + "</button></div>" +
-        '<p class="dim tiny">' + fw("Set once from the name on your licence check, so printed links and QR codes keep working.", "Isang beses lang itinatakda mula sa pangalan sa licence check mo, kaya gagana pa rin ang mga naka-print na link at QR.") + "</p>"
-      : '<p class="dim">' + fw("Your address is made when you first publish, from the name on your licence check (for example agents/maria-santos).", "Gagawin ang address mo sa unang pag-publish, mula sa pangalan sa licence check mo (halimbawa agents/maria-santos).") + "</p>") + "</div>";
-    html += '<div class="card card-pad"><h3>' + fw("Name and licence", "Pangalan at lisensya") + '</h3><p>' + esc(pv.name || "") + " · " + esc(pv.role_label || "") + "</p>" +
+    return '<div class="card card-pad"><h3>' + T.nameLicence + '</h3><p>' + esc(pv.name || "") + " · " + esc(pv.role_label || "") + "</p>" +
       (lic ? '<p class="dim tiny">Licence no. ' + esc(lic.no) + ", valid until " + esc(lic.valid_until) + ". Checked by our office on " + esc(lic.checked_on) + ".</p>" : '<p class="dim tiny">Our office has not recorded your licence check yet.</p>') +
       '<p class="dim tiny">Your name and licence come from the licence check our office records. Ask a Super Admin to change them.</p></div>';
-    html += '<div class="card card-pad"><h3>' + fw("About you", "Tungkol sa iyo") + "</h3>" +
+  }
+  function siteAboutCard(T, d, pv) {
+    return '<div class="card card-pad"><h3>' + T.about + "</h3>" +
       '<div class="field"><label for="site-photo-file">Photo</label><div class="site-photo-row">' + (d.photo ? '<img src="' + esc(d.photo) + '" alt="Your current photo" class="site-photo">' : '<span class="site-photo site-photo-empty" aria-hidden="true">' + esc(String(pv.name || "?").charAt(0)) + "</span>") +
       '<input id="site-photo-file" type="file" accept="image/*" data-site-photo><span class="dim tiny" data-site-photo-status></span></div></div>' +
       '<div class="field"><label for="site-pitch">Pitch, one sentence</label><input class="input" id="site-pitch" data-site-field="pitch" maxlength="160" value="' + esc(d.pitch || "") + '" placeholder="I help families find lots and homes in Lipa, with the title checked first."><span class="field-hint"><span data-site-count="pitch">' + String(d.pitch || "").length + "</span> of 160 characters</span></div>" +
       '<div class="field"><label for="site-bio">About me</label><textarea class="input" id="site-bio" data-site-field="bio" rows="5" maxlength="1500">' + esc(d.bio || "") + '</textarea><span class="field-hint"><span data-site-count="bio">' + String(d.bio || "").length + "</span> of 1,500 characters</span></div>" +
       '<label class="site-check"><input type="checkbox" data-site-fil' + (d.bio_lang === "fil" ? " checked" : "") + "> My About me is in Filipino or Taglish</label></div>";
-    html += '<div class="card card-pad"><h3>' + fw("Where and what", "Saan at ano") + "</h3>" + siteChecks("Towns you cover", P.TOWNS, d.towns) + siteChecks("What you help with", P.NEEDS, d.needs) + siteChecks("Languages you speak", P.LANGUAGES, d.languages) + "</div>";
-    html += '<div class="card card-pad"><h3>' + fw("Contact buttons", "Mga button para makontak ka") + '</h3><p class="dim tiny">' + fw("Only the numbers you add here show on your page. Leave a box empty to hide that button.", "Ang mga numerong ilalagay mo lang dito ang lalabas sa page mo. Iwanang blangko para itago ang button.") + '</p><div class="grid-2">' +
+  }
+  function siteWhereCard(T, d) {
+    const P = window.SEA_AGENT_PAGE;
+    return '<div class="card card-pad"><h3>' + T.where + "</h3>" + siteChecks("Towns you cover", P.TOWNS, d.towns) + siteChecks("What you help with", P.NEEDS, d.needs) + siteChecks("Languages you speak", P.LANGUAGES, d.languages) + "</div>";
+  }
+  function siteContactsCard(T, d) {
+    const P = window.SEA_AGENT_PAGE, c = d.contacts || {};
+    return '<div class="card card-pad"><h3>' + T.contacts + '</h3><p class="dim tiny">' + T.contactsHint + '</p><div class="grid-2">' +
       [["call", "Mobile for calls", "tel"], ["viber", "Viber number", "tel"], ["whatsapp", "WhatsApp number", "tel"], ["messenger", "Messenger username (m.me/…)", "text"]].map(x =>
         '<div class="field"><label for="site-c-' + x[0] + '">' + esc(x[1]) + '</label><input class="input" id="site-c-' + x[0] + '" type="' + x[2] + '"' + (x[2] === "tel" ? ' inputmode="tel"' : "") + ' data-site-contact="' + x[0] + '" value="' + esc(x[0] === "messenger" ? (c.messenger || "") : (c[x[0]] ? P.phoneText(c[x[0]]) : "")) + '" placeholder="' + (x[2] === "tel" ? "For example 0917 123 4567" : "For example maria.santos") + '"><span class="field-hint" data-site-contact-hint="' + x[0] + '"></span></div>').join("") + "</div></div>";
-    html += '<div class="card card-pad"><h3>' + fw("What your page shows", "Ano ang makikita sa page mo") + "</h3>" +
+  }
+  function siteShowsCard(T, d) {
+    const P = window.SEA_AGENT_PAGE, sections = d.sections || [];
+    return '<div class="card card-pad"><h3>' + T.shows + "</h3>" +
       [["listings", "My listings"], ["about", "About me"], ["video", "I offer video viewings for buyers abroad"]].map(x =>
         '<label class="site-check"><input type="checkbox" data-site-section="' + x[0] + '"' + (sections.indexOf(x[0]) >= 0 ? " checked" : "") + "> " + esc(x[1]) + "</label>").join("") +
       '<p class="dim tiny">Your licence card always shows. Your track record and client reviews do too, once there are records: closed deals that name you, and reviews our office published.</p>' +
       '<fieldset class="site-checks"><legend>Colour</legend><div class="site-check-grid">' + [["rust", "Rust"], ["sea", "Sea"], ["forest", "Forest"], ["ink", "Ink"]].map(x =>
         '<label class="site-check"><input type="radio" name="site-accent" data-site-accent value="' + x[0] + '"' + ((d.accent || "rust") === x[0] ? " checked" : "") + '> <span class="site-swatch" style="background:' + P.ACCENTS[x[0]][0] + '" aria-hidden="true"></span>' + x[1] + "</label>").join("") + "</div></fieldset></div>";
-    if (siteReviews && siteReviews.length) html += '<div class="card card-pad site-reviews"><h3>' + fw("Client reviews", "Mga review ng kliyente") + '</h3><p class="dim tiny">Reviews our office published on your page. You can reply once to each; your reply shows under the review and cannot be changed.</p>' +
+  }
+  function siteReviewsCard(T) {
+    if (!siteReviews || !siteReviews.length) return "";
+    return '<div class="card card-pad site-reviews"><h3>' + T.reviews + '</h3><p class="dim tiny">Reviews our office published on your page. You can reply once to each; your reply shows under the review and cannot be changed.</p>' +
       siteReviews.map(r => '<div class="review-row"><p class="review-body">“' + esc(r.body || "") + '”</p><p class="dim tiny">' + esc(r.label || "Client") + (r.town ? ", " + esc(r.town) : "") + (r.month ? ", " + esc(r.month) : "") + "</p>" +
         (r.reply ? '<p class="tiny"><b>Your reply:</b> ' + esc(r.reply) + "</p>"
           : '<div class="field"><label for="site-reply-' + esc(r.id) + '">Your reply</label><textarea class="input" id="site-reply-' + esc(r.id) + '" rows="2" maxlength="600"></textarea></div><button class="btn btn-ghost btn-sm" data-site-reply="' + esc(r.id) + '">Post reply</button>') + "</div>").join("") + "</div>";
-    if (live) html += '<div class="card card-pad"><h3>' + fw("Take my page down", "Alisin ang aking page") + '</h3><p class="dim">' + fw("Your page stops showing to visitors. Your draft stays here.", "Hindi na makikita ng mga bisita ang page mo. Maiiwan dito ang draft mo.") + '</p><button class="btn btn-ghost danger" data-site-unpublish>' + fw("Take my page down", "Alisin ang aking page") + "</button></div>";
-    html += '</div><aside class="site-aside">';
-    html += '<div class="card card-pad"><h3>' + fw("Ready for visitors", "Handa na para sa mga bisita") + '</h3><p class="dim tiny" data-site-ready-count>' + done + " of " + ready.length + " done</p><ul class=\"site-ready\" data-site-ready>" + ready.map(r => '<li class="' + (r[1] ? "is-done" : "") + '">' + icon(r[1] ? "check" : "circle", 14) + " " + esc(r[0]) + "</li>").join("") + "</ul></div>";
+  }
+  function siteTakeDownCard(T) {
+    if (!siteData.published_at) return "";
+    return '<div class="card card-pad"><h3>' + T.takeDown + '</h3><p class="dim">' + T.takeDownHint + '</p><button class="btn btn-ghost danger" data-site-unpublish>' + T.takeDown + "</button></div>";
+  }
+  function siteReadyCard(T, d) {
+    const ready = siteReadiness(siteClean(d)), done = ready.filter(r => r[1]).length;
+    return '<div class="card card-pad"><h3>' + T.ready + '</h3><p class="dim tiny" data-site-ready-count>' + done + " of " + ready.length + " done</p><ul class=\"site-ready\" data-site-ready>" + ready.map(r => '<li class="' + (r[1] ? "is-done" : "") + '">' + icon(r[1] ? "check" : "circle", 14) + " " + esc(r[0]) + "</li>").join("") + "</ul></div>";
+  }
+  function siteMonthCard(T, pv) {
+    const month = siteData.month || {};
+    const taps = ["call", "viber", "whatsapp", "messenger", "save"].reduce((n, k) => n + Number(month[k] || 0), 0);
     // Typical first reply, measured by the database once there are 5 leads in 90 days.
-    const replyText = pv.reply ? pv.reply.charAt(0).toUpperCase() + pv.reply.slice(1) : fw("Shows after 5 leads", "Lalabas pagkatapos ng 5 lead");
-    html += '<div class="card card-pad"><h3>' + fw("This month", "Ngayong buwan") + '</h3><dl class="site-month">' + [[fw("Page views", "Mga bumisita sa page"), month.view || 0], [fw("Taps on contact buttons", "Mga pindot sa contact button"), taps], [fw("Messages from your page", "Mga mensahe mula sa page mo"), siteData.month_leads || 0], [fw("Typical first reply (90 days)", "Karaniwang unang sagot (90 araw)"), replyText]].map(x => "<div><dt>" + esc(x[0]) + "</dt><dd" + (typeof x[1] === "string" ? ' data-site-reply-time' : "") + ">" + esc(String(x[1])) + "</dd></div>").join("") + "</dl></div>";
-    html += '<div class="card card-pad"><h3>' + fw("Preview", "Silip") + '</h3><p class="dim tiny">' + fw("How visitors will see your page after you publish.", "Ganito makikita ng mga bisita ang page mo pagka-publish.") + '</p><div class="site-preview" inert data-site-preview><div class="ag-preview">' + (P ? P.html(pv, { preview: true }) : "") + "</div></div></div>";
-    html += "</aside></div></section>";
-    return html;
+    const replyText = pv.reply ? pv.reply.charAt(0).toUpperCase() + pv.reply.slice(1) : T.replyLater;
+    return '<div class="card card-pad"><h3>' + T.month + '</h3><dl class="site-month">' + [[T.views, month.view || 0], [T.taps, taps], [T.messages, siteData.month_leads || 0], [T.replyTime, replyText]].map(x => "<div><dt>" + esc(x[0]) + "</dt><dd" + (typeof x[1] === "string" ? ' data-site-reply-time' : "") + ">" + esc(String(x[1])) + "</dd></div>").join("") + "</dl></div>";
+  }
+  function sitePreviewCard(T, pv) {
+    const P = window.SEA_AGENT_PAGE;
+    return '<div class="card card-pad"><h3>' + T.preview + '</h3><p class="dim tiny">' + T.previewHint + '</p><div class="site-preview" inert data-site-preview><div class="ag-preview">' + (P ? P.html(pv, { preview: true }) : "") + "</div></div></div>";
+  }
+  function renderWebsite() {
+    if (!roleIs("broker") && !roleIs("agent")) return '<div class="card card-pad empty"><h3>My website is for brokers and agents</h3><p class="dim">Each approved broker and agent gets a public page here.</p></div>';
+    if (!siteData && !siteError) { setTimeout(loadSite, 0); return '<div class="card card-pad empty">Loading your page…</div>'; }
+    if (siteError) return '<div class="card card-pad empty"><h3>Could not open My website</h3><p class="dim">' + esc(siteError) + '</p><button class="btn btn-primary mt-8" data-site-retry>' + icon("refresh", 14) + " Try again</button></div>";
+    const T = websiteText(), d = siteDraft || {}, pv = sitePreviewData();
+    return '<section class="site-editor"' + (lang === "fil" ? ' lang="fil"' : "") + ">" + siteHead(T) +
+      '<div class="site-grid"><div class="site-form">' +
+      siteAddressCard(T) + siteNameCard(T, pv) + siteAboutCard(T, d, pv) + siteWhereCard(T, d) + siteContactsCard(T, d) + siteShowsCard(T, d) + siteReviewsCard(T) + siteTakeDownCard(T) +
+      '</div><aside class="site-aside">' + siteReadyCard(T, d) + siteMonthCard(T, pv) + sitePreviewCard(T, pv) + "</aside></div></section>";
   }
   function siteRefreshSide() {
     const pv = document.querySelector("[data-site-preview] .ag-preview");
@@ -21202,7 +21269,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const count = document.querySelector("[data-site-ready-count]");
     if (count) count.textContent = ready.filter(r => r[1]).length + " of " + ready.length + " done";
     const st = document.querySelector("[data-site-status]");
-    if (st && siteData && siteData.published_at) st.textContent = "Live, with changes not published yet";
+    if (st && siteData && siteData.published_at) st.textContent = websiteText().liveChanged;
   }
   async function siteSave(publish) {
     siteBusy = publish ? "publish" : "save"; render({ keepScroll: true });
