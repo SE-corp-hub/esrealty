@@ -28,6 +28,10 @@ c("brokers and agents (not buyers) can open My website", /"website\.manage", "se
 c("signed-in people opening an agent or listing link see the public page", /function publicLinkOpen\(\)/.test(app) && /if \(!currentUser \|\| showPublicLink\(\)\) \{/.test(app));
 c("index.html loads the agent page drawing before the storefront", read("index.html").indexOf("js/agent_page.js") > 0 && read("index.html").indexOf("js/agent_page.js") < read("index.html").indexOf("js/storefront.js"));
 c("the service worker keeps the agent page drawing for offline use", /"\.\/js\/agent_page\.js"/.test(read("sw.js")));
+const html = read("index.html");
+c("index.html loads the directory module after the agent page and before the storefront",
+  html.indexOf("js/agent_page.js") < html.indexOf("js/agent_directory.js") && html.indexOf("js/agent_directory.js") < html.indexOf("js/storefront.js"));
+c("the service worker keeps the directory module for offline use", /"\.\/js\/agent_directory\.js"/.test(read("sw.js")));
 c("public_agent and the counter are for the server only",
   /grant execute on function public\.public_agent\(text\) to service_role;/.test(mig)
   && /revoke all on function public\.public_agent\(text\) from public, anon, authenticated;/.test(mig)

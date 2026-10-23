@@ -59,7 +59,7 @@ c("the listing form asks for the date too", /id="ls-lts-until" type="date"/.test
 const html = read("index.html");
 c("sign-up has the licence and broker fields", /id="auth-prc"/.test(html) && /id="auth-broker"/.test(html));
 c("they are sent with the sign-up and shown in Users & Access", /requested_prc: \$\("#auth-prc"\)/.test(app) && /data-signup-prc/.test(app) && /u\.requested_prc/.test(app));
-c("Join as an agent opens sign-up with the agent role chosen", /data-sf-auth="signup-agent"/.test(read("js/storefront.js")) && /mode === "signup-agent"/.test(app));
+c("Join as an agent opens sign-up with the agent role chosen", /data-sf-auth="signup-agent"/.test(read("js/agent_directory.js")) && /mode === "signup-agent"/.test(app));
 
 // Filipino.
 c("My website has Filipino labels and a Filipino menu name", /website: \["My website", "Aking website"\]/.test(app) && /fw\("My website", "Aking website"\)/.test(app));
