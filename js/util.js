@@ -57,6 +57,21 @@
       return Promise.all([subtle.exportKey("raw", kp.publicKey), subtle.exportKey("jwk", kp.privateKey)]);
     }).then(function (r) { return { publicKey: util.b64url(r[0]), privateKey: r[1].d }; });
   };
+  /* Loads a vendored script the first time it is needed and resolves with the global it defines
+   * (pdf-lib for the Value Guide report, the QR library for My website). A failed load can be
+   * tried again. */
+  var scriptLoads = {};
+  util.loadScriptOnce = function (src, globalName) {
+    if (window[globalName]) return Promise.resolve(window[globalName]);
+    if (!scriptLoads[src]) scriptLoads[src] = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = src;
+      s.onload = function () { window[globalName] ? resolve(window[globalName]) : (delete scriptLoads[src], reject(new Error(src + " loaded without " + globalName))); };
+      s.onerror = function () { delete scriptLoads[src]; reject(new Error("Could not load " + src)); };
+      document.head.appendChild(s);
+    });
+    return scriptLoads[src];
+  };
   /* src (plus a fallback to the full photo if the small copy is missing) for an
    * <img>. onFail runs if the full photo fails too. */
   util.thumbAttrs = function (url, onFail) {
