@@ -21,6 +21,13 @@ const sqlTowns = ((mig.match(/agent_site_towns\(\) returns text\[\][\s\S]*?array
 const vgTowns = JSON.parse(read("data/batangas-zonal.json")).municipalities.map((m) => m.slug);
 c("agent page towns are exactly the Value Guide's towns", JSON.stringify(sqlTowns) === JSON.stringify(vgTowns), sqlTowns.length + " vs " + vgTowns.length);
 c("0015 says to apply it after 0014", /AFTER 0014/.test(mig));
+const pageTowns = [...read("js/agent_page.js").matchAll(/\["([a-z-]+)", "[^"]+"\]/g)].map((m) => m[1]).filter((t) => vgTowns.includes(t) || /city|-/.test(t));
+c("the agent page's town names cover exactly the Value Guide's towns", JSON.stringify(pageTowns.filter((t) => vgTowns.includes(t))) === JSON.stringify(vgTowns));
+const app = read("js/app.js");
+c("brokers and agents (not buyers) can open My website", /"website\.manage", "settings\.view"\],\n\s*agent: \[[^\]]*"website\.manage"/.test(app) && !/buyer: \[[^\]]*website\.manage/.test(app) && /website: "website\.manage"/.test(app));
+c("signed-in people opening an agent or listing link see the public page", /function publicLinkOpen\(\)/.test(app) && /if \(!currentUser \|\| publicLinkOpen\(\)\) \{/.test(app));
+c("index.html loads the agent page drawing before the storefront", read("index.html").indexOf("js/agent_page.js") > 0 && read("index.html").indexOf("js/agent_page.js") < read("index.html").indexOf("js/storefront.js"));
+c("the service worker keeps the agent page drawing for offline use", /"\.\/js\/agent_page\.js"/.test(read("sw.js")));
 c("public_agent and the counter are for the server only",
   /grant execute on function public\.public_agent\(text\) to service_role;/.test(mig)
   && /revoke all on function public\.public_agent\(text\) from public, anon, authenticated;/.test(mig)

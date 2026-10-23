@@ -55,10 +55,10 @@
 
   function route() {
     var raw = location.hash.replace(/^#\/?/, "");
-    /* Share addresses like /listing/<id> (served by the site's Worker, so Facebook and Google
-     * can read them) open the same page as #/listing/<id>. A #/ route wins when there is one. */
-    var shared = !raw && location.pathname.match(/^\/listing\/([^/?#]+)\/?$/);
-    if (shared) raw = "listing/" + shared[1];
+    /* Share addresses like /listing/<id> and /agents/<slug> (served by the site's Worker, so
+     * Facebook and Google can read them) open the same page as the #/ route. A #/ route wins. */
+    var shared = !raw && location.pathname.match(/^\/(listing|agents)\/([^/?#]+)\/?$/);
+    if (shared) raw = shared[1] + "/" + shared[2];
     var split = raw.split("?");
     var path = split[0] || "home";
     return { path: path, params: new URLSearchParams(split.slice(1).join("?")) };
@@ -1509,6 +1509,29 @@
     setTimeout(function () { scrollToSectionWhenSettled(name, attemptsLeft - 1); }, 180);
   }
 
+  /* An agent's page (js/agent_page.js draws it; the editor's preview uses the same drawing). */
+  function agentPage() {
+    var data = viewState.result && viewState.result.data;
+    if (data && window.SEA_AGENT_PAGE) return window.SEA_AGENT_PAGE.html(data);
+    if (viewState.loading) return shell('<section class="sf-section" aria-busy="true"><p>Loading the agent\u2019s page\u2026</p></section>');
+    return shell('<section class="sf-section sf-agent-missing"><h1>This agent page is not available</h1>' +
+      '<p>The agent may have moved on, or their licence check is being renewed. ' + (viewState.error && !/not found/i.test(viewState.error) ? esc(viewState.error) + " " : "") + '</p>' +
+      '<p><a class="sf-outline-btn" href="#/search">Browse properties</a> <a class="sf-outline-btn" href="#/property-value?go=form">Contact SEA ESTATES</a></p></section>');
+  }
+  function bindAgentPage() {
+    var data = viewState.result && viewState.result.data;
+    var root = host && host.querySelector(".ag");
+    if (!data || !root || !window.SEA_AGENT_PAGE) return;
+    try { document.title = data.name + ", " + data.role_label + " | SEA ESTATES"; } catch (e) {}
+    if (!document.getElementById("sf-agent-font")) {
+      var font = document.createElement("link");
+      font.id = "sf-agent-font"; font.rel = "stylesheet";
+      font.href = "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@700;800&display=swap";
+      document.head.appendChild(font);
+    }
+    window.SEA_AGENT_PAGE.bind(root, data, { tap: API.agentTap, inquire: API.agentInquire });
+  }
+
   function setTitle(path, params) {
     try {
       var key = path.indexOf("listing/") === 0 ? "listing" : path;
@@ -1551,10 +1574,12 @@
     else if (current.path === "project-bt") host.innerHTML = comingSoonPage();
     else if (current.path === "property-value") host.innerHTML = propertyValuePage(current.params);
     else if (current.path.indexOf("listing/") === 0) host.innerHTML = detailPage(viewState.result && viewState.result.data);
+    else if (current.path.indexOf("agents/") === 0) host.innerHTML = agentPage();
     else if (current.path === "search") host.innerHTML = searchPage(current.params);
     else if (current.path === "compare") host.innerHTML = comparisonPage();
     else host.innerHTML = home();
     setTitle(current.path, current.params);
+    if (current.path.indexOf("agents/") === 0) bindAgentPage();
     syncSearchFilters();
     if (current.path === "search") {
       compareReturn = location.hash;
@@ -1638,6 +1663,7 @@
     renderCurrent();
     var pending;
     if (current.path.indexOf("listing/") === 0) pending = API.get(current.path.slice(8));
+    else if (current.path.indexOf("agents/") === 0) pending = API.agent(current.path.slice(7));
     else if (current.path === "search") {
       var filters = {};
       current.params.forEach(function (value, name) { filters[name] = value; });
@@ -1867,6 +1893,7 @@
     document.addEventListener("input", function (event) {
       var el = event.target;
       if (!el || !el.getAttribute || el.getAttribute("aria-invalid") !== "true") return;
+      if (el.closest && el.closest("[data-ag-form], .site-editor")) return; // agent pages and My website check their own fields
       var ok = el.checkValidity() && !(el.name === "phone" && String(el.value).replace(/\D/g, "").length < 10);
       if (!ok) return;
       el.removeAttribute("aria-invalid");
