@@ -140,10 +140,11 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     chk("the footer links to check an agent", !!q('.ag-footer a[href="#/agents?check=1"]'));
     chk("no sideways scroll on the agent page", document.documentElement.scrollWidth <= window.innerWidth + 2, document.documentElement.scrollWidth + " > " + window.innerWidth);
     sell.click(); await wait(1600);
-    chk("the Value Guide knows whose page it came from", window.ESREALTY_VG_AGENT && window.ESREALTY_VG_AGENT.slug === "maria-santos-dela-cruz" && window.ESREALTY_VG_AGENT.name === "Maria Santos Dela Cruz", JSON.stringify(window.ESREALTY_VG_AGENT));
+    const vg = () => window.ESREALTY_EST.agent();
+    chk("the Value Guide knows whose page it came from", vg().slug === "maria-santos-dela-cruz" && vg().name === "Maria Santos Dela Cruz", JSON.stringify(vg()));
     chk("and tells the visitor the request goes to that agent", /Your Value Guide request goes to Maria Santos Dela Cruz, whose page you came from/.test(text(".sf-vg-agent")) && !!q('.sf-vg-agent a[href="#/agents/maria-santos-dela-cruz"]'));
     location.hash = "#/home"; await wait(900);
-    chk("the plain home page has no agent note and sends nothing to an agent", !q(".sf-vg-agent") && !window.ESREALTY_VG_AGENT);
+    chk("the plain home page has no agent note and sends nothing to an agent", !q(".sf-vg-agent") && vg().slug === "");
 
     // A client's review link.
     location.hash = "#/review/" + OPEN; await wait(1200);

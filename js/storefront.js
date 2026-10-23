@@ -1561,159 +1561,55 @@
     window.SEA_AGENT_PAGE.bind(root, data, { tap: API.agentTap, inquire: API.agentInquire });
   }
 
-  /* ---- Find an agent (agent websites plan, Phases 2 and 3) --------------------------------
-   * Published agents whose licence check holds, filtered by the fixed lists. Measured reply time
-   * comes first (the server's order); "Most deals" and "Most listings" re-sort here. A number with
-   * no record behind it is left out, never shown as a zero. Nobody pays for a place. */
-  var DIRECTORY_PAGE = 10;
-  var directoryShown = DIRECTORY_PAGE;
-  var DIRECTORY_SORTS = [["", "Fastest reply"], ["deals", "Most deals"], ["listings", "Most listings"]];
-
-  function selectOptions(list, picked, anyLabel) {
-    return (anyLabel ? '<option value="">' + esc(anyLabel) + '</option>' : '') + list.map(function (pair) {
-      return '<option value="' + esc(pair[0]) + '"' + (pair[0] === picked ? ' selected' : '') + '>' + esc(pair[1]) + '</option>';
-    }).join("");
-  }
-  function countLabel(n, word) { return Number(n) + " " + word + (Number(n) === 1 ? "" : "s"); }
-
-  function directoryCard(a) {
-    var P = window.SEA_AGENT_PAGE;
-    var towns = P.labels(P.TOWNS, a.towns), needs = P.labels(P.NEEDS, a.needs), langs = P.labels(P.LANGUAGES, a.languages);
-    var photo = safeImage(a.photo);
-    var href = "#/agents/" + encodeURIComponent(a.slug);
-    var nums = [];
-    if (Number(a.deals) > 0) nums.push('<div><b>' + Number(a.deals) + '</b><span>' + (Number(a.deals) === 1 ? "deal" : "deals") + (a.deals_window === "3y" ? " in 3 years" : ' since ' + esc(P.month(a.deals_since))) + '</span></div>');
-    if (Number(a.listing_count) > 0) nums.push('<div><b>' + Number(a.listing_count) + '</b><span>' + (Number(a.listing_count) === 1 ? "listing" : "listings") + '</span></div>');
-    if (Number(a.review_count) > 0) nums.push('<div><b>' + Number(a.review_count) + '</b><span>' + (Number(a.review_count) === 1 ? "review" : "reviews") + '</span></div>');
-    return '<article class="agd-card">' +
-      (photo ? '<img class="agd-photo" src="' + esc(photo) + '" alt="Photo of ' + esc(a.name) + '" width="104" height="104" loading="lazy">'
-             : '<div class="agd-photo agd-initials" aria-hidden="true">' + esc(P.initials(a.name)) + '</div>') +
-      '<div class="agd-who"><h2><a href="' + href + '">' + esc(a.name) + '</a></h2>' +
-      '<p class="agd-sub">' + esc(a.role_label) + (towns.length ? ', ' + esc(P.joinWords(towns.slice(0, 2))) + (towns.length > 2 ? ' and nearby' : '') : '') + '.' +
-        (langs.length ? ' Speaks ' + esc(P.joinWords(langs)) + '.' : '') + '</p>' +
-      '<p class="agd-marks"><span class="agd-ok">' + P.icon("check") + 'Licence checked ' + esc(P.day(a.licence_checked_on)) + '</span>' +
-        (a.verified_on ? '<span class="agd-ver">' + P.icon("shield") + 'Verified</span>' : '') + '</p>' +
-      '<p class="agd-line">' + (a.reply ? 'Usually replies ' + esc(a.reply) : 'New on SEA ESTATES') + '</p>' +
-      (needs.length ? '<p class="agd-line">' + esc(needs.join(", ")) + '</p>' : '') + '</div>' +
-      (nums.length ? '<div class="agd-nums">' + nums.join("") + '</div>' : '') +
-      '<div class="agd-acts"><a class="agd-btn agd-btn-primary agd-go" href="' + href + '">View website<span class="sr-only">: ' + esc(a.name) + '</span></a>' +
-      (a.viber ? '<a class="agd-btn agd-go" href="viber://chat?number=' + encodeURIComponent(a.viber) + '" data-agd-viber="' + esc(a.slug) + '">Viber<span class="sr-only">: message ' + esc(a.name) + '</span></a>' : '') + '</div></article>';
+  /* Plain-language errors under each field (2026-10-15) instead of the
+     browser's pop-up, which is easy to miss and disappears. The forms carry
+     novalidate so this runs; typed answers are kept. */
+  var FIELD_MSG = {
+    name: "Enter your name.", full_name: "Enter your name.",
+    phone: "Enter your mobile number, for example 0917 123 4567.",
+    email: "Enter your email, for example name@example.com.",
+    consent: "Tick this box so our team can contact you.",
+    message: "Tell us briefly what you need."
+  };
+  function checkFields(form) {
+    Array.prototype.forEach.call(form.querySelectorAll(".sf-field-err"), function (el) { el.remove(); });
+    var first = null;
+    Array.prototype.forEach.call(form.elements, function (el) {
+      if (!el.name || !el.willValidate || el.type === "submit") return;
+      el.removeAttribute("aria-invalid"); el.removeAttribute("aria-describedby");
+      var bad = !el.checkValidity();
+      if (!bad && el.name === "phone" && el.value.trim()) bad = String(el.value).replace(/\D/g, "").length < 10;
+      if (!bad) return;
+      var msg = el.getAttribute("data-msg") || FIELD_MSG[el.name] || "Fill in this field.";
+      if (el.name === "email" && el.value.trim()) msg = "That email does not look complete. Use the form name@example.com.";
+      if (el.name === "phone" && el.value.trim()) msg = "That number looks too short. Use the form 0917 123 4567.";
+      var err = document.createElement("span");
+      err.className = "sf-field-err"; err.id = "sf-err-" + el.name + "-" + Math.random().toString(36).slice(2, 7); err.textContent = msg;
+      (el.closest("label") || el.parentNode).appendChild(err);
+      el.setAttribute("aria-invalid", "true"); el.setAttribute("aria-describedby", err.id);
+      if (!first) first = el;
+    });
+    if (first) first.focus();
+    return !first;
   }
 
-  function checkAgentBox() {
-    return '<section class="agd-check" id="agd-check" aria-labelledby="agd-check-h"><h2 id="agd-check-h">Check an agent’s licence</h2>' +
-      '<p>Got a call or a Facebook message from someone who says they work with us? Look them up before you pay anything.</p>' +
-      '<form class="agd-check-form" data-agd-check novalidate><label class="agd-label" for="agd-q">PRC licence number or phone number</label>' +
-      '<input class="agd-input" id="agd-q" name="q" inputmode="tel" autocomplete="off" maxlength="40" aria-describedby="agd-q-help">' +
-      '<p class="agd-help" id="agd-q-help">For example 0012345, or the number that contacted you.</p>' +
-      '<button type="submit" class="agd-btn agd-btn-trust">Check</button></form>' +
-      '<div class="agd-check-result" role="status" aria-live="polite"></div>' +
-      '<p class="agd-warn">SEA ESTATES never asks you to pay into a personal account.</p>' +
-      '<p class="agd-help">You can also check any licence on the PRC website.</p></section>';
-  }
-
-  function directoryPage(params) {
-    var P = window.SEA_AGENT_PAGE;
-    if (!P) return shell('<section class="sf-section"><p>Loading…</p></section>');
-    var town = params.get("town") || "", need = params.get("need") || "", language = params.get("language") || "", sort = params.get("sort") || "";
-    var result = viewState.result || {};
-    var agents = Array.isArray(result.data) ? result.data.slice() : [];
-    if (sort === "deals") agents.sort(function (a, b) { return (Number(b.deals) || 0) - (Number(a.deals) || 0); });
-    if (sort === "listings") agents.sort(function (a, b) { return (Number(b.listing_count) || 0) - (Number(a.listing_count) || 0); });
-    var picked = [["town", P.TOWNS, town], ["need", P.NEEDS, need], ["language", P.LANGUAGES, language]]
-      .map(function (f) { var name = (P.labels(f[1], [f[2]])[0]) || ""; return name ? [f[0], name] : null; }).filter(Boolean);
-    var townName = P.labels(P.TOWNS, [town])[0];
-    var status;
-    if (viewState.loading) status = 'Finding agents…';
-    else if (viewState.error) status = 'Could not load agents. ' + esc(viewState.error);
-    else status = countLabel(agents.length, "agent") + (townName ? ' in ' + esc(townName) : '');
-    var shown = agents.slice(0, directoryShown);
-    var list = viewState.loading ? '<p class="agd-empty" aria-busy="true">Finding agents…</p>'
-      : viewState.error ? '<p class="agd-empty">Could not load agents. Check your connection and <button type="button" class="agd-link" data-agd-retry>try again</button>.</p>'
-      : !agents.length ? '<p class="agd-empty">No agent matches ' + (picked.length ? 'these filters yet. Remove a filter or try a nearby town.' : 'yet.') + '</p>'
-      : shown.map(directoryCard).join("") + (agents.length > shown.length ? '<button type="button" class="agd-btn agd-more" data-agd-more>Show ' + Math.min(DIRECTORY_PAGE, agents.length - shown.length) + ' more agents</button>' : '');
-    return shell('<div class="agd"><section class="agd-top"><div class="agd-in">' +
-      '<h1>Find an agent you can check</h1>' +
-      '<p class="agd-lede">Every agent’s PRC licence is checked by our office before their page goes live. Deal counts come from our own records, and reviews come only from clients with a closed deal.</p>' +
-      '<p class="agd-check-jump">Contacted by someone who says they work with us? <a href="#agd-check" data-sf-scroll="agd-check">Check their licence</a></p>' +
-      '<form class="agd-filters" data-agd-filters aria-label="Filter agents">' +
-      '<label class="agd-label">Town<select class="agd-input" name="town">' + selectOptions(P.TOWNS, town, "All towns") + '</select></label>' +
-      '<label class="agd-label">I need help with<select class="agd-input" name="need">' + selectOptions(P.NEEDS, need, "Anything") + '</select></label>' +
-      '<label class="agd-label">Language<select class="agd-input" name="language">' + selectOptions(P.LANGUAGES, language, "Any language") + '</select></label>' +
-      '<label class="agd-label">Sort by<select class="agd-input" name="sort">' + selectOptions(DIRECTORY_SORTS, sort) + '</select></label>' +
-      '<button type="submit" class="agd-btn agd-btn-primary">Show agents</button></form>' +
-      '<div class="agd-status"><span role="status">' + status + '</span>' + picked.map(function (f) {
-        return '<button type="button" class="agd-chip" data-agd-remove="' + f[0] + '"><span class="sr-only">Remove filter: </span>' + esc(f[1]) + '<span class="agd-x" aria-hidden="true">×</span></button>';
-      }).join("") + '</div></div></section>' +
-      '<div class="agd-in agd-body"><section class="agd-list" aria-label="Agents">' + list +
-      '<div class="agd-fallback"><p>Not finding the right person? Try a nearby town, or tell our team what you need and we will match you with an agent.</p>' +
-      '<a class="agd-btn" href="#/property-value?service=broker&amp;go=form">Ask our team</a></div></section>' +
-      '<aside class="agd-aside">' + checkAgentBox() +
-      '<section class="agd-box" aria-labelledby="agd-how-h"><h2 id="agd-how-h">How we check an agent</h2><ol>' +
-      '<li><b>Licence checked</b> against the PRC record before the page goes live: every agent.</li>' +
-      '<li><b>Verified badge:</b> government ID seen and phone confirmed by our office: shown when done.</li></ol>' +
-      '<p>No agent pays to be here. Agents with a measured reply time come first, then the most recently updated pages. When a licence expires, the agent’s page comes down until it is renewed.</p></section>' +
-      '<section class="agd-box agd-join" aria-labelledby="agd-join-h"><h2 id="agd-join-h">Licensed agent?</h2><p>Get your own website and appear here, free.</p>' +
-      '<button type="button" class="agd-btn agd-btn-primary" data-sf-auth="signup-agent">Join as an agent</button></section></aside></div></div>');
-  }
-
-  function directoryGo(form) {
-    var params = new URLSearchParams();
-    ["town", "need", "language", "sort"].forEach(function (name) { var v = form.elements[name] && form.elements[name].value; if (v) params.set(name, v); });
-    var qs = params.toString();
-    go("agents" + (qs ? "?" + qs : ""));
-  }
-
-  function checkAgent(form) {
-    var box = form.closest(".agd-check");
-    var out = box.querySelector(".agd-check-result");
-    var q = String(form.elements.q.value || "").trim();
-    var phone = siteContact.phone ? ' on <a href="tel:' + encodeURIComponent(telHref(siteContact.phone)) + '">' + esc(siteContact.phone) + '</a>' : '';
-    if (q.replace(/\D/g, "").length < 5) { out.innerHTML = '<p class="agd-result agd-result-miss">Enter a licence number or a full phone number.</p>'; form.elements.q.focus(); return; }
-    var button = form.querySelector("button");
-    button.disabled = true; out.innerHTML = '<p class="agd-result">Checking…</p>';
-    API.agentCheck(q).then(function (result) {
-      var found = (result && result.data) || [];
-      var P = window.SEA_AGENT_PAGE;
-      out.innerHTML = found.length ? found.map(function (a) {
-        return '<div class="agd-result agd-result-hit"><p><b>' + esc(a.name) + '</b>, ' + esc(a.role_label) + ', licence no. ' + esc(a.licence_no) + '.' +
-          (a.verified_on ? ' Verified on ' + esc(P.day(a.verified_on)) + '.' : '') + '</p>' +
-          '<p>This matches a published SEA ESTATES agent. If they contacted you, check that the number is on <a href="#/agents/' + encodeURIComponent(a.slug) + '">their page</a>.</p></div>';
-      }).join("") : '<p class="agd-result agd-result-miss">No published agent matches. Call our office' + phone + ' before paying anything.</p>';
-    }).catch(function (error) {
-      out.innerHTML = '<p class="agd-result agd-result-miss">' + (error && error.status === 429 ? 'Too many checks from this connection. Try again in an hour, or call our office' + phone + '.'
-        : 'Could not check right now. Call our office' + phone + ' before paying anything.') + '</p>';
-    }).finally(function () { button.disabled = false; });
-  }
-
-  /* ---- A client's review (Phase 3): the one-time link from our office ---------------------- */
-  var reviewSent = false;
-  function reviewPage(token) {
-    var data = viewState.result && viewState.result.data;
-    var help = '<p><a class="sf-outline-btn" href="#/property-value?go=form">Contact SEA ESTATES</a></p>';
-    if (viewState.loading) return shell('<section class="sf-section sf-review" aria-busy="true"><p>Opening your review link…</p></section>');
-    if (!data) return shell('<section class="sf-section sf-review"><h1>This review link does not work</h1><p>Check that you opened the whole link from our message. Each link works once and for 30 days. Ask our office for a new one.</p>' + help + '</section>');
-    var first = String(data.agent || "your agent").split(/\s+/)[0];
-    if (reviewSent) return shell('<section class="sf-section sf-review"><div class="sf-review-done" role="status" tabindex="-1"><h1>Thank you</h1><p>Your review was sent. It appears on ' + esc(data.agent) + '’s page after a quick check by our office.</p></div></section>');
-    if (!data.open) return shell('<section class="sf-section sf-review"><h1>' + (data.status === "used" ? "This review has already been sent" : "This review link has expired") + '</h1><p>' +
-      (data.status === "used" ? "Each link works once. Thank you for your review." : "Links work for 30 days. Ask our office for a new one.") + '</p>' + help + '</section>');
-    return shell('<section class="sf-section sf-review"><h1>Review ' + esc(data.agent) + '</h1>' +
-      '<p class="sf-review-lede">Your review helps other buyers and sellers in Batangas. Our office checks it, then it appears on ' + esc(first) + '’s page with your first name, the first letter of your last name, the town and the month of your deal. There are no star ratings.</p>' +
-      '<form class="sf-review-form" data-sf-review="' + esc(token) + '" novalidate>' +
-      '<label>First name<input name="first_name" required maxlength="40" autocomplete="given-name"></label>' +
-      '<label>Last name<input name="last_name" maxlength="60" autocomplete="family-name" aria-describedby="sf-review-last"><small id="sf-review-last">Only the first letter is shown.</small></label>' +
-      '<label>Your review<textarea name="review" rows="6" required minlength="20" maxlength="1200" data-msg="Write at least a sentence about ' + esc(first) + ' (20 characters or more)." placeholder="What did ' + esc(first) + ' do well? What should other clients know?"></textarea></label>' +
-      '<label class="sf-consent"><input type="checkbox" name="consent" required data-msg="Tick this box so we may show your review."><span>I agree that SEA ESTATES may show this review on ' + esc(data.agent) + '’s page with my first name, the first letter of my last name, the town and the month of my deal, as the <a href="#/privacy">privacy notice</a> explains.</span></label>' +
-      '<button type="submit" class="sf-primary-btn">Send my review</button><p class="sf-form-status" aria-live="polite"></p></form></section>');
-  }
+  /* Find an agent, check-an-agent and the client's review form live in js/agent_directory.js. */
+  var AD = window.SEA_AGENT_DIRECTORY ? window.SEA_AGENT_DIRECTORY.create({
+    esc: esc, shell: shell, safeImage: safeImage, telHref: telHref, go: go, route: route,
+    loadCurrent: function (force) { loadCurrent(force); }, renderCurrent: function () { renderCurrent(); },
+    checkFields: checkFields,
+    api: function () { return API; }, contact: function () { return siteContact; },
+    view: function () { return viewState; }, host: function () { return host; }
+  }) : null;
+  function waiting() { return shell('<section class="sf-section"><p>Loading…</p></section>'); }
 
   /* ---- The Value Guide started from an agent's page (#/home?agent=<slug>) ------------------ */
+  // The Value Guide keeps the agent (js/estimator.js, useAgent); the address is the authority.
   function showValueGuideAgent(params) {
-    var slug = String(params.get("agent") || "").toLowerCase();
-    if (slug.length > 70 || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) { window.ESREALTY_VG_AGENT = null; return; }
-    var name = "";
-    try { var saved = JSON.parse(sessionStorage.getItem("esrealty_vg_agent_v1") || "null"); if (saved && saved.slug === slug) name = String(saved.name || ""); } catch (e) {}
-    window.ESREALTY_VG_AGENT = { slug: slug, name: name };
+    var EST = window.ESREALTY_EST;
+    var agent = EST && EST.useAgent ? EST.useAgent(params.get("agent")) : { slug: "", name: "" };
+    if (!agent.slug) return;
+    var slug = agent.slug, name = agent.name;
     var guide = host && host.querySelector("#sf-estimator");
     if (!guide || host.querySelector(".sf-vg-agent")) return;
     guide.insertAdjacentHTML("beforebegin", '<div class="sf-vg-agent" role="note"><p>Your Value Guide request goes to ' + (name ? '<b>' + esc(name) + '</b>, whose page you came from' : 'the agent whose page you came from') +
@@ -1763,17 +1659,14 @@
     else if (current.path === "property-value") host.innerHTML = propertyValuePage(current.params);
     else if (current.path.indexOf("listing/") === 0) host.innerHTML = detailPage(viewState.result && viewState.result.data);
     else if (current.path.indexOf("agents/") === 0) host.innerHTML = agentPage();
-    else if (current.path === "agents") host.innerHTML = directoryPage(current.params);
-    else if (current.path.indexOf("review/") === 0) host.innerHTML = reviewPage(current.path.slice(7));
+    else if (current.path === "agents") host.innerHTML = AD ? AD.directoryPage(current.params) : waiting();
+    else if (current.path.indexOf("review/") === 0) host.innerHTML = AD ? AD.reviewPage(current.path) : waiting();
     else if (current.path === "search") host.innerHTML = searchPage(current.params);
     else if (current.path === "compare") host.innerHTML = comparisonPage();
     else host.innerHTML = home();
     setTitle(current.path, current.params);
     if (current.path.indexOf("agents/") === 0) bindAgentPage();
-    if (current.path === "agents") loadAgentFont();
-    if (current.path === "agents" && current.params.get("check") === "1") {
-      setTimeout(function () { var box = document.getElementById("agd-check"); if (box) { box.scrollIntoView({ block: "start" }); var q = box.querySelector("input"); if (q) q.focus({ preventScroll: true }); } }, 60);
-    }
+    if (current.path === "agents") { loadAgentFont(); if (AD) AD.afterDraw(current.params); }
     if (current.path === "home" || current.path === "") showValueGuideAgent(current.params);
     syncSearchFilters();
     if (current.path === "search") {
@@ -1859,15 +1752,7 @@
     var pending;
     if (current.path.indexOf("listing/") === 0) pending = API.get(current.path.slice(8));
     else if (current.path.indexOf("agents/") === 0) pending = API.agent(current.path.slice(7));
-    else if (current.path === "agents") {
-      var agentFilters = {};
-      ["town", "need", "language"].forEach(function (name) { var v = current.params.get(name); if (v && /^[a-z-]{2,40}$/.test(v)) agentFilters[name] = v; });
-      directoryShown = DIRECTORY_PAGE;
-      pending = API.agents(agentFilters);
-    } else if (current.path.indexOf("review/") === 0) {
-      reviewSent = false;
-      pending = API.review(current.path.slice(7));
-    }
+    else if (AD && (current.path === "agents" || current.path.indexOf("review/") === 0)) pending = AD.load(current.path, current.params);
     else if (current.path === "search") {
       var filters = {};
       current.params.forEach(function (value, name) { filters[name] = value; });
@@ -2056,17 +1941,7 @@
       if (back) { history.length > 1 ? history.back() : go("search"); return; }
       var mode = event.target.closest("[data-sf-mode]");
       if (mode) { viewState.mode = mode.getAttribute("data-sf-mode"); renderCurrent(); return; }
-      var agdRemove = event.target.closest("[data-agd-remove]");
-      if (agdRemove) { var rr = route(); rr.params.delete(agdRemove.getAttribute("data-agd-remove")); var rq = rr.params.toString(); go("agents" + (rq ? "?" + rq : "")); return; }
-      if (event.target.closest("[data-agd-more]")) {
-        var before = host.querySelectorAll(".agd-card").length;
-        directoryShown += DIRECTORY_PAGE; renderCurrent();
-        var next = host.querySelectorAll(".agd-card h2 a")[before]; if (next) next.focus();
-        return;
-      }
-      if (event.target.closest("[data-agd-retry]")) { loadCurrent(true); return; }
-      var agdViber = event.target.closest("[data-agd-viber]");
-      if (agdViber && API.agentTap) API.agentTap(agdViber.getAttribute("data-agd-viber"), "viber").catch(function () {}); // counted, as on the agent's page
+      if (AD && AD.click(event)) return;
       var page = event.target.closest("[data-sf-page]");
       if (page && !page.disabled) { var r = route(); r.params.set("page", page.getAttribute("data-sf-page")); go("search?" + r.params.toString()); }
     });
@@ -2074,38 +1949,6 @@
       if (!active || !event.target.matches("[data-sf-sort]")) return;
       var r = route(); r.params.set("sort", event.target.value); r.params.delete("page"); go("search?" + r.params.toString());
     });
-    /* Plain-language errors under each field (2026-10-15) instead of the
-       browser's pop-up, which is easy to miss and disappears. The forms carry
-       novalidate so this runs; typed answers are kept. */
-    var FIELD_MSG = {
-      name: "Enter your name.", full_name: "Enter your name.",
-      phone: "Enter your mobile number, for example 0917 123 4567.",
-      email: "Enter your email, for example name@example.com.",
-      consent: "Tick this box so our team can contact you.",
-      message: "Tell us briefly what you need."
-    };
-    function checkFields(form) {
-      Array.prototype.forEach.call(form.querySelectorAll(".sf-field-err"), function (el) { el.remove(); });
-      var first = null;
-      Array.prototype.forEach.call(form.elements, function (el) {
-        if (!el.name || !el.willValidate || el.type === "submit") return;
-        el.removeAttribute("aria-invalid"); el.removeAttribute("aria-describedby");
-        var bad = !el.checkValidity();
-        if (!bad && el.name === "phone" && el.value.trim()) bad = String(el.value).replace(/\D/g, "").length < 10;
-        if (!bad) return;
-        var msg = el.getAttribute("data-msg") || FIELD_MSG[el.name] || "Fill in this field.";
-        if (el.name === "email" && el.value.trim()) msg = "That email does not look complete. Use the form name@example.com.";
-        if (el.name === "phone" && el.value.trim()) msg = "That number looks too short. Use the form 0917 123 4567.";
-        if (el.name === "first_name") msg = "Enter your first name.";
-        var err = document.createElement("span");
-        err.className = "sf-field-err"; err.id = "sf-err-" + el.name + "-" + Math.random().toString(36).slice(2, 7); err.textContent = msg;
-        (el.closest("label") || el.parentNode).appendChild(err);
-        el.setAttribute("aria-invalid", "true"); el.setAttribute("aria-describedby", err.id);
-        if (!first) first = el;
-      });
-      if (first) first.focus();
-      return !first;
-    }
     document.addEventListener("input", function (event) {
       var el = event.target;
       if (!el || !el.getAttribute || el.getAttribute("aria-invalid") !== "true") return;
@@ -2128,28 +1971,7 @@
 
     document.addEventListener("submit", function (event) {
       if (!active) return;
-      var agdFilters = event.target.closest("[data-agd-filters]");
-      if (agdFilters) { event.preventDefault(); directoryGo(agdFilters); return; }
-      var agdCheck = event.target.closest("[data-agd-check]");
-      if (agdCheck) { event.preventDefault(); checkAgent(agdCheck); return; }
-      var review = event.target.closest("[data-sf-review]");
-      if (review) {
-        event.preventDefault();
-        if (!checkFields(review)) return;
-        var reviewStatus = review.querySelector(".sf-form-status"), reviewButton = review.querySelector("button[type=submit]"), reviewData = new FormData(review);
-        reviewButton.disabled = true; reviewStatus.textContent = "Sending…"; reviewStatus.className = "sf-form-status";
-        API.sendReview(review.getAttribute("data-sf-review"), {
-          first_name: reviewData.get("first_name"), last_name: reviewData.get("last_name"), review: reviewData.get("review"), consent: reviewData.get("consent") === "on"
-        }).then(function () {
-          reviewSent = true; renderCurrent();
-          var done = host.querySelector(".sf-review-done"); if (done) done.focus();
-        }).catch(function (error) {
-          reviewButton.disabled = false;
-          reviewStatus.textContent = (error && error.status === 410 ? "This link has already been used or has expired." : (error && error.message ? error.message + " " : "") + "Your review is still here. Check your connection and press Send again.");
-          reviewStatus.className = "sf-form-status error";
-        });
-        return;
-      }
+      if (AD && AD.submit(event)) return;
       var search = event.target.closest("[data-sf-search]");
       if (search) {
         event.preventDefault(); var params = new URLSearchParams(new FormData(search));
