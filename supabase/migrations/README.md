@@ -63,6 +63,9 @@ leads and inquiries on request; last sign-in in Users & Access) follows `0012`.
 `0014_agent_sites_prep.sql` (agent websites, Phase 0: the time a lead first moves past New is
 stamped by the database for reply times; an approved broker's or agent's name can only be changed
 by a Super Admin) follows `0013`.
+`0015_agent_sites.sql` (agent websites, Phase 1: licence checks recorded by a Super Admin, each
+agent's page as a draft and a published copy, daily counts of page views and contact-button taps;
+the listing function reads a page only through `public_agent`) follows `0014`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses

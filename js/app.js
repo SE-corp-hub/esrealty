@@ -254,7 +254,9 @@
     map: '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>',
     activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
     more: '<circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/>',
-    filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>'
+    filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    circle: '<circle cx="12" cy="12" r="8"/>'
   };
   /* Icons are decorative here: every one sits next to a text label or inside a
    * button that already has an accessible name. Exposing them added 32 stray
@@ -2820,12 +2822,46 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     });
   }
 
+  /* A public page someone opened by its link (an agent's page or a listing) shows as the public
+   * site even when they are signed in, with a bar back to the office. Agents open their own page
+   * this way, and staff open links shared on Facebook. */
+  function publicLinkOpen() {
+    return /^\/(agents|listing)\/[^/]+\/?$/.test(location.pathname) || /^#\/(agents|listing)\//.test(location.hash);
+  }
+  // Only a link opened while signed in (or opened to load the app) shows the public page; someone
+  // who browses the public site and then signs in lands in the office as before.
+  let publicLinkByUser = publicLinkOpen();
+  function showPublicLink() { return !!currentUser && publicLinkByUser && publicLinkOpen(); }
+  function syncOfficeBar(show) {
+    let bar = document.getElementById("office-bar");
+    if (!show) { if (bar) bar.remove(); document.body.classList.remove("has-office-bar"); return; }
+    if (bar) return;
+    bar = document.createElement("div");
+    bar.id = "office-bar";
+    bar.className = "office-bar";
+    bar.innerHTML = '<span>You are signed in. This is the public page visitors see.</span><button type="button" class="btn btn-sm btn-primary" data-office-back>Back to the office</button>';
+    bar.querySelector("[data-office-back]").addEventListener("click", () => {
+      const base = location.pathname.replace(/(agents|listing)\/[^/]+\/?$/, "");
+      publicLinkByUser = false;
+      try { history.pushState(null, "", base); } catch (e) { location.hash = ""; }
+      render();
+    });
+    document.body.appendChild(bar);
+    document.body.classList.add("has-office-bar");
+  }
+  window.addEventListener("hashchange", () => {
+    const was = showPublicLink();
+    publicLinkByUser = !!currentUser && publicLinkOpen();
+    if (currentUser && was !== showPublicLink()) render();
+  });
+
   function render(opts) {
     opts = opts || {};
     if (currentUser && state && !navAllowed(state.view)) state.view = firstAllowedView();
     const playbookModal = document.getElementById("pb-modal");
     if (playbookModal && (!currentUser || !state || state.view !== "playbook" || !playbookAllowed())) playbookModal.remove();
-    if (!currentUser) {
+    syncOfficeBar(showPublicLink());
+    if (!currentUser || showPublicLink()) {
       document.documentElement.setAttribute("data-theme", "light");
       const auth = $("#auth-screen");
       if (auth) auth.classList.add("hidden");
@@ -2852,7 +2888,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     const main = document.querySelector(".main");
     if (main) main.classList.remove("public-main");
     hideAuth();
-    const title = { dashboard: "Dashboard", wizard: "New Investment", deal: "Deal Analysis", portfolio: "Portfolio", pms: "Property Management", assistant: "AI Assistant", reports: "Reports", appraisal: "Appraisal", "value-guide": "Value Guide", market: "Market Scan", listings: "Listings", leads: "CRM / Leads", transactions: "Transactions", financing: "Financing", presell: "Pre-Selling", portal: "Buyer Portal", playbook: "Sales Playbook", users: "Users & Access", admin: "Brokerage", settings: "Settings" };
+    const title = { dashboard: "Dashboard", wizard: "New Investment", deal: "Deal Analysis", portfolio: "Portfolio", pms: "Property Management", assistant: "AI Assistant", reports: "Reports", appraisal: "Appraisal", "value-guide": "Value Guide", market: "Market Scan", listings: "Listings", leads: "CRM / Leads", transactions: "Transactions", financing: "Financing", presell: "Pre-Selling", portal: "Buyer Portal", playbook: "Sales Playbook", users: "Users & Access", admin: "Brokerage", website: "My website", settings: "Settings" };
     $("#topbar-title").textContent = (lang === "fil" ? (FIL_TITLES[state.view] || title[state.view]) : title[state.view]) || "SEA ESTATES";
     $$("#nav .nav-item").forEach(b => b.classList.toggle("active", b.getAttribute("data-view") === state.view));
     $$("#nav .nav-dropdown-item").forEach(b => {
@@ -2924,7 +2960,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     const prevScroll = opts.keepScroll && content ? content.scrollTop : null;
     const prevFocus = opts.keepFocus && document.activeElement ? document.activeElement : null;
     const prevFocusId = prevFocus && prevFocus.id ? prevFocus.id : null;
-    const map = { dashboard: renderDashboard, wizard: renderWizard, deal: renderDeal, portfolio: renderPortfolio, pms: renderPMS, assistant: renderAssistant, reports: renderReports, appraisal: renderAppraisal, "value-guide": renderValueGuide, market: renderMarketScan, listings: renderListings, leads: renderLeads, transactions: renderTransactions, financing: renderFinancing, presell: renderPresell, portal: renderBuyerPortal, playbook: renderPlaybook, users: renderUsers, admin: renderAdmin, settings: renderSettings };
+    const map = { dashboard: renderDashboard, wizard: renderWizard, deal: renderDeal, portfolio: renderPortfolio, pms: renderPMS, assistant: renderAssistant, reports: renderReports, appraisal: renderAppraisal, "value-guide": renderValueGuide, market: renderMarketScan, listings: renderListings, leads: renderLeads, transactions: renderTransactions, financing: renderFinancing, presell: renderPresell, portal: renderBuyerPortal, playbook: renderPlaybook, users: renderUsers, admin: renderAdmin, website: renderWebsite, settings: renderSettings };
     content.innerHTML = map[state.view] ? map[state.view]() : "";
     updateDealPicker();
     fillIcons();
@@ -3283,7 +3319,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
   function renderTabbar() {
     const bar = $("#tabbar");
     if (!bar) return;
-    const items = currentUser ? (TABBAR[userRole()] || []).filter(t => navAllowed(t[0])) : [];
+    const items = currentUser && !showPublicLink() ? (TABBAR[userRole()] || []).filter(t => navAllowed(t[0])) : [];
     const show = items.length >= 2;
     document.body.classList.toggle("has-tabbar", show);
     bar.classList.toggle("hidden", !show);
@@ -4178,6 +4214,7 @@ function bindPerView() {
     if (state.view === "users") bindUsers();
     if (state.view === "admin") bindAdmin();
     if (state.view === "settings") bindSettings();
+    if (state.view === "website") bindWebsite();
   }
 
   /* ================= WIZARD ================= */
@@ -17814,7 +17851,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   }
 
   /* ================= BROKERAGE: ROLES, i18n, USERS ================= */
-  const FIL_TITLES = { dashboard: "Dashboard", wizard: "Bagong Investment", deal: "Pagsusuri ng Deal", portfolio: "Portfolio", pms: "Pamamahala ng Ari-arian", assistant: "AI Katulong", reports: "Mga Ulat", appraisal: "Pagtatasa", "value-guide": "Value Guide", market: "Market Scan", listings: "Mga Listahan", leads: "CRM / Mga Leads", transactions: "Mga Transaksyon", financing: "Pagpopondo", playbook: "Sales Playbook", users: "Mga User at Access", admin: "Brokerage", settings: "Mga Setting" };
+  const FIL_TITLES = { dashboard: "Dashboard", wizard: "Bagong Investment", deal: "Pagsusuri ng Deal", portfolio: "Portfolio", pms: "Pamamahala ng Ari-arian", assistant: "AI Katulong", reports: "Mga Ulat", appraisal: "Pagtatasa", "value-guide": "Value Guide", market: "Market Scan", listings: "Mga Listahan", leads: "CRM / Mga Leads", transactions: "Mga Transaksyon", financing: "Pagpopondo", playbook: "Sales Playbook", users: "Mga User at Access", admin: "Brokerage", website: "Aking website", settings: "Mga Setting" };
   const LANG_NAV = { dashboard: ["Dashboard", "Dashboard"], wizard: ["New Investment", "Bagong Investment"], deal: ["Deal Analysis", "Pagsusuri ng Deal"], appraisal: ["Appraisal", "Pagtatasa"], "value-guide": ["Value Guide", "Gabay sa Halaga"], market: ["Market Scan", "Market Scan"], leads: ["CRM / Leads", "CRM / Mga Leads"], listings: ["Listings", "Mga Listahan"], portfolio: ["Portfolio", "Portfolio"], pms: ["Property Manager", "Pamamahala ng Ari-arian"], assistant: ["AI Assistant", "AI Katulong"], reports: ["Reports", "Mga Ulat"], transactions: ["Transactions", "Mga Transaksyon"], financing: ["Financing", "Pagpopondo"], playbook: ["Sales Playbook", "Sales Playbook"], users: ["Users", "Mga User"], admin: ["Brokerage", "Brokerage"], settings: ["Settings", "Mga Setting"] };
   const LANG_SECTIONS = { ANALYSIS: ["ANALYSIS", "PAGSUSURI"], WORKSPACE: ["WORKSPACE", "WORKSPACE"], BROKERAGE: ["BROKERAGE", "BROKERAGE"], ACCOUNT: ["ACCOUNT", "ACCOUNT"] };
   let lang = "en";
@@ -17825,8 +17862,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   const ROLE_CAPABILITIES = {
     "super-admin": ["*"],
     // Brokers manage Property Management records of their own (pms_v3_books.sql); agents don't.
-    broker: ["dashboard.view", "presell.view", "appraisal.view", "market.view", "leads.view", "leads.manage", "listings.view", "listings.manage", "transactions.view", "transactions.manage", "financing.view", "financing.manage", "assistant.view", "brokerage.view", "commission.manage", "payout.approve", "inventory.view", "agents.supervise", "pms.view", "pms.manage", "settings.view"],
-    agent: ["dashboard.view", "presell.view", "leads.view", "leads.manage", "listings.view", "listings.manage", "transactions.view", "transactions.manage", "financing.view", "financing.manage", "assistant.view", "settings.view"],
+    broker: ["dashboard.view", "presell.view", "appraisal.view", "market.view", "leads.view", "leads.manage", "listings.view", "listings.manage", "transactions.view", "transactions.manage", "financing.view", "financing.manage", "assistant.view", "brokerage.view", "commission.manage", "payout.approve", "inventory.view", "agents.supervise", "pms.view", "pms.manage", "website.manage", "settings.view"],
+    agent: ["dashboard.view", "presell.view", "leads.view", "leads.manage", "listings.view", "listings.manage", "transactions.view", "transactions.manage", "financing.view", "financing.manage", "assistant.view", "website.manage", "settings.view"],
     buyer: ["presell.view", "buyer.portal.view", "listings.view", "financing.view", "assistant.view", "reports.view", "settings.view"],
     seller: ["dashboard.view", "presell.view", "listings.view", "financing.view", "assistant.view", "reports.view", "settings.view"],
     owner: ["pms.view", "settings.view"],
@@ -17836,7 +17873,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
  * capability. It is the same professional tool: the same BIR dataset, the same
  * estimator, the same audience. A separate capability would have been one more
  * place to grant by accident in a role list. */
-const VIEW_CAPABILITY = { dashboard: "dashboard.view", wizard: "investments.manage", deal: "investments.manage", appraisal: "appraisal.view", "value-guide": "appraisal.view", market: "market.view", leads: "leads.view", listings: "listings.view", transactions: "transactions.view", financing: "financing.view", portfolio: "portfolio.view", presell: "presell.view", portal: "buyer.portal.view", pms: "pms.view", assistant: "assistant.view", reports: "reports.view", playbook: "playbook.manage", users: "users.manage", admin: "brokerage.view", settings: "settings.view" };
+const VIEW_CAPABILITY = { dashboard: "dashboard.view", wizard: "investments.manage", deal: "investments.manage", appraisal: "appraisal.view", "value-guide": "appraisal.view", market: "market.view", leads: "leads.view", listings: "listings.view", transactions: "transactions.view", financing: "financing.view", portfolio: "portfolio.view", presell: "presell.view", portal: "buyer.portal.view", pms: "pms.view", assistant: "assistant.view", reports: "reports.view", playbook: "playbook.manage", users: "users.manage", admin: "brokerage.view", website: "website.manage", settings: "settings.view" };
   function can(capability) {
     const caps = ROLE_CAPABILITIES[userRole()] || [];
     return caps.indexOf("*") >= 0 || caps.indexOf(capability) >= 0;
@@ -18106,6 +18143,74 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       (mgr ? '<button class="icon-btn btn-sm danger" data-user-del="' + esc(u.id) + '" title="Delete">' + icon("trash", 14) + "</button>" : "") +
       "</div></div>";
   }
+  /* Licence checks (agent websites, migration 0015): a Super Admin records what they checked on the
+   * PRC record. An agent's or broker's public page needs a current one. */
+  let licenceChecks = {};
+  const LICENCE_DEMO = {};
+  async function loadLicenceChecks() {
+    if (!roleIs("super-admin")) return;
+    if (currentUser.demo) { licenceChecks = LICENCE_DEMO; return; }
+    try {
+      const r = await SB.from("agent_verifications").select("agent_id,licence_type,licence_no,prc_name,valid_until,broker_accepted,checked_at");
+      if (r.error) return; // migration 0015 not applied yet: the button explains when used
+      licenceChecks = {};
+      (r.data || []).forEach(v => { licenceChecks[v.agent_id] = v; });
+      if (state.view === "users") render({ keepScroll: true });
+    } catch (e) { /* keep the list usable */ }
+  }
+  function licenceChip(u) {
+    if (!roleIs("super-admin") || (u.role !== "broker" && u.role !== "agent")) return "";
+    const v = licenceChecks[u.id];
+    if (!v) return '<span class="chip chip-warn" data-licence-chip>No licence check yet</span>';
+    const expired = String(v.valid_until) < new Date().toISOString().slice(0, 10);
+    return '<span class="chip' + (expired ? " chip-warn" : "") + '" data-licence-chip>' + (expired ? "Licence expired " : "Licence checked, valid until ") + esc(String(v.valid_until)) + "</span>";
+  }
+  function openLicenceCheck(id) {
+    const u = remoteProfiles.find(p => String(p.id) === String(id));
+    if (!u || !roleIs("super-admin")) return;
+    const v = licenceChecks[id] || {};
+    const agent = u.role === "agent";
+    const brokerName = agent && u.broker ? ((remoteProfiles.find(p => p.id === u.broker) || {}).full_name || "their broker") : "";
+    const old = $("#lc-modal"); if (old) old.remove();
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "lc-modal";
+    ov.innerHTML = '<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="lc-title"><div class="modal-head"><h3 id="lc-title">' + icon("shield", 15) + " Licence check: " + esc(u.full_name || u.email || "") + '</h3><button class="icon-btn" data-lc-cancel aria-label="Close">&times;</button></div>' +
+      '<div class="modal-body"><p class="dim">Compare these with the PRC record before saving. Saving records your name and the time. ' + (agent ? "A salesperson" : "A broker") + "'s public page needs a current licence check.</p>" +
+      '<div class="field"><label>Licence type</label><input class="input" value="' + (agent ? "Real estate salesperson (accreditation)" : "Real estate broker (licence)") + '" readonly></div>' +
+      '<div class="field"><label for="lc-no">Licence or accreditation number</label><input class="input" id="lc-no" maxlength="40" value="' + esc(v.licence_no || u.prc || "") + '"></div>' +
+      '<div class="field"><label for="lc-name">Name exactly as on the PRC record</label><input class="input" id="lc-name" maxlength="120" value="' + esc(v.prc_name || u.full_name || "") + '"><span class="field-hint">This name shows on their public page.</span></div>' +
+      '<div class="field"><label for="lc-until">Valid until</label><input class="input" id="lc-until" type="date" value="' + esc(v.valid_until || "") + '"></div>' +
+      (agent ? (u.broker ? '<label class="site-check"><input type="checkbox" id="lc-broker"' + (v.broker_accepted ? " checked" : "") + "> Their supervising broker, " + esc(brokerName) + ", has accepted them</label>"
+                         : '<div class="notice-banner">' + icon("alert", 14) + " <span>Set their supervising broker on the account first.</span></div>") : "") +
+      '<p class="lc-error" role="alert" data-lc-error></p></div>' +
+      '<div class="modal-foot"><button class="btn btn-ghost" data-lc-cancel>Cancel</button><button class="btn btn-primary" data-lc-save>' + icon("check", 15) + " Save licence check</button></div></div>";
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.addEventListener("click", async e => {
+      if (e.target === ov || e.target.closest("[data-lc-cancel]")) { close(); return; }
+      if (!e.target.closest("[data-lc-save]")) return;
+      const err = ov.querySelector("[data-lc-error]");
+      const row = {
+        agent_id: u.id, licence_type: agent ? "salesperson" : "broker",
+        licence_no: ov.querySelector("#lc-no").value.trim(), prc_name: ov.querySelector("#lc-name").value.trim(),
+        valid_until: ov.querySelector("#lc-until").value, broker_accepted: !!(ov.querySelector("#lc-broker") || {}).checked
+      };
+      const problem = row.licence_no.length < 3 ? "Enter the licence or accreditation number." : row.prc_name.length < 3 ? "Enter the name as it appears on the PRC record." : !row.valid_until ? "Enter the date the licence is valid until." : "";
+      if (problem) { err.textContent = problem; return; }
+      try {
+        if (currentUser.demo) LICENCE_DEMO[u.id] = Object.assign({ checked_at: new Date().toISOString() }, row);
+        else {
+          const r = await SB.from("agent_verifications").upsert(row, { onConflict: "agent_id" }).select().single();
+          if (r.error) throw r.error;
+          licenceChecks[u.id] = r.data;
+        }
+        close(); toast("Licence check saved"); render({ keepScroll: true });
+      } catch (x) {
+        const msg = String((x && x.message) || x || "");
+        err.textContent = /agent_verifications|does not exist|schema cache/i.test(msg) ? "Licence checks need database migration 0015 first." : friendlyErr(msg);
+      }
+    });
+  }
   function cloudUserCard(u) {
     const roleOpts = ROLES.map(r => '<option value="' + esc(r.value) + '"' + (u.role === r.value ? " selected" : "") + ">" + esc(r.label) + "</option>").join("");
     const pending = u.registration_status === "pending";
@@ -18120,6 +18225,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     }
     if (u.agency) extra.push('<span class="chip">' + esc(u.agency) + "</span>");
     if (u.prc) extra.push('<span class="chip">PRC ' + esc(u.prc) + "</span>");
+    const lchip = licenceChip(u); if (lchip) extra.push(lchip);
     if (u.resa) extra.push('<span class="chip">' + esc(u.resa) + "</span>");
     const pmsOwner = (pms().owners || []).find(o => o.archived !== true && String(o.authUserId || "") === String(u.id || ""));
     if (pmsOwner) extra.push('<span class="chip">PMS owner: ' + esc(pmsOwner.name || pmsOwner.email) + "</span>");
@@ -18137,6 +18243,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     const primaryLabel = pending ? "Approve account" : (rejected ? "Restore access" : "Save changes");
     const actions = '<button class="btn btn-primary btn-sm" data-profile-action="approved" data-profile-id="' + esc(u.id) + '">' + icon(pending ? "check" : (rejected ? "refresh" : "check"), 14) + " " + primaryLabel + '</button>' +
       (!rejected ? '<button class="btn btn-ghost btn-sm" data-cloud-reset-pass="' + esc(u.id) + '" title="Generate a new temporary password">' + icon("key", 14) + " Reset password</button>" : "") +
+      (roleIs("super-admin") && !rejected && (u.role === "broker" || u.role === "agent") ? '<button class="btn btn-ghost btn-sm" data-licence-check="' + esc(u.id) + '">' + icon("shield", 14) + (licenceChecks[u.id] ? " Update licence check" : " Record licence check") + "</button>" : "") +
       (!rejected ? '<button class="btn btn-ghost btn-sm danger" data-profile-action="rejected" data-profile-id="' + esc(u.id) + '">' + icon("x", 14) + (pending ? " Reject" : " Revoke access") + "</button>" : "") +
       (canDel ? '<button class="btn btn-ghost btn-sm danger" data-cloud-del="' + esc(u.id) + '" title="Permanently delete account">' + icon("trash", 14) + " Delete account</button>" : "");
     const searchText = [u.full_name, u.email, u.role, u.requested_role, u.agency, brokerName].filter(Boolean).join(" ").toLowerCase();
@@ -18283,7 +18390,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     ["commission.manage", "Commission settings"], ["payout.approve", "Approve payouts"], ["inventory.view", "Developer inventory"],
     ["reports.view", "Reports"], ["assistant.view", "Assistant"], ["buyer.portal.view", "Buyer portal"],
     ["portfolio.view", "Investor portfolio"], ["investments.manage", "Investment analysis"], ["playbook.manage", "Sales playbooks"],
-    ["users.manage", "Users, access and change log"], ["settings.view", "Settings"]
+    ["users.manage", "Users, access and change log"], ["website.manage", "My website (public agent page)"], ["settings.view", "Settings"]
   ];
   function roleMatrixCard() {
     const known = CAPABILITY_LABELS.map(c => c[0]);
@@ -18731,6 +18838,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     });
     syncPmsOwnersFromProfiles();
     syncPmsTenantsFromProfiles();
+    loadLicenceChecks();
     if (state.view === "users" || state.view === "pms") render();
     remoteProfilesLoading = false;
   }
@@ -19040,6 +19148,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         if (crt) { remoteProfilesFailed = false; loadCloudProfiles(true); return; }
         const rp = e.target.closest("[data-cloud-reset-pass]");
         if (rp) { resetCloudPassword(rp.getAttribute("data-cloud-reset-pass")); return; }
+        const lck = e.target.closest("[data-licence-check]");
+        if (lck) { openLicenceCheck(lck.getAttribute("data-licence-check")); return; }
         const cdl = e.target.closest("[data-cloud-del]");
         if (cdl) { deleteCloudAccount(cdl.getAttribute("data-cloud-del")); return; }
         const rpr = e.target.closest("[data-reset-request]");
@@ -20685,6 +20795,248 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     }
     return { email: email, name: name, agency: agency, prc: prc, resa: resa, phone: phone };
   }
+  /* ================= MY WEBSITE (agent websites, Phase 1) =================
+   * A broker's or agent's own public page. The draft is edited here and saved with
+   * agent_site_save; Publish copies it to the live page (agent_site_publish). The preview is drawn
+   * by js/agent_page.js, the same drawing visitors see. Demo mode keeps everything in memory. */
+  let siteData = null, siteDraft = null, siteBusy = "", siteError = "", siteLoading = false;
+  const SITE_DEMO = { slug: null, published_at: null, data: null, draft: {} };
+  function sitePhone(p) {
+    const d = String(p || "").replace(/\D/g, "");
+    if (/^09\d{9}$/.test(d)) return "+63" + d.slice(1);
+    if (/^639\d{9}$/.test(d)) return "+" + d;
+    if (/^[1-9]\d{7,14}$/.test(d) && /^\s*\+/.test(String(p))) return "+" + d;
+    return "";
+  }
+  function siteClean(j) {
+    const P = window.SEA_AGENT_PAGE || { TOWNS: [], NEEDS: [], LANGUAGES: [] };
+    const keys = list => list.map(x => x[0]);
+    const pick = (v, allowed) => (Array.isArray(v) ? v : []).filter((x, i, a) => allowed.indexOf(x) >= 0 && a.indexOf(x) === i);
+    const c = j.contacts || {};
+    const contacts = {};
+    ["call", "viber", "whatsapp"].forEach(k => { const v = sitePhone(c[k]); if (v) contacts[k] = v; });
+    if (/^[A-Za-z0-9.]{1,50}$/.test(c.messenger || "")) contacts.messenger = c.messenger;
+    return {
+      pitch: String(j.pitch || "").trim().slice(0, 160), bio: String(j.bio || "").trim().slice(0, 1500), bio_lang: j.bio_lang === "fil" ? "fil" : "en",
+      photo: /^https:\/\//.test(j.photo || "") ? j.photo : "", towns: pick(j.towns, keys(P.TOWNS)), needs: pick(j.needs, keys(P.NEEDS)),
+      languages: pick(j.languages, keys(P.LANGUAGES)), contacts: contacts, sections: pick(j.sections, ["listings", "about", "video"]),
+      accent: ["rust", "sea", "forest", "ink"].indexOf(j.accent) >= 0 ? j.accent : "rust", featured: pick(j.featured, (j.featured || []).slice(0, 6))
+    };
+  }
+  function siteDemoOpen() {
+    const me = currentUser || {};
+    const broker = roleIs("broker");
+    const nextYear = new Date(Date.now() + 300 * 86400000).toISOString().slice(0, 10);
+    const draft = siteClean(SITE_DEMO.draft || {});
+    return {
+      slug: SITE_DEMO.slug, published_at: SITE_DEMO.published_at, draft: draft, blockers: [],
+      unpublished_changes: !!SITE_DEMO.published_at && JSON.stringify(SITE_DEMO.data) !== JSON.stringify(draft),
+      month: { view: 42, viber: 6, call: 3, whatsapp: 2 }, month_leads: 4,
+      preview: Object.assign({}, draft, {
+        slug: SITE_DEMO.slug, name: me.name || "Maria Santos", role: broker ? "broker" : "salesperson",
+        role_label: broker ? "Real estate broker" : "PRC-accredited real estate salesperson",
+        licence: { no: me.prc || "0012345", valid_until: nextYear, checked_on: new Date().toISOString().slice(0, 10) },
+        broker: broker ? null : { name: "Alfredo B. Reyes", licence_no: "0004321" }, reply: null, listing_count: 0, listings: []
+      })
+    };
+  }
+  async function siteCall(fn, args) {
+    if (currentUser.demo) {
+      if (fn === "agent_site_save") SITE_DEMO.draft = siteClean(args.p_draft);
+      if (fn === "agent_site_publish") {
+        const d = siteClean(SITE_DEMO.draft);
+        if (!Object.keys(d.contacts).length) throw new Error("Add at least one way to contact you.");
+        SITE_DEMO.data = d; SITE_DEMO.slug = SITE_DEMO.slug || String((currentUser && currentUser.name) || "agent").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        SITE_DEMO.published_at = SITE_DEMO.published_at || new Date().toISOString();
+      }
+      if (fn === "agent_site_unpublish") SITE_DEMO.published_at = null;
+      return siteDemoOpen();
+    }
+    const r = await SB.rpc(fn, args || {});
+    if (r.error) throw r.error;
+    return r.data;
+  }
+  async function loadSite() {
+    if (siteLoading) return;
+    siteLoading = true; siteError = "";
+    try {
+      siteData = await siteCall("agent_site_open");
+      siteDraft = JSON.parse(JSON.stringify(siteData.draft || {}));
+    } catch (e) {
+      const msg = String((e && e.message) || e || "");
+      siteError = /agent_site_open|schema cache|does not exist/i.test(msg) ? "My website needs database migration 0015 first. Ask a Super Admin to apply it." : friendlyErr(msg);
+    }
+    siteLoading = false;
+    if (state.view === "website") render();
+  }
+  function siteReadiness(d) {
+    const c = d.contacts || {};
+    return [
+      ["Photo", !!d.photo], ["Pitch", !!d.pitch], ["About you", String(d.bio || "").length >= 80],
+      ["Towns you cover", (d.towns || []).length > 0], ["At least two contact buttons", Object.keys(c).length >= 2]
+    ];
+  }
+  function sitePreviewData() {
+    const d = siteClean(siteDraft || {});
+    return Object.assign({}, (siteData && siteData.preview) || {}, d);
+  }
+  function siteChecks(name, list, chosen) {
+    return '<fieldset class="site-checks"><legend>' + esc(name) + '</legend><div class="site-check-grid">' + list.map(x =>
+      '<label class="site-check"><input type="checkbox" data-site-list="' + esc(name) + '" value="' + esc(x[0]) + '"' + ((chosen || []).indexOf(x[0]) >= 0 ? " checked" : "") + "> " + esc(x[1]) + "</label>").join("") + "</div></fieldset>";
+  }
+  function renderWebsite() {
+    if (!roleIs("broker") && !roleIs("agent")) return '<div class="card card-pad empty"><h3>My website is for brokers and agents</h3><p class="dim">Each approved broker and agent gets a public page here.</p></div>';
+    if (!siteData && !siteError) { setTimeout(loadSite, 0); return '<div class="card card-pad empty">Loading your page…</div>'; }
+    if (siteError) return '<div class="card card-pad empty"><h3>Could not open My website</h3><p class="dim">' + esc(siteError) + '</p><button class="btn btn-primary mt-8" data-site-retry>' + icon("refresh", 14) + " Try again</button></div>";
+    const P = window.SEA_AGENT_PAGE;
+    const d = siteDraft || {};
+    const c = d.contacts || {};
+    const live = !!siteData.published_at;
+    const blockers = siteData.blockers || [];
+    const ready = siteReadiness(siteClean(d));
+    const done = ready.filter(r => r[1]).length;
+    const address = siteData.slug ? location.origin + location.pathname.replace(/[^/]*$/, "") + "agents/" + siteData.slug : "";
+    const status = live ? (siteData.unpublished_changes ? "Live, with changes not published yet" : "Live") : "Not published";
+    const month = siteData.month || {};
+    const taps = ["call", "viber", "whatsapp", "messenger", "save"].reduce((n, k) => n + Number(month[k] || 0), 0);
+    const sections = d.sections || [];
+    const pv = sitePreviewData();
+    const lic = pv.licence;
+    let html = '<section class="site-editor"><div class="hero"><div><h1>My website</h1><p>Your own page on SEA ESTATES. Visitors can message you, call or chat, and see your licence and listings.</p></div>' +
+      '<div class="actions"><span class="site-status' + (live ? " is-live" : "") + '" data-site-status>' + esc(status) + "</span>" +
+      (live && siteData.slug ? '<a class="btn btn-ghost" href="#/agents/' + esc(siteData.slug) + '">View my page</a>' : "") +
+      '<button class="btn btn-ghost" data-site-save' + (siteBusy ? " disabled" : "") + ">" + (siteBusy === "save" ? "Saving…" : "Save draft") + "</button>" +
+      '<button class="btn btn-primary" data-site-publish' + (siteBusy || blockers.length ? " disabled" : "") + ">" + (siteBusy === "publish" ? "Publishing…" : live ? "Publish changes" : "Publish my page") + "</button></div></div>";
+    if (blockers.length) html += '<div class="notice-banner mt-16 site-blockers" role="status">' + icon("shield", 14) + ' <div><b>Your page cannot go public yet.</b><ul>' + blockers.map(b => "<li>" + esc(b) + "</li>").join("") + "</ul></div></div>";
+    html += '<div class="site-grid"><div class="site-form">';
+    html += '<div class="card card-pad"><h3>Page address</h3>' + (address
+      ? '<div class="site-address"><code data-site-address>' + esc(address) + '</code><button class="btn btn-ghost btn-sm" data-site-copy>' + icon("copy", 14) + " Copy link</button></div><p class=\"dim tiny\">Set once from the name on your licence check, so printed links keep working.</p>"
+      : '<p class="dim">Your address is made when you first publish, from the name on your licence check (for example agents/maria-santos).</p>') + "</div>";
+    html += '<div class="card card-pad"><h3>Name and licence</h3><p>' + esc(pv.name || "") + " · " + esc(pv.role_label || "") + "</p>" +
+      (lic ? '<p class="dim tiny">Licence no. ' + esc(lic.no) + ", valid until " + esc(lic.valid_until) + ". Checked by our office on " + esc(lic.checked_on) + ".</p>" : '<p class="dim tiny">Our office has not recorded your licence check yet.</p>') +
+      '<p class="dim tiny">Your name and licence come from the licence check our office records. Ask a Super Admin to change them.</p></div>';
+    html += '<div class="card card-pad"><h3>About you</h3>' +
+      '<div class="field"><label for="site-photo-file">Photo</label><div class="site-photo-row">' + (d.photo ? '<img src="' + esc(d.photo) + '" alt="Your current photo" class="site-photo">' : '<span class="site-photo site-photo-empty" aria-hidden="true">' + esc(String(pv.name || "?").charAt(0)) + "</span>") +
+      '<input id="site-photo-file" type="file" accept="image/*" data-site-photo><span class="dim tiny" data-site-photo-status></span></div></div>' +
+      '<div class="field"><label for="site-pitch">Pitch, one sentence</label><input class="input" id="site-pitch" data-site-field="pitch" maxlength="160" value="' + esc(d.pitch || "") + '" placeholder="I help families find lots and homes in Lipa, with the title checked first."><span class="field-hint"><span data-site-count="pitch">' + String(d.pitch || "").length + "</span> of 160 characters</span></div>" +
+      '<div class="field"><label for="site-bio">About me</label><textarea class="input" id="site-bio" data-site-field="bio" rows="5" maxlength="1500">' + esc(d.bio || "") + '</textarea><span class="field-hint"><span data-site-count="bio">' + String(d.bio || "").length + "</span> of 1,500 characters</span></div>" +
+      '<label class="site-check"><input type="checkbox" data-site-fil' + (d.bio_lang === "fil" ? " checked" : "") + "> My About me is in Filipino or Taglish</label></div>";
+    html += '<div class="card card-pad"><h3>Where and what</h3>' + siteChecks("Towns you cover", P.TOWNS, d.towns) + siteChecks("What you help with", P.NEEDS, d.needs) + siteChecks("Languages you speak", P.LANGUAGES, d.languages) + "</div>";
+    html += '<div class="card card-pad"><h3>Contact buttons</h3><p class="dim tiny">Only the numbers you add here show on your page. Leave a box empty to hide that button.</p><div class="grid-2">' +
+      [["call", "Mobile for calls", "tel"], ["viber", "Viber number", "tel"], ["whatsapp", "WhatsApp number", "tel"], ["messenger", "Messenger username (m.me/…)", "text"]].map(x =>
+        '<div class="field"><label for="site-c-' + x[0] + '">' + esc(x[1]) + '</label><input class="input" id="site-c-' + x[0] + '" type="' + x[2] + '"' + (x[2] === "tel" ? ' inputmode="tel"' : "") + ' data-site-contact="' + x[0] + '" value="' + esc(x[0] === "messenger" ? (c.messenger || "") : (c[x[0]] ? P.phoneText(c[x[0]]) : "")) + '" placeholder="' + (x[2] === "tel" ? "For example 0917 123 4567" : "For example maria.santos") + '"><span class="field-hint" data-site-contact-hint="' + x[0] + '"></span></div>').join("") + "</div></div>";
+    html += '<div class="card card-pad"><h3>What your page shows</h3>' +
+      [["listings", "My listings"], ["about", "About me"], ["video", "I offer video viewings for buyers abroad"]].map(x =>
+        '<label class="site-check"><input type="checkbox" data-site-section="' + x[0] + '"' + (sections.indexOf(x[0]) >= 0 ? " checked" : "") + "> " + esc(x[1]) + "</label>").join("") +
+      '<p class="dim tiny">Your licence card always shows. Your track record and client reviews will too, once there are records.</p>' +
+      '<fieldset class="site-checks"><legend>Colour</legend><div class="site-check-grid">' + [["rust", "Rust"], ["sea", "Sea"], ["forest", "Forest"], ["ink", "Ink"]].map(x =>
+        '<label class="site-check"><input type="radio" name="site-accent" data-site-accent value="' + x[0] + '"' + ((d.accent || "rust") === x[0] ? " checked" : "") + '> <span class="site-swatch" style="background:' + P.ACCENTS[x[0]][0] + '" aria-hidden="true"></span>' + x[1] + "</label>").join("") + "</div></fieldset></div>";
+    if (live) html += '<div class="card card-pad"><h3>Take my page down</h3><p class="dim">Your page stops showing to visitors. Your draft stays here.</p><button class="btn btn-ghost danger" data-site-unpublish>Take my page down</button></div>';
+    html += '</div><aside class="site-aside">';
+    html += '<div class="card card-pad"><h3>Ready for visitors</h3><p class="dim tiny" data-site-ready-count>' + done + " of " + ready.length + " done</p><ul class=\"site-ready\" data-site-ready>" + ready.map(r => '<li class="' + (r[1] ? "is-done" : "") + '">' + icon(r[1] ? "check" : "circle", 14) + " " + esc(r[0]) + "</li>").join("") + "</ul></div>";
+    html += '<div class="card card-pad"><h3>This month</h3><dl class="site-month">' + [["Page views", month.view || 0], ["Taps on contact buttons", taps], ["Messages from your page", siteData.month_leads || 0]].map(x => "<div><dt>" + esc(x[0]) + "</dt><dd>" + esc(String(x[1])) + "</dd></div>").join("") + "</dl></div>";
+    html += '<div class="card card-pad"><h3>Preview</h3><p class="dim tiny">How visitors will see your page after you publish.</p><div class="site-preview" inert data-site-preview><div class="ag-preview">' + (P ? P.html(pv, { preview: true }) : "") + "</div></div></div>";
+    html += "</aside></div></section>";
+    return html;
+  }
+  function siteRefreshSide() {
+    const pv = document.querySelector("[data-site-preview] .ag-preview");
+    if (pv && window.SEA_AGENT_PAGE) pv.innerHTML = window.SEA_AGENT_PAGE.html(sitePreviewData(), { preview: true });
+    const ready = siteReadiness(siteClean(siteDraft || {}));
+    const list = document.querySelector("[data-site-ready]");
+    if (list) list.innerHTML = ready.map(r => '<li class="' + (r[1] ? "is-done" : "") + '">' + icon(r[1] ? "check" : "circle", 14) + " " + esc(r[0]) + "</li>").join("");
+    const count = document.querySelector("[data-site-ready-count]");
+    if (count) count.textContent = ready.filter(r => r[1]).length + " of " + ready.length + " done";
+    const st = document.querySelector("[data-site-status]");
+    if (st && siteData && siteData.published_at) st.textContent = "Live, with changes not published yet";
+  }
+  async function siteSave(publish) {
+    siteBusy = publish ? "publish" : "save"; render({ keepScroll: true });
+    try {
+      siteData = await siteCall("agent_site_save", { p_draft: siteClean(siteDraft || {}) });
+      if (publish) siteData = await siteCall("agent_site_publish");
+      siteDraft = JSON.parse(JSON.stringify(siteData.draft || {}));
+      toast(publish ? "Published. Your page is live." : "Draft saved");
+    } catch (e) {
+      toast((publish ? "Could not publish: " : "Could not save: ") + esc(friendlyErr(String((e && e.message) || e))), "err");
+    }
+    siteBusy = ""; render({ keepScroll: true });
+  }
+  function bindWebsite() {
+    const root = document.querySelector(".site-editor");
+    if (!root) {
+      const retry = document.querySelector("[data-site-retry]");
+      if (retry) retry.addEventListener("click", () => { siteError = ""; siteData = null; render(); });
+      return;
+    }
+    const draft = () => (siteDraft = siteDraft || {});
+    root.addEventListener("input", e => {
+      const t = e.target;
+      if (t.hasAttribute("data-site-field")) {
+        draft()[t.getAttribute("data-site-field")] = t.value;
+        const n = root.querySelector('[data-site-count="' + t.getAttribute("data-site-field") + '"]'); if (n) n.textContent = t.value.length;
+      } else if (t.hasAttribute("data-site-contact")) {
+        const k = t.getAttribute("data-site-contact");
+        draft().contacts = Object.assign({}, draft().contacts, { [k]: t.value.trim() });
+        const hint = root.querySelector('[data-site-contact-hint="' + k + '"]');
+        const bad = t.value.trim() && (k === "messenger" ? !/^[A-Za-z0-9.]{1,50}$/.test(t.value.trim()) : !sitePhone(t.value));
+        if (hint) hint.textContent = bad ? (k === "messenger" ? "Letters, numbers and dots only, as in m.me/maria.santos" : "Enter a number like 0917 123 4567 or +63 917 123 4567") : "";
+        t.setAttribute("aria-invalid", bad ? "true" : "false");
+      } else return;
+      siteRefreshSide();
+    });
+    root.addEventListener("change", e => {
+      const t = e.target;
+      if (t.hasAttribute("data-site-list")) {
+        const name = t.getAttribute("data-site-list");
+        const key = name === "Towns you cover" ? "towns" : name === "What you help with" ? "needs" : "languages";
+        draft()[key] = Array.from(root.querySelectorAll('[data-site-list="' + name + '"]:checked')).map(x => x.value);
+      } else if (t.hasAttribute("data-site-section")) {
+        draft().sections = Array.from(root.querySelectorAll("[data-site-section]:checked")).map(x => x.getAttribute("data-site-section"));
+      } else if (t.hasAttribute("data-site-accent")) {
+        draft().accent = t.value;
+      } else if (t.hasAttribute("data-site-fil")) {
+        draft().bio_lang = t.checked ? "fil" : "en";
+      } else if (t.hasAttribute("data-site-photo")) {
+        sitePhoto(t.files && t.files[0]); return;
+      } else return;
+      siteRefreshSide();
+    });
+    root.addEventListener("click", e => {
+      if (e.target.closest("[data-site-save]")) siteSave(false);
+      else if (e.target.closest("[data-site-publish]")) siteSave(true);
+      else if (e.target.closest("[data-site-unpublish]")) {
+        siteBusy = "save";
+        siteCall("agent_site_unpublish").then(r => { siteData = r; toast("Your page is down. Publish again any time."); })
+          .catch(err => toast("Could not take the page down: " + esc(friendlyErr(String((err && err.message) || err))), "err"))
+          .then(() => { siteBusy = ""; render({ keepScroll: true }); });
+      } else if (e.target.closest("[data-site-copy]")) {
+        const text = (root.querySelector("[data-site-address]") || {}).textContent || "";
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => toast("Link copied")).catch(() => toast(text, "info"));
+        else toast(text, "info");
+      }
+    });
+  }
+  async function sitePhoto(file) {
+    const status = document.querySelector("[data-site-photo-status]");
+    if (!file) return;
+    if (currentUser.demo) { if (status) status.textContent = "Photos upload when you are signed in for real."; return; }
+    try {
+      if (status) status.textContent = "Uploading…";
+      const optimized = await lsOptimizeImage(file);
+      if (optimized.blob.size > 2 * 1024 * 1024) throw new Error("The photo is larger than 2 MB after resizing.");
+      const path = currentUser.id + "/agent-photo-" + (crypto.randomUUID ? crypto.randomUUID() : Date.now()) + "." + optimized.ext;
+      const { error } = await storageUpload("listing-photos", path, optimized.blob, { contentType: optimized.contentType, upsert: false, cacheControl: "31536000" });
+      if (error) throw error;
+      const { data } = SB.storage.from("listing-photos").getPublicUrl(path);
+      siteDraft = Object.assign({}, siteDraft, { photo: data && data.publicUrl ? data.publicUrl : "" });
+      if (status) status.textContent = "Photo added. Save or publish to keep it.";
+      render({ keepScroll: true });
+    } catch (e) {
+      if (status) status.textContent = "Could not upload: " + friendlyErr(String((e && e.message) || e));
+    }
+  }
+
   function renderSettings() {
     const d = profileDetails();
     const cloud = !!(SB && currentUser && currentUser.id && !currentUser.demo);

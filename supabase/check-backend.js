@@ -202,6 +202,8 @@ const REST_RPCS = [
   { fn: "viewing_reminder_sweep", note: "viewing reminders, server only (migrations/0011)", pending: "0011", body: { p_dry_run: true } },
   { fn: "compliance_expiry_sweep", note: "licence renewal reminders, server only (migrations/0011)", pending: "0011", body: { p_dry_run: true } },
   { fn: "admin_person_find", note: "find a person, Super Admin only (migrations/0013)", pending: "0013", body: { p_query: "0917 000 0000" } },
+  { fn: "public_agent", note: "agent pages, listing function only (migrations/0015)", pending: "0015", body: { p_slug: "x" } },
+  { fn: "agent_site_open", note: "My website, brokers and agents (migrations/0015)", pending: "0015" },
 ];
 async function probeRpc(entry) {
   try {
@@ -253,6 +255,8 @@ const AUTO_VARS = new Set(["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
 // only the function name, which is how the descriptions went missing.)
 const KNOWN_VARS = new Map(Object.entries({
   INQUIRY_RATE_LIMIT_SALT: "listing-api, location-report: private salt for inquiry rate limiting",
+  VAPID_PRIVATE_KEY: "listing-api: sends a phone alert as soon as a website lead is saved (same value as the repository secret); optional",
+  VAPID_SUBJECT: "listing-api: contact address for the push services; optional",
   META_VERIFY_TOKEN: "fb-leads: Meta webhook verify token",
   META_PAGE_TOKEN: "fb-leads: Meta page access token (Graph API)",
   META_APP_SECRET: "fb-leads: Meta app secret (signature verification)",

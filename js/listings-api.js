@@ -14,6 +14,7 @@
     const token = await accessToken();
     if (token) headers.Authorization = "Bearer " + token;
     if (config.body !== undefined) headers["Content-Type"] = "application/json";
+    if (config.key) headers["Idempotency-Key"] = config.key;
 
     const response = await fetch(window.ESREALTY_API_BASE + path, {
       method: config.method || "GET",
@@ -51,6 +52,9 @@
     favorites: function () { return request("/users/me/favorites"); },
     siteSettings: function () { return request("/site-settings"); },
     inquire: function (id, inquiry) { return request("/listings/" + encodeURIComponent(id) + "/inquiries", { method: "POST", body: inquiry }); },
-    contact: function (inquiry) { return request("/contacts", { method: "POST", body: inquiry }); }
+    contact: function (inquiry) { return request("/contacts", { method: "POST", body: inquiry }); },
+    agent: function (slug) { return request("/agents/" + encodeURIComponent(slug)); },
+    agentTap: function (slug, kind) { return request("/agents/" + encodeURIComponent(slug) + "/taps", { method: "POST", body: { kind: kind } }); },
+    agentInquire: function (slug, inquiry, key) { return request("/agents/" + encodeURIComponent(slug) + "/inquiries", { method: "POST", body: inquiry, key: key }); }
   };
 })();
