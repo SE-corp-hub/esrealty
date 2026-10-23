@@ -31,7 +31,7 @@ c("404: the old relative refresh that looped is gone", !/content="0;url=\.\/"/.t
 
 // Links before the Worker: one switch, off until pull request #32 turns it on.
 const ap = read("js/agent_page.js");
-c("agent page links use the #/ form until the Worker is live", /var PATH_LINKS = false;/.test(ap) && /\(PATH_LINKS \? "agents\/" : "#\/agents\/"\)/.test(ap));
+c("with the Worker, agent page links use the /agents/<slug> form", /var PATH_LINKS = true;/.test(ap) && /\(PATH_LINKS \? "agents\/" : "#\/agents\/"\)/.test(ap));
 const app = read("js/app.js");
 c("My website's address and the saved contact use that one function", /P\.pageUrl\(siteData\.slug\)/.test(app) && /"URL:" \+ pageUrl\(p\.slug\)/.test(ap) && !/"agents\/" \+ siteData\.slug/.test(app));
 
