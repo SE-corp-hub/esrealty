@@ -162,17 +162,18 @@ ok(/RA 12001.*Real Property Valuation and Assessment Reform Act/s.test(DOCS),
 
 /* ---------- PDF renderer ---------- */
 section("PDF renderer");
-ok(/vendor\/pdf-lib\/pdf-lib\.min\.js/.test(HTML), "pdf-lib is vendored, not from a CDN");
+const UTIL = L("js/util.js");  // the lazy loader lives here (ESREALTY_UTIL.loadScriptOnce)
+ok(/vendor\/pdf-lib\/pdf-lib\.min\.js/.test(UTIL), "pdf-lib is vendored, not from a CDN");
 ok(!/cdn\./.test(PDF), "the renderer does not reach a CDN");
 ok(/function toBlob\(lib, r, meta\)/.test(PDF), "toBlob takes the lib as an argument");
-ok(/ESREALTY_PDF_LIB/.test(HTML), "a pdf-lib namespace is defined");
-ok(/ensure\s*:\s*function\s*\(\s*\)/.test(HTML), "a lazy loader is defined");
+ok(/window\.ESREALTY_PDF_LIB = \{/.test(UTIL) && /src="js\/util\.js"/.test(HTML), "a pdf-lib namespace is defined (js/util.js, loaded by index.html)");
+ok(/ensure\s*:\s*function\s*\(\s*\)/.test(UTIL), "a lazy loader is defined");
 /* The loader must not be a blocking <script src> tag: 513 KB on every page
    load would be paid by every user of the public storefront to serve an
    internal tool. */
 const pdfTag = /<script[^>]*src="vendor\/pdf-lib[^"]*"[^>]*>/.test(HTML);
 ok(!pdfTag, "pdf-lib is NOT in a blocking script tag (lazy-loaded)");
-ok(/document\.createElement\("script"\)/.test(HTML), "the loader injects the script on demand");
+ok(/document\.createElement\("script"\)/.test(UTIL), "the loader injects the script on demand");
 /* Strip comments before scanning for the peso sign: it is mentioned in a
  * comment explaining why it is NOT used, and a naive search finds that. */
 const pdfCode = PDF.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");

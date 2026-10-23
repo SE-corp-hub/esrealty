@@ -65,4 +65,21 @@
     return 'src="' + util.esc(small) + '" data-full="' + util.esc(full) + '" onerror="' +
       util.esc("if(this.dataset.full){var f=this.dataset.full;delete this.dataset.full;this.src=f}" + (onFail ? "else{" + onFail + "}" : "")) + '"';
   };
+  /* A script fetched on first use instead of at start-up (big libraries only some screens need).
+   * Resolves with the global it defines. A failed download can be tried again; a script that
+   * loads but defines nothing is an error. */
+  var scripts = {};
+  util.loadScriptOnce = function (src, globalName) {
+    if (window[globalName]) return Promise.resolve(window[globalName]);
+    if (!scripts[src]) scripts[src] = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = src;
+      s.onload = function () { window[globalName] ? resolve(window[globalName]) : reject(new Error(src + " loaded without " + globalName)); };
+      s.onerror = function () { delete scripts[src]; s.remove(); reject(new Error("Could not load " + src)); };
+      document.head.appendChild(s);
+    });
+    return scripts[src];
+  };
+  /* pdf-lib (513 KB) is only for the internal Value Guide report. */
+  window.ESREALTY_PDF_LIB = { ensure: function () { return util.loadScriptOnce("vendor/pdf-lib/pdf-lib.min.js?v=1", "PDFLib"); } };
 })();

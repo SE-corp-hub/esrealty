@@ -40,6 +40,7 @@ const SHELL = [
   "./js/listings-api.js",
   "./js/agent_page.js",
   "./js/agent_directory.js",
+  "./js/agent_share.js",
   "./js/storefront.js",
   "./js/value_guide_finance.js",
   "./js/value_guide_evidence.js",

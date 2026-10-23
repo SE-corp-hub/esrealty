@@ -41,11 +41,14 @@ c("the QR library is vendored with its licence", /Kazuhiko Arase, MIT/.test(qr) 
 const qrcode = require(path.join(ROOT, "vendor/qrcode/qrcode.min.js"));
 const code = qrcode(0, "M"); code.addData("https://esrealty.tradersgag6.workers.dev/#/agents/maria-santos-dela-cruz"); code.make();
 c("it encodes an agent page address", code.getModuleCount() >= 25 && code.isDark(0, 0) === true);
-c("My website loads it only when Download QR is pressed", /s\.src = "vendor\/qrcode\/qrcode\.min\.js\?v=1"/.test(app) && !/vendor\/qrcode/.test(read("index.html")) && /data-site-qr/.test(app));
+const share = read("js/agent_share.js");
+c("My website loads the share drawing, and it the QR library, only when needed",
+  /loadScriptOnce\("vendor\/qrcode\/qrcode\.min\.js\?v=1", "qrcode"\)/.test(share) && /loadScriptOnce\("js\/agent_share\.js\?v=1", "SEA_AGENT_SHARE"\)/.test(app)
+  && !/vendor\/qrcode|agent_share/.test(read("index.html")) && /data-site-qr/.test(app));
 
 // Preview image at publish.
 c("publishing makes the 1200 x 630 preview image and keeps it in the page data",
-  /canvas\.width = 1200; canvas\.height = 630;/.test(app) && /og_image: await siteCardUpload\(sitePreviewData\(\)\)/.test(app)
+  /canvas\.width = 1200; canvas\.height = 630;/.test(share) && /og_image: await siteCardUpload\(sitePreviewData\(\)\)/.test(app)
   && /og_image: \/\^https:\\\/\\\/\/\.test\(j\.og_image \|\| ""\) \? j\.og_image : ""/.test(app));
 
 // Pre-selling: licence to sell number and date before publishing.
@@ -62,7 +65,7 @@ c("they are sent with the sign-up and shown in Users & Access", /requested_prc: 
 c("Join as an agent opens sign-up with the agent role chosen", /data-sf-auth="signup-agent"/.test(read("js/agent_directory.js")) && /mode === "signup-agent"/.test(app));
 
 // Filipino.
-c("My website has Filipino labels and a Filipino menu name", /website: \["My website", "Aking website"\]/.test(app) && /fw\("My website", "Aking website"\)/.test(app));
+c("My website has Filipino labels and a Filipino menu name", /website: \["My website", "Aking website"\]/.test(app) && /title: \["My website", "Aking website"\]/.test(app) && /const WEBSITE_TEXT = \{/.test(app));
 
 // Migration 0017.
 const m17 = read("supabase/migrations/0017_agent_sites_finish.sql");

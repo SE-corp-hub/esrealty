@@ -28,11 +28,8 @@
   <link rel="stylesheet" href="css/storefront.css">
 
   <script>window.ESREALTY_LEAFLET = { ensure: function () { if (window.L) return Promise.resolve(); if (!this._p) this._p = new Promise(function (resolve) { var l = document.createElement("link"); l.rel = "stylesheet"; l.href = "vendor/leaflet/leaflet.css"; document.head.appendChild(l); var s = document.createElement("script"); s.src = "vendor/leaflet/leaflet.js?v=19"; s.onload = s.onerror = function () { resolve(); }; document.head.appendChild(s); }); return this._p; } };</script>
-  <!-- pdf-lib is 513 KB and only the internal Value Guide needs it, so it is
-       fetched on first use rather than added to the startup payload every page
-       load pays for. Same lazy pattern as Leaflet above. The promise resolves
-       even on failure; callers check window.PDFLib and surface the error. -->
-  <script>window.ESREALTY_PDF_LIB = { ensure: function () { if (window.PDFLib) return Promise.resolve(window.PDFLib); if (!this._p) this._p = new Promise(function (resolve, reject) { var s = document.createElement("script"); s.src = "vendor/pdf-lib/pdf-lib.min.js?v=1"; s.onload = function () { window.PDFLib ? resolve(window.PDFLib) : reject(new Error("pdf-lib loaded without exposing PDFLib")); }; s.onerror = function () { reject(new Error("Could not load vendor/pdf-lib/pdf-lib.min.js")); }; document.head.appendChild(s); }); return this._p; } };</script>
+  <!-- pdf-lib (513 KB, internal Value Guide only) is fetched on first use:
+       ESREALTY_PDF_LIB.ensure() in js/util.js. -->
   <script src="js/util.js" defer></script>
   <script src="js/supabase-config.js" defer></script>
   <script src="js/listings-api.js" defer></script>
