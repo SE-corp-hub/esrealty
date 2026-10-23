@@ -37,7 +37,8 @@ language sql stable security definer set search_path to 'public' as $$
       when coalesce(nullif(payload ->> 'status', ''), 'new') = 'new' and created_at < now() - interval '24 hours'
         then 1441 end as mins
     from public.crm_leads
-    where assigned_to_id = p_agent and created_at > now() - interval '90 days'
+    -- Leads the agent typed in for themselves do not count: only leads that came to them.
+    where assigned_to_id = p_agent and created_by is distinct from p_agent and created_at > now() - interval '90 days'
   )
   select case when count(mins) >= 5 then percentile_cont(0.5) within group (order by mins)::numeric end from l where mins is not null $$;
 
@@ -48,7 +49,7 @@ language sql stable security definer set search_path to 'public' as $$
               when m <= 60 then 'within an hour'
               when m <= 240 then 'within 4 hours'
               when m <= 1440 then 'within a day'
-              else null end
+              else 'in more than a day' end
   from (select public.agent_reply_minutes(p_agent) as m) x $$;
 
 -- 2. Verified: ID seen and phone confirmed --------------------------------------------------------
@@ -67,13 +68,19 @@ returns trigger language plpgsql set search_path to 'public' as $function$
 begin
   new.licence_no := btrim(new.licence_no);
   new.prc_name := btrim(new.prc_name);
-  if tg_op = 'INSERT' or (new.licence_type, new.licence_no, new.prc_name, new.valid_until, new.broker_accepted)
+  -- The date moves when the licence details change, or when the office re-checks and saves with
+  -- checked_at sent empty ("I checked the PRC record again today").
+  if tg_op = 'INSERT' or new.checked_at is null or (new.licence_type, new.licence_no, new.prc_name, new.valid_until, new.broker_accepted)
        is distinct from (old.licence_type, old.licence_no, old.prc_name, old.valid_until, old.broker_accepted) then
     new.checked_by := auth.uid();
     new.checked_at := now();
   else
     new.checked_by := old.checked_by;
     new.checked_at := old.checked_at;
+  end if;
+  -- A different licence number or PRC name is a different identity: the ID and phone checks start again.
+  if tg_op = 'UPDATE' and (new.licence_no, new.prc_name) is distinct from (old.licence_no, old.prc_name) then
+    new.id_seen := false; new.phone_confirmed := false;
   end if;
   if new.id_seen and (tg_op = 'INSERT' or not old.id_seen) then new.id_seen_at := now(); new.id_seen_by := auth.uid();
   elsif not new.id_seen then new.id_seen_at := null; new.id_seen_by := null;
@@ -96,19 +103,30 @@ language sql stable security definer set search_path to 'public' as $$
 create or replace function public.deal_closed_on(p jsonb, p_updated timestamptz) returns date language sql immutable as $$
   select coalesce(case when p ->> 'doasDate' ~ '^\d{4}-\d{2}-\d{2}$' then (p ->> 'doasDate')::date end, (p_updated at time zone 'Asia/Manila')::date) $$;
 
+-- Who may be credited on a deal: anyone on a Super Admin's deal; on a broker's deal, the broker and
+-- the agents they supervise. Brokers write their own deals from the app, so a broker cannot credit
+-- (or borrow listings from) another team.
+create or replace function public.deal_credit_ok(p_owner uuid, p_person uuid) returns boolean
+language sql stable security definer set search_path to 'public' as $$
+  select p_person is not null and (
+         p_person = p_owner
+      or exists (select 1 from public.profiles o where o.id = p_owner and o.role::text = 'super-admin')
+      or exists (select 1 from public.profiles a where a.id = p_person and a.broker = p_owner)) $$;
+
 create or replace function public.agent_record(p_agent uuid) returns jsonb
 language plpgsql stable security definer set search_path to 'public' as $function$
 declare
   out jsonb;
 begin
   with d as (
-    select t.id, t.payload p, t.updated_at,
+    select t.id, t.payload p, t.updated_at, t.broker_id,
            t.payload ->> 'buyerAgentId' = p_agent::text as as_buyer,
            t.payload ->> 'sellerAgentId' = p_agent::text as as_seller,
            public.deal_closed_on(t.payload, t.updated_at) as closed_on
       from public.broker_transactions t
      where t.payload ->> 'stage' in ('doas', 'done')
        and (t.payload ->> 'buyerAgentId' = p_agent::text or t.payload ->> 'sellerAgentId' = p_agent::text)
+       and public.deal_credit_ok(t.broker_id, p_agent)
   )
   select jsonb_build_object(
     'deals', count(*),
@@ -123,7 +141,7 @@ begin
                  'lot_sqm', l.lot_size_sqm, 'floor_sqm', l.floor_area_sqm,
                  'price', case when d2.p ->> 'showPrice' = 'true' and coalesce(d2.p ->> 'price', '') ~ '^[0-9]+(\.[0-9]+)?$' and (d2.p ->> 'price')::numeric > 0 then (d2.p ->> 'price')::numeric end)) as r
           from d d2
-          left join public.shared_listings l on l.id = d2.p ->> 'listingId'
+          left join public.shared_listings l on l.id = d2.p ->> 'listingId' and public.deal_credit_ok(d2.broker_id, l.owner_id)
          where d2.p ->> 'showDeal' = 'true'
          order by d2.closed_on desc
          limit 10) rr), '[]'::jsonb))
@@ -156,7 +174,10 @@ create table if not exists public.agent_reviews (
 );
 alter table public.agent_reviews enable row level security;
 revoke all on public.agent_reviews from anon, authenticated;
-grant select on public.agent_reviews to authenticated;
+-- Every column but the link's hash.
+revoke select on public.agent_reviews from authenticated;
+grant select (id, agent_id, deal_id, expires_at, status, client_label, town, month, body, consent_at, submitted_at,
+              moderated_by, moderated_at, reply, reply_at, created_by, created_at) on public.agent_reviews to authenticated;
 drop policy if exists "reviews read own or admin" on public.agent_reviews;
 create policy "reviews read own or admin" on public.agent_reviews for select to authenticated
   using (public.is_super_admin() or (agent_id = auth.uid() and status = 'approved'));
@@ -174,7 +195,8 @@ begin
   select * into t from public.broker_transactions where id = p_deal;
   if t.id is null then raise exception 'No such deal'; end if;
   if coalesce(t.payload ->> 'stage', '') not in ('doas', 'done') then raise exception 'Reviews are for closed deals only (Deed of Absolute Sale or Completed).'; end if;
-  if p_agent::text is distinct from t.payload ->> 'buyerAgentId' and p_agent::text is distinct from t.payload ->> 'sellerAgentId' then
+  if (p_agent::text is distinct from t.payload ->> 'buyerAgentId' and p_agent::text is distinct from t.payload ->> 'sellerAgentId')
+     or not public.deal_credit_ok(t.broker_id, p_agent) then
     raise exception 'That agent is not the buyer''s or seller''s agent on this deal.';
   end if;
   select * into existing from public.agent_reviews where agent_id = p_agent and deal_id = p_deal;
@@ -211,7 +233,7 @@ begin
   if r.id is null or r.status <> 'invited' or r.expires_at <= now() then return false; end if;
   if length(first_name) < 1 or length(words) < 20 then raise exception 'Write your first name and at least a sentence about the agent.'; end if;
   select * into t from public.broker_transactions where id = r.deal_id;
-  select nullif(city, '') into v_town from public.shared_listings where id = t.payload ->> 'listingId';
+  select nullif(city, '') into v_town from public.shared_listings where id = t.payload ->> 'listingId' and public.deal_credit_ok(t.broker_id, owner_id);
   update public.agent_reviews
      set status = 'submitted', client_label = first_name || case when initial <> '' then ' ' || initial || '.' else '' end,
          town = v_town, month = to_char(public.deal_closed_on(t.payload, t.updated_at), 'YYYY-MM'),
@@ -242,11 +264,21 @@ begin
   if not found then raise exception 'You can reply once to each published review.'; end if;
 end $function$;
 
+-- Published reviews whose deal is still closed and still credits the agent ("Linked to a closed deal").
+create or replace function public.agent_reviews_live(p_agent uuid) returns setof public.agent_reviews
+language sql stable security definer set search_path to 'public' as $$
+  select r.* from public.agent_reviews r
+    join public.broker_transactions t on t.id = r.deal_id
+   where r.agent_id = p_agent and r.status = 'approved'
+     and t.payload ->> 'stage' in ('doas', 'done')
+     and (t.payload ->> 'buyerAgentId' = p_agent::text or t.payload ->> 'sellerAgentId' = p_agent::text)
+     and public.deal_credit_ok(t.broker_id, p_agent) $$;
+
 create or replace function public.agent_reviews_public(p_agent uuid) returns jsonb
 language sql stable security definer set search_path to 'public' as $$
   select coalesce(jsonb_agg(jsonb_strip_nulls(jsonb_build_object('label', client_label, 'town', town, 'month', month, 'body', body, 'reply', reply))
                             order by submitted_at desc), '[]'::jsonb)
-    from (select * from public.agent_reviews where agent_id = p_agent and status = 'approved' order by submitted_at desc limit 12) r $$;
+    from (select * from public.agent_reviews_live(p_agent) order by submitted_at desc limit 12) r $$;
 
 -- 5. The page, with Phase 2 and 3 parts ------------------------------------------------------------
 
@@ -275,10 +307,10 @@ begin
   d := public.agent_site_clean(case when p_draft then s.draft else coalesce(s.data, '{}'::jsonb) end);
   select id, role::text as role, full_name, broker into p from public.profiles where id = p_agent;
   select * into v from public.agent_verifications where agent_id = p_agent;
-  if p.role = 'agent' then
-    select full_name into bp from public.profiles where id = p.broker;
-    select * into bv from public.agent_verifications where agent_id = p.broker;
-  end if;
+  -- Always assigned (no row gives nulls): a broker's page failed with "record bv is not assigned yet"
+  -- when it was the first page built on a connection (0015).
+  select full_name into bp from public.profiles where id = p.broker;
+  select * into bv from public.agent_verifications where agent_id = p.broker;
   feat := array(select jsonb_array_elements_text(d -> 'featured'));
   return d || jsonb_build_object(
     'slug', s.slug,
@@ -312,7 +344,7 @@ create or replace function public.agent_site_reviews() returns jsonb
 language sql stable security definer set search_path to 'public' as $$
   select coalesce(jsonb_agg(jsonb_build_object('id', id, 'label', client_label, 'town', town, 'month', month, 'body', body, 'reply', reply)
                             order by submitted_at desc), '[]'::jsonb)
-    from public.agent_reviews where agent_id = auth.uid() and status = 'approved' $$;
+    from public.agent_reviews_live(auth.uid()) $$;
 
 -- 6. Directory ------------------------------------------------------------------------------------
 
@@ -325,7 +357,7 @@ begin
     select s.agent_id, s.slug, s.data, s.published_at, s.updated_at, v.prc_name, v.checked_at, p.role::text as role,
            public.agent_reply_minutes(s.agent_id) as reply_min, public.agent_record(s.agent_id) as rec,
            (select count(*) from public.public_listing_catalog c where c.agent_id = s.agent_id and c.status = 'available') as listing_n,
-           (select count(*) from public.agent_reviews r where r.agent_id = s.agent_id and r.status = 'approved') as review_n
+           (select count(*) from public.agent_reviews_live(s.agent_id)) as review_n
       from public.agent_sites s
       join public.profiles p on p.id = s.agent_id
       left join public.agent_verifications v on v.agent_id = s.agent_id
@@ -352,6 +384,12 @@ begin
     into out from a;
   return out;
 end $function$;
+
+-- How many pages the directory would list, for the menu link (no per-agent work).
+create or replace function public.public_agent_count() returns integer
+language sql stable security definer set search_path to 'public' as $$
+  select count(*)::int from public.agent_sites s
+   where s.published_at is not null and s.data is not null and cardinality(public.agent_page_blockers(s.agent_id)) = 0 $$;
 
 -- 7. Check an agent -------------------------------------------------------------------------------
 
@@ -401,13 +439,18 @@ begin
     select value into cfg from public.site_settings where key = 'leadRouting' for update;
     if cfg is null or coalesce((cfg ->> 'enabled')::boolean, false) is not true then return new; end if;
     -- Town rule first: approved brokers and agents listed for the lead's town, in turn.
-    town := public.agent_town_slug(coalesce(new.payload -> 'fullReport' -> 'inputs' ->> 'municipality',
-                                            new.payload -> 'fullReport' -> 'location' ->> 'town', new.payload ->> 'town'));
+    -- Value Guide requests only (they carry the town the visitor chose). A broker consultation or an
+    -- appraisal request goes to the town's brokers, never to a salesperson.
+    town := case when new.payload ? 'fullReport'
+                 then public.agent_town_slug(coalesce(new.payload -> 'fullReport' -> 'inputs' ->> 'municipality', new.payload -> 'fullReport' -> 'location' ->> 'town'))
+                 else '' end;
     if town <> '' and jsonb_typeof(cfg -> 'towns' -> town) = 'array' then
       select coalesce(array_agg(p.id order by x.ord), '{}') into ids
         from jsonb_array_elements_text(cfg -> 'towns' -> town) with ordinality as x(id, ord)
         join public.profiles p on p.id::text = x.id
-       where p.role::text in ('broker', 'agent') and p.registration_status = 'approved';
+       where p.registration_status = 'approved'
+         and (p.role::text = 'broker' or (p.role::text = 'agent'
+              and coalesce(new.payload ->> 'channel', '') not in ('broker-consultation', 'professional-appraisal-request')));
     else
       ids := '{}';
     end if;
@@ -454,12 +497,16 @@ revoke all on function public.agent_reviews_public(uuid) from public, anon, auth
 revoke all on function public.agent_public_slug(uuid) from public, anon, authenticated;
 revoke all on function public.agent_page_lookup(text) from public, anon, authenticated;
 revoke all on function public.public_agents(text, text, text) from public, anon, authenticated;
+revoke all on function public.public_agent_count() from public, anon, authenticated;
+revoke all on function public.deal_credit_ok(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.agent_reviews_live(uuid) from public, anon, authenticated;
 revoke all on function public.agent_check(text) from public, anon, authenticated;
 revoke all on function public.review_lookup(text) from public, anon, authenticated;
 revoke all on function public.review_submit(text, text, text, text) from public, anon, authenticated;
 grant execute on function public.agent_public_slug(uuid) to service_role;
 grant execute on function public.agent_page_lookup(text) to service_role;
 grant execute on function public.public_agents(text, text, text) to service_role;
+grant execute on function public.public_agent_count() to service_role;
 grant execute on function public.agent_check(text) to service_role;
 grant execute on function public.review_lookup(text) to service_role;
 grant execute on function public.review_submit(text, text, text, text) to service_role;

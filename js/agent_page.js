@@ -181,7 +181,7 @@
           (Number(r.price) > 0 ? '<span class="ag-num">' + esc(money(r.price)) + "</span>" : '<span class="ag-muted">Not shown</span>') + "</td></tr>";
       }).join("") + "</tbody></table></div>" : "";
     return '<section class="ag-section ag-record" id="ag-record" aria-labelledby="ag-record-h"><div class="ag-record-text">' +
-      '<h2 id="ag-record-h">Track record</h2><p>' + plural(rec.deals, "deal") + " closed through SEA ESTATES since " + esc(month(rec.since)) + ", taken from our records. Agents cannot type these in.</p>" +
+      '<h2 id="ag-record-h">Track record</h2><p>' + plural(rec.deals, "deal") + " closed through SEA ESTATES since " + esc(month(rec.since)) + ", counted from our deal records.</p>" +
       (sides.length ? '<div class="ag-stats ag-record-sides">' + sides.join("") + "</div>" : "") + "</div>" +
       '<div class="ag-record-rows">' + table + '<p class="ag-muted">' + (rows.length ? "Other deals are counted but not listed." : "Deals are listed only when the client agrees, so these are counted but not listed.") + "</p></div></section>";
   }
@@ -390,7 +390,7 @@
         section: form.listing_id.value ? "listing" : "contact"
       }, sendKey).then(function () {
         form.outerHTML = '<div class="ag-sent" role="status" tabindex="-1"><h3>Sent to ' + esc(firstName(p.name)) + "</h3><p>" +
-          esc(firstName(p.name)) + " will reply by Viber, text or a call" + (p.reply ? ", usually " + esc(p.reply) : "") + ".</p></div>";
+          esc(firstName(p.name)) + " will reply by Viber, text or a call" + (p.reply && !/more than a day/.test(p.reply) ? ", usually " + esc(p.reply) : "") + ".</p></div>";
         var sent = root.querySelector(".ag-sent"); if (sent) sent.focus();
       }).catch(function (err) {
         button.disabled = false; button.textContent = label;

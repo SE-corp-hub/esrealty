@@ -25,11 +25,12 @@ insert into public.agent_verifications (agent_id, licence_type, licence_no, prc_
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'broker', '0007777', 'Beatriz Lim', current_date + 100, false);
 insert into public.shared_listings (id, owner_id, title, status, is_published, published_at, offer_type, price, city, property_type, lot_size_sqm) values
   ('pf-l1', '11111111-1111-1111-1111-111111111111', 'Corner lot in Sabang', 'available', true, now(), 'sale', 2850000, 'Lipa City', 'lot', 300);
-select pg_temp.as_user('11111111-1111-1111-1111-111111111111');
-select public.agent_site_save('{"pitch":"Lots in Lipa","towns":["lipa-city"],"needs":["buy","lots"],"languages":["filipino"],"contacts":{"call":"0917 123 4567"}}');
-select public.agent_site_publish();
+-- The broker's page is built first on purpose: in 0015 that failed ("record bv is not assigned yet").
 select pg_temp.as_user('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
 select public.agent_site_save('{"pitch":"Homes in Malvar","towns":["malvar"],"needs":["sell"],"languages":["english"],"contacts":{"viber":"09181112222"}}');
+select public.agent_site_publish();
+select pg_temp.as_user('11111111-1111-1111-1111-111111111111');
+select public.agent_site_save('{"pitch":"Lots in Lipa","towns":["lipa-city"],"needs":["buy","lots"],"languages":["filipino"],"contacts":{"call":"0917 123 4567"}}');
 select public.agent_site_publish();
 -- Broker Alpha has a draft page only.
 select pg_temp.as_user('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
@@ -74,9 +75,18 @@ update public.crm_leads set payload = payload || '{"status":"contacted"}' where 
 set local role service_role;
 insert into x select public.public_agents();
 reset role;
+insert into results select 'the menu count matches the directory', public.public_agent_count() = 2, '';
 insert into results select 'agents with a measured reply time come first',
   (select v -> 'agents' -> 0 ->> 'name' = 'Beatriz Lim' and v -> 'agents' -> 0 ->> 'reply' = 'within 30 minutes' from x), (select v::text from x);
 delete from x;
+-- Leads an agent types in for themselves do not make their reply time.
+insert into public.crm_leads (id, ref, name, payload, created_by, assigned_to_id, created_at)
+  select 'pf-s' || g, 'S' || g, 'Self ' || g, '{"status":"new"}', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', now() - interval '10 minutes'
+    from generate_series(1, 5) g;
+select pg_temp.as_user('11111111-1111-1111-1111-111111111111');
+update public.crm_leads set payload = payload || '{"status":"contacted"}' where id like 'pf-s%';
+select pg_temp.as_service();
+insert into results select 'leads an agent made for themselves do not count toward reply time', public.agent_reply_minutes('11111111-1111-1111-1111-111111111111') is null, '';
 
 -- Listed by, and the page behind a message.
 set local role service_role;
@@ -103,6 +113,15 @@ update public.agent_verifications set id_seen = false where agent_id = '11111111
 insert into results select 'unticking a check clears its date and the badge',
   public.agent_verified_on('11111111-1111-1111-1111-111111111111') is null and (select id_seen_at is null from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111'), '';
 update public.agent_verifications set id_seen = true where agent_id = '11111111-1111-1111-1111-111111111111';
+update public.agent_verifications set checked_at = null where agent_id = '11111111-1111-1111-1111-111111111111';
+insert into results select 'saving a re-check refreshes the licence check date and who checked',
+  (select checked_at is not null and checked_by = '77777777-7777-7777-7777-777777777777' from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111'), '';
+update public.agent_verifications set prc_name = 'Someone Else' where agent_id = '11111111-1111-1111-1111-111111111111';
+insert into results select 'a different PRC name or licence number restarts the ID and phone checks',
+  public.agent_verified_on('11111111-1111-1111-1111-111111111111') is null
+  and (select not id_seen and not phone_confirmed from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111'), '';
+update public.agent_verifications set prc_name = 'Maria Santos Dela Cruz' where agent_id = '11111111-1111-1111-1111-111111111111';
+update public.agent_verifications set id_seen = true, phone_confirmed = true where agent_id = '11111111-1111-1111-1111-111111111111';
 select pg_temp.as_service();
 
 -- Check an agent --------------------------------------------------------------------------------
@@ -138,6 +157,17 @@ insert into results select 'directory cards show deals with their first month, a
   (select bool_and(case when e ->> 'slug' = 'maria-santos-dela-cruz' then e ->> 'deals' = '2' and e ->> 'deals_since' = '2025-03' and not (e ? 'review_count')
                         else not (e ? 'deals') and not (e ? 'deals_since') and not (e ? 'review_count') end) from x, jsonb_array_elements(v -> 'agents') e), (select v::text from x);
 delete from x;
+-- A broker writes their own deals from the app: crediting another team's agent, or using another
+-- team's listing, counts for nothing.
+insert into public.broker_transactions (id, ref, title, payload, broker_id, created_by) values
+  ('pf-d4', 'TX-4', 'Made up', '{"stage":"done","buyerAgentId":"11111111-1111-1111-1111-111111111111","sellerAgentId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","showDeal":true,"listingId":"pf-l1","price":123,"showPrice":true}', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+insert into results select 'a broker cannot credit another team''s agent', (public.agent_record('11111111-1111-1111-1111-111111111111') ->> 'deals')::int = 2, '';
+insert into results select 'nor show another team''s listing on their own record',
+  (select v ->> 'deals' = '1' and not (v -> 'rows' -> 0 ? 'town') and not (v -> 'rows' -> 0 ? 'lot_sqm') from (select public.agent_record('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb') v) y),
+  public.agent_record('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')::text;
+select pg_temp.as_user('77777777-7777-7777-7777-777777777777');
+insert into results select 'and no review link comes from such a deal', pg_temp.fails($q$select public.review_invite('pf-d4', '11111111-1111-1111-1111-111111111111')$q$) like 'error: That agent is not%', '';
+select pg_temp.as_service();
 
 -- Reviews ---------------------------------------------------------------------------------------
 select pg_temp.as_user('77777777-7777-7777-7777-777777777777');
@@ -164,6 +194,7 @@ select pg_temp.as_user('11111111-1111-1111-1111-111111111111');
 set local role authenticated;
 insert into results select 'an agent cannot approve their own review', pg_temp.fails($q$select public.review_moderate((select id from public.agent_reviews limit 1), 'approved')$q$) = 'refused', '';
 insert into results select 'nor see it before it is published', (select count(*) from public.agent_reviews) = 0, '';
+insert into results select 'the link''s hash cannot be read from the app', pg_temp.fails($q$select token_hash from public.agent_reviews$q$) = 'refused', '';
 reset role;
 select pg_temp.as_user('77777777-7777-7777-7777-777777777777');
 select public.review_moderate((select id from public.agent_reviews where deal_id = 'pf-d1'), 'approved');
@@ -189,6 +220,9 @@ insert into results select 'an expired link says so and takes no review',
   public.review_lookup((select encode(sha256(convert_to(t, 'UTF8')), 'hex') from tok)) ->> 'status' = 'expired'
   and public.review_submit((select encode(sha256(convert_to(t, 'UTF8')), 'hex') from tok), 'Jun', 'M', 'A review that is long enough to count here.') = false, '';
 reset role;
+update public.broker_transactions set payload = payload || '{"stage":"cts"}' where id = 'pf-d1';
+insert into results select 'a review stops showing when its deal is no longer closed', jsonb_array_length(public.agent_reviews_public('11111111-1111-1111-1111-111111111111')) = 0, '';
+update public.broker_transactions set payload = payload || '{"stage":"done"}' where id = 'pf-d1';
 
 -- Town routing ----------------------------------------------------------------------------------
 insert into public.site_settings (key, value, is_public) values ('leadRouting',
@@ -205,6 +239,12 @@ insert into results select 'a town without a rule falls back to the brokers taki
   (select assigned_to_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and payload::text like '%in turn%' from public.crm_leads where id = 'pf-vg2'), '';
 insert into results select 'a lead sent from an agent''s page stays with that agent', (select assigned_to_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb' from public.crm_leads where id = 'pf-vg3'), '';
 insert into results select 'the turn is remembered per town', (select (value -> 'townNext' ->> 'lipa-city')::int = 1 and (value ->> 'next')::int = 1 from public.site_settings where key = 'leadRouting'), (select value::text from public.site_settings where key = 'leadRouting');
+insert into public.crm_leads (id, ref, name, payload, created_by) values
+  ('pf-vg4', 'V4', 'Broker consultation Lipa', '{"status":"new","phone":"0911 000 0004","channel":"broker-consultation","fullReport":{"inputs":{"municipality":"LIPA CITY"}}}', '77777777-7777-7777-7777-777777777777'),
+  ('pf-vg5', 'V5', 'Not a Value Guide lead', '{"status":"new","phone":"0911 000 0005","town":"Lipa City"}', '77777777-7777-7777-7777-777777777777');
+insert into results select 'a broker consultation never goes to a salesperson by town rule',
+  (select assigned_to_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' and payload::text like '%in turn%' from public.crm_leads where id = 'pf-vg4'), (select payload::text from public.crm_leads where id = 'pf-vg4');
+insert into results select 'town rules apply only to Value Guide requests', (select payload::text like '%in turn%' from public.crm_leads where id = 'pf-vg5'), '';
 
 select case when ok then 'PASS ' else 'FAIL ' end || name || case when ok then '' else ' :: ' || coalesce(detail, '') end from results;
 select count(*) filter (where ok) || '/' || count(*) || ' passed' from results;

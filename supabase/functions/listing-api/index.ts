@@ -1078,6 +1078,12 @@ const submitAgentInquiry = async (req: Request, slug: string, admin: SupabaseCli
 // The agent directory (Phase 2): published agents that pass every check, filtered by the fixed
 // lists, measured reply time first.
 const listAgents = async (url: URL, admin: SupabaseClient) => {
+  // ?count=1: just how many, for the site's menu link (no per-agent work).
+  if (url.searchParams.get("count") === "1") {
+    const { data, error } = await admin.rpc("public_agent_count");
+    if (error) throw new Error(error.message);
+    return json({ total: Number(data || 0) }, 200, PUBLIC_CACHE);
+  }
   const pick = (name: string) => {
     const v = String(url.searchParams.get(name) || "").trim().toLowerCase();
     if (v && !/^[a-z-]{2,40}$/.test(v)) throw new HttpError(400, `${name} is invalid`);
@@ -1102,24 +1108,27 @@ const checkAgent = async (req: Request, url: URL, admin: SupabaseClient, pepper:
   return json({ data: Array.isArray(data) ? data.slice(0, 3) : [] });
 };
 
-// Client reviews (Phase 3). The link's secret is never stored: the database keeps its hash.
-const reviewHash = async (token: string) => {
-  if (!/^[0-9a-f]{64}$/.test(token)) throw new HttpError(404, "Review link not found");
-  return await sha256(token);
+// Client reviews (Phase 3). The link's secret is never stored: the database keeps its hash. It is
+// sent in the request body, never in the address, so it stays out of request logs.
+const reviewHash = async (token: unknown) => {
+  const t = String(token ?? "");
+  if (!/^[0-9a-f]{64}$/.test(t)) throw new HttpError(404, "Review link not found");
+  return await sha256(t);
 };
-const getReview = async (token: string, admin: SupabaseClient) => {
-  const { data, error } = await admin.rpc("review_lookup", { p_hash: await reviewHash(token) });
+const getReview = async (req: Request, admin: SupabaseClient) => {
+  const body = await parseBody(req, MAX_FORM_BODY);
+  const { data, error } = await admin.rpc("review_lookup", { p_hash: await reviewHash(body.token) });
   if (error) throw new Error(error.message);
   if (!data) throw new HttpError(404, "Review link not found");
   return json({ data });
 };
-const submitReview = async (req: Request, token: string, admin: SupabaseClient, pepper: string) => {
+const submitReview = async (req: Request, admin: SupabaseClient, pepper: string) => {
   const body = await parseBody(req, MAX_FORM_BODY);
   if (body.consent !== true) throw new HttpError(400, "consent is required");
   const firstName = stringValue(body.first_name, 40, "first_name", true);
   const lastName = stringValue(body.last_name, 60, "last_name");
   const words = stringValue(body.review, 1200, "review", true);
-  const hash = await reviewHash(token);
+  const hash = await reviewHash(body.token);
   const keyHash = await sha256(`${pepper}:review:${callerAddress(req)}`);
   const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", { p_request_key_hash: keyHash, p_limit: 10, p_window_seconds: 3600 });
   if (rateError) throw new Error(rateError.message);
@@ -1182,11 +1191,11 @@ Deno.serve(async (req) => {
     if (parts.length === 1 && parts[0] === "agent-check" && req.method === "GET") {
       return await checkAgent(req, new URL(req.url), admin, pepper);
     }
-    if (parts.length === 2 && parts[0] === "reviews" && req.method === "GET") {
-      return await getReview(parts[1], admin);
+    if (parts.length === 2 && parts[0] === "reviews" && parts[1] === "lookup" && req.method === "POST") {
+      return await getReview(req, admin);
     }
-    if (parts.length === 2 && parts[0] === "reviews" && req.method === "POST") {
-      return await submitReview(req, parts[1], admin, pepper);
+    if (parts.length === 1 && parts[0] === "reviews" && req.method === "POST") {
+      return await submitReview(req, admin, pepper);
     }
     if (parts.length === 2 && parts[0] === "agents" && req.method === "GET") {
       return await getAgent(req, parts[1], admin, pepper);

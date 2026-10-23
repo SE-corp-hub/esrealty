@@ -2868,9 +2868,11 @@ return {
       form.reset();
       delete form.dataset.estIdempotencyKey;
       // Saving is all the website does: the team calls, then sends the report.
-      var agentFirst = vgAgent().name.split(/\s+/)[0];
+      // Named only when the server says the request went to that agent (the page may have come down).
+      var agentName = res && res.agent ? String(res.agent) : "";
+      var agentFirst = agentName.split(/\s+/)[0];
       var confirmMsg = agentFirst
-        ? "Your request has been saved and sent to " + vgAgent().name + ". " + agentFirst + " will call you to confirm your details."
+        ? "Your request has been saved and sent to " + agentName + ". " + agentFirst + " will call you to confirm your details."
         : est.leadKind === "broker"
         ? "Your request has been saved. A licensed SEA ESTATES broker will call you."
         : est.leadKind === "appraisal"

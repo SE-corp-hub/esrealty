@@ -162,8 +162,8 @@
     return NAV.slice(0, 2).concat([{ href: "#/agents", label: "Find an agent" }], NAV.slice(2));
   }
   function loadAgentCount() {
-    if (!API || !API.agents) return;
-    API.agents({}).then(function (result) {
+    if (!API || !API.agentCount) return;
+    API.agentCount().then(function (result) {
       publishedAgents = Number(result && result.total) || 0;
       if (publishedAgents < AGENT_NAV_MIN) return;
       Array.prototype.forEach.call(document.querySelectorAll(".sf-nav, [data-sf-menu-panel]"), function (nav) {
@@ -1585,7 +1585,7 @@
     if (Number(a.listing_count) > 0) nums.push('<div><b>' + Number(a.listing_count) + '</b><span>' + (Number(a.listing_count) === 1 ? "listing" : "listings") + '</span></div>');
     if (Number(a.review_count) > 0) nums.push('<div><b>' + Number(a.review_count) + '</b><span>' + (Number(a.review_count) === 1 ? "review" : "reviews") + '</span></div>');
     return '<article class="agd-card">' +
-      (photo ? '<img class="agd-photo" src="' + esc(photo) + '" alt="" width="104" height="104" loading="lazy">'
+      (photo ? '<img class="agd-photo" src="' + esc(photo) + '" alt="Photo of ' + esc(a.name) + '" width="104" height="104" loading="lazy">'
              : '<div class="agd-photo agd-initials" aria-hidden="true">' + esc(P.initials(a.name)) + '</div>') +
       '<div class="agd-who"><h2><a href="' + href + '">' + esc(a.name) + '</a></h2>' +
       '<p class="agd-sub">' + esc(a.role_label) + (towns.length ? ', ' + esc(P.joinWords(towns.slice(0, 2))) + (towns.length > 2 ? ' and nearby' : '') : '') + '.' +

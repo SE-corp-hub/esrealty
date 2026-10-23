@@ -49,12 +49,14 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
       }
       if (/\/agents\/maria-santos-dela-cruz$/.test(p)) return reply(200, { data: PAGE });
       if (/\/agents\/[^/]+\/taps$/.test(p)) return reply(202, { ok: true });
-      if (new RegExp("/reviews/" + OPEN + "$").test(p)) {
-        if (init && init.method === "POST") { sent.push({ kind: "review", body: JSON.parse(init.body) }); return reply(201, { message: "Thank you." }); }
-        return reply(200, { data: { agent: "Maria Santos Dela Cruz", open: true, status: "open" } });
+      if (/\/reviews\/lookup$/.test(p)) {
+        const t = JSON.parse(init.body).token;
+        sent.push({ kind: "lookup", url: String(url) });
+        if (t === OPEN) return reply(200, { data: { agent: "Maria Santos Dela Cruz", open: true, status: "open" } });
+        if (t === USED) return reply(200, { data: { agent: "Maria Santos Dela Cruz", open: false, status: "used" } });
+        return reply(404, { error: "Review link not found" });
       }
-      if (new RegExp("/reviews/" + USED + "$").test(p)) return reply(200, { data: { agent: "Maria Santos Dela Cruz", open: false, status: "used" } });
-      if (/\/reviews\/[^/]+$/.test(p)) return reply(404, { error: "Review link not found" });
+      if (/\/reviews$/.test(p)) { sent.push({ kind: "review", body: JSON.parse(init.body) }); return reply(201, { message: "Thank you." }); }
       if (/\/listings\/L1$/.test(p)) return reply(200, { data: { id: "L1", title: "Corner lot in Sabang", property_type: "lot-only", offer_type: "sale", price: 2850000, display_price: 2850000,
         city: "Lipa City", province: "Batangas", status: "available", agent_name: "Maria Santos Dela Cruz", images: [], details: { agent_prc: "0012345", agent_slug: "maria-santos-dela-cruz" } } });
       return realFetch.apply(this, arguments);
@@ -140,7 +142,8 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     f.first_name.value = "Rhea"; f.last_name.value = "Dizon"; f.review.value = "Maria did the viewing on video and sent the title first."; f.consent.checked = true;
     f.querySelector("button[type=submit]").click(); await wait(800);
     const rv = sent.find(s => s.kind === "review");
-    chk("the review is sent with consent", !!rv && rv.body.first_name === "Rhea" && rv.body.consent === true, JSON.stringify(rv));
+    chk("the review is sent with consent", !!rv && rv.body.first_name === "Rhea" && rv.body.consent === true && rv.body.token === OPEN, JSON.stringify(rv));
+    chk("the link's secret never goes in a request address", sent.filter(s => s.kind === "lookup").every(s => s.url.indexOf(OPEN) < 0));
     chk("and the client is thanked", /Thank you/.test(text(".sf-review-done")) && /after a quick check by our office/.test(text(".sf-review-done")));
     location.hash = "#/review/" + USED; await wait(1200);
     chk("a used link says so", /This review has already been sent/.test(text(".sf-review h1")) && !q("[data-sf-review]"));

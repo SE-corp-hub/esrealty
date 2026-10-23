@@ -42,7 +42,8 @@ c("the directory, lookup and review functions are for the server only",
     new RegExp("revoke all on function public\\." + f.replace(/[()]/g, "\\$&") + " from public, anon, authenticated;").test(mig16)
     && new RegExp("grant execute on function public\\." + f.replace(/[()]/g, "\\$&") + " to service_role;").test(mig16)));
 c("the directory, check and review routes are wired", /parts\[0\] === "agents" && req\.method === "GET"\) \{\n\s*return await listAgents/.test(api)
-  && /parts\[0\] === "agent-check" && req\.method === "GET"/.test(api) && /parts\[0\] === "reviews" && req\.method === "POST"/.test(api));
+  && /parts\[0\] === "agent-check" && req\.method === "GET"/.test(api) && /parts\.length === 1 && parts\[0\] === "reviews" && req\.method === "POST"/.test(api));
+c("the Value Guide names the agent only when the server says it went to them", /var agentName = res && res\.agent \? String\(res\.agent\) : "";/.test(read("js/estimator.js")) && /\.\.\.\(agentId \? \{ agent: agentName \} : \{\}\)/.test(read("supabase/functions/location-report/index.ts")));
 c("a listing's details carry its agent's page address", /admin\.rpc\("agent_public_slug", \{ p_agent: agentId \}\)/.test(api) && /out\.agent_slug = slug/.test(api));
 const sf = read("js/storefront.js");
 c("Listed by links to the agent's page", /'<a href="#\/agents\/' \+ esc\(d\.agent_slug\) \+ '">'/.test(sf));
@@ -60,7 +61,7 @@ c("instant phone alerts load web-push only when needed, so a failure cannot stop
   && /await pushNow\(admin, agentId\);/.test(api) && /await pushNow\(admin, listing\.agent_id as string \| null\);/.test(api));
 c("browsers may send an Idempotency-Key", /"Access-Control-Allow-Headers": "[^"]*idempotency-key"/.test(api));
 const block = api.slice(api.indexOf("// Agent pages (agent websites plan, Phase 1)"), api.indexOf("Deno.serve(async (req) => {"))
-  .replace(/: Record<string, string>/g, "").replace(/: SupabaseClient/g, "").replace(/: Request/g, "").replace(/: URL/g, "").replace(/: string/g, "")
+  .replace(/: Record<string, string>/g, "").replace(/: SupabaseClient/g, "").replace(/: Request/g, "").replace(/: URL/g, "").replace(/: unknown/g, "").replace(/: string/g, "")
   .replace(/ as JsonRecord\[\]/g, "").replace(/ as JsonRecord/g, "").replace(/\(l\)/g, "(l)");
 
 const OPEN_TOKEN = "a".repeat(64);
@@ -75,6 +76,7 @@ function harness() {
       calls.push(name + ":" + JSON.stringify(args));
       if (name === "public_agent") return { data: args.p_slug === "maria-santos" ? PAGE : null, error: null };
       if (name === "consume_listing_inquiry_rate_limit") return { data: firstToday, error: null };
+      if (name === "public_agent_count") return { data: 9, error: null };
       if (name === "public_agents") return { data: { total: 2, agents: [{ slug: "maria-santos" }, { slug: "beatriz-lim" }] }, error: null };
       if (name === "agent_check") return { data: args.p_q === "0012345" ? [{ slug: "maria-santos" }, { slug: "x" }, { slug: "y" }, { slug: "z" }] : [], error: null };
       if (name === "review_lookup") return { data: args.p_hash === OPEN_HASH ? { agent: "Maria Santos", open: true, status: "open" } : null, error: null };
@@ -158,6 +160,9 @@ function harness() {
     c("the directory lists published agents, cached for a minute", r.status === 200 && r.body.total === 2 && r.body.data.length === 2 && r.headers["Cache-Control"] === "public, max-age=60", JSON.stringify(r));
     c("its filters go to the database as given", h.calls.some((x) => x === 'public_agents:{"p_town":"lipa-city","p_need":"sell","p_language":null}'), h.calls.join(" | "));
     h.calls.length = 0;
+    r = await h.run(h.fns.listAgents, new URL("https://x/api/agents?count=1"), h.admin);
+    c("the menu's count asks only for the number", r.status === 200 && r.body.total === 9 && !("data" in r.body) && h.calls.length === 1 && h.calls[0].startsWith("public_agent_count"));
+    h.calls.length = 0;
     r = await h.run(h.fns.listAgents, new URL("https://x/api/agents?town=Lipa%20City';--"), h.admin);
     c("a filter outside the fixed lists' shape is refused without asking the database", r.status === 400 && h.calls.length === 0);
 
@@ -175,20 +180,21 @@ function harness() {
 
     // Phase 3: reviews. The link's secret is never sent to the database, only its hash.
     h.calls.length = 0;
-    r = await h.run(h.fns.getReview, OPEN_TOKEN, h.admin);
+    r = await h.run(h.fns.getReview, h.req("/reviews/lookup", { token: OPEN_TOKEN }), h.admin);
     c("an open review link shows whose review it is", r.status === 200 && r.body.data.agent === "Maria Santos" && r.body.data.open === true);
     c("the database sees the link's hash, not the link", h.calls.every((x) => x.indexOf(OPEN_TOKEN) < 0) && h.calls.some((x) => x.indexOf(OPEN_HASH) >= 0));
-    r = await h.run(h.fns.getReview, "not-a-token", h.admin);
+    r = await h.run(h.fns.getReview, h.req("/reviews/lookup", { token: "not-a-token" }), h.admin);
     c("a malformed link answers 404", r.status === 404);
-    r = await h.run(h.fns.getReview, "b".repeat(64), h.admin);
+    r = await h.run(h.fns.getReview, h.req("/reviews/lookup", { token: "b".repeat(64) }), h.admin);
     c("an unknown link answers 404", r.status === 404);
-    const words = { first_name: "Rhea", last_name: "Dizon", review: "Maria did the viewing on video and sent the title first.", consent: true };
-    r = await h.run(h.fns.submitReview, h.req("/reviews/x", { ...words, consent: false }), OPEN_TOKEN, h.admin, "pepper");
+    c("the link travels in the request body, never in the address", /parts\[0\] === "reviews" && parts\[1\] === "lookup" && req\.method === "POST"/.test(api) && !/parts\[0\] === "reviews" && req\.method === "GET"/.test(api));
+    const words = { token: OPEN_TOKEN, first_name: "Rhea", last_name: "Dizon", review: "Maria did the viewing on video and sent the title first.", consent: true };
+    r = await h.run(h.fns.submitReview, h.req("/reviews", { ...words, consent: false }), h.admin, "pepper");
     c("no agreement, no review", r.status === 400);
-    r = await h.run(h.fns.submitReview, h.req("/reviews/x", words), OPEN_TOKEN, h.admin, "pepper");
+    r = await h.run(h.fns.submitReview, h.req("/reviews", words), h.admin, "pepper");
     c("a review is sent once", r.status === 201);
     c("the review goes to the database with first name and last name for the initial", h.calls.some((x) => x.startsWith("review_submit") && x.includes('"p_first":"Rhea"') && x.includes('"p_initial":"Dizon"')));
-    r = await h.run(h.fns.submitReview, h.req("/reviews/x", words), OPEN_TOKEN, h.admin, "pepper");
+    r = await h.run(h.fns.submitReview, h.req("/reviews", words), h.admin, "pepper");
     c("the same link cannot send a second review", r.status === 410);
   } catch (e) {
     c("the agent endpoints run in Node", false, e && e.stack);

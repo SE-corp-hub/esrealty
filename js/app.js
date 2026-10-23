@@ -18188,7 +18188,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       '<fieldset class="lc-verify"><legend>Verified badge (needs both)</legend>' +
       '<label class="site-check"><input type="checkbox" id="lc-id"' + (v.id_seen ? " checked" : "") + "> I saw their government ID on a video call" + (v.id_seen_at ? ' <span class="dim tiny">(' + esc(String(v.id_seen_at).slice(0, 10)) + ")</span>" : "") + "</label>" +
       '<label class="site-check"><input type="checkbox" id="lc-phone"' + (v.phone_confirmed ? " checked" : "") + "> I called their phone and they read back our code" + (v.phone_confirmed_at ? ' <span class="dim tiny">(' + esc(String(v.phone_confirmed_at).slice(0, 10)) + ")</span>" : "") + "</label>" +
-      '<p class="field-hint">Only that you checked, and when, is saved. Do not keep a copy of the ID.</p></fieldset>' +
+      '<p class="field-hint">Only that you checked, and when, is saved. Do not keep a copy of the ID. A new licence number or PRC name starts these checks again.</p></fieldset>' +
+      (v.checked_at ? '<label class="site-check"><input type="checkbox" id="lc-recheck"> I checked the PRC record again today (updates the date on their page)</label>' : "") +
       '<p class="lc-error" role="alert" data-lc-error></p></div>' +
       '<div class="modal-foot"><button class="btn btn-ghost" data-lc-cancel>Cancel</button><button class="btn btn-primary" data-lc-save>' + icon("check", 15) + " Save licence check</button></div></div>";
     document.body.appendChild(ov);
@@ -18206,13 +18207,21 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       const idBox = ov.querySelector("#lc-id"), phoneBox = ov.querySelector("#lc-phone");
       if (idBox.checked || v.id_seen) row.id_seen = idBox.checked;
       if (phoneBox.checked || v.phone_confirmed) row.phone_confirmed = phoneBox.checked;
+      const recheck = !!(ov.querySelector("#lc-recheck") || {}).checked;
+      // A new number or name clears the ID and phone checks (migration 0016); ticks given with the change
+      // are saved in a second step, as a fresh check.
+      const newIdentity = !!v.agent_id && (row.licence_no !== String(v.licence_no || "").trim() || row.prc_name !== String(v.prc_name || "").trim());
+      const reTick = newIdentity && (row.id_seen || row.phone_confirmed) ? { agent_id: u.id, id_seen: !!row.id_seen, phone_confirmed: !!row.phone_confirmed } : null;
       const problem = row.licence_no.length < 3 ? "Enter the licence or accreditation number." : row.prc_name.length < 3 ? "Enter the name as it appears on the PRC record." : !row.valid_until ? "Enter the date the licence is valid until." : "";
       if (problem) { err.textContent = problem; return; }
       try {
         if (currentUser.demo) LICENCE_DEMO[u.id] = Object.assign({ checked_at: new Date().toISOString() }, row);
         else {
-          const r = await SB.from("agent_verifications").upsert(row, { onConflict: "agent_id" }).select().single();
+          let r = await SB.from("agent_verifications").upsert(reTick ? Object.assign({}, row, { id_seen: false, phone_confirmed: false }) : row, { onConflict: "agent_id" }).select().single();
           if (r.error) throw r.error;
+          if (reTick) { r = await SB.from("agent_verifications").update(reTick).eq("agent_id", u.id).select().single(); if (r.error) throw r.error; }
+          // A plain update (not the upsert, whose insert step stamps a date first): empty means "today".
+          if (recheck) { r = await SB.from("agent_verifications").update({ checked_at: null }).eq("agent_id", u.id).select().single(); if (r.error) throw r.error; }
           licenceChecks[u.id] = r.data;
         }
         close(); toast("Licence check saved"); render({ keepScroll: true });

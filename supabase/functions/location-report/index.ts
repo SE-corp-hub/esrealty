@@ -427,7 +427,8 @@ Deno.serve(async (req) => {
     console.error(e);
   }
 
-  return json({ ok: true, id: leadId, ref, message: "Request saved" }, 201);
+  // agent: the name of the agent it went to, so the page thanks the visitor accurately.
+  return json({ ok: true, id: leadId, ref, message: "Request saved", ...(agentId ? { agent: agentName } : {}) }, 201);
 });
 
 async function requireAdmin(admin: any) {
