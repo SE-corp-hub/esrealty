@@ -9508,6 +9508,7 @@ premise: "Fee Simple / As Improved",
       bar += '<select class="input" id="pms-filter-extra" aria-label="Category">' + '<option value="">All categories</option>' +
         DOC_CATEGORIES.map(c => '<option value="' + esc(c) + '"' + (state.pmsExtraFilter === c ? " selected" : "") + '>' + esc(c) + '</option>').join("") + '</select>';
     }
+    if (tab === "payments" && pmsCan("manage") && window.ESPMSRECON) bar += '<button type="button" class="btn btn-ghost" data-pms-recon>' + icon("upload", 15) + " Match bank statement</button>";
     bar += '</div>';
     const chipText = f => {
       if (f[0] === "property") return pmsPropertyTitle(f[1]);
@@ -9951,6 +9952,16 @@ premise: "Fee Simple / As Improved",
     });
     html += '<tr><td><b>Total</b></td>' + ageAll.map(v => '<td class="num"><b>' + (v > 0 ? C.money(v) : "\u2014") + "</b></td>").join("") + '<td class="num"><b>' + C.money(props.reduce((t, p) => t + pmsYearFor(p).received, 0)) + "</b></td><td></td></tr>";
     html += "</table></div></div>";
+    const vendors = pmsVendors();
+    if (vendors.length) {
+      const avg = a => a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length * 10) / 10 : null;
+      const allDays = vendors.reduce((a, v) => a.concat(v.days), []);
+      html += '<div class="card card-pad mb-24" data-pms-repairs><h3 class="mb-16">Repairs by contractor</h3>' +
+        '<p class="dim tiny">Days to fix runs from the work order date to when it was marked completed.' + (allDays.length ? " Overall: " + avg(allDays) + " days on average." : "") + "</p>" +
+        '<div class="table-wrap"><table class="data"><tr><th>Contractor</th><th class="num">Jobs</th><th class="num">Open</th><th class="num">Quoted</th><th class="num">Cost</th><th class="num">Avg. days to fix</th></tr>' +
+        vendors.map(v => "<tr><td>" + esc(v.name) + '</td><td class="num">' + v.jobs + '</td><td class="num">' + v.open + '</td><td class="num">' + (v.quoted ? C.money(v.quoted) : "—") + '</td><td class="num">' + C.money(v.cost) + '</td><td class="num">' + (avg(v.days) == null ? "—" : avg(v.days)) + "</td></tr>").join("") +
+        "</table></div></div>";
+    }
     html += '<div class="card card-pad mb-24"><h3 class="mb-16">Property Reports</h3><div class="table-wrap"><table class="data"><tr><th>Property</th><th class="num">Units</th><th class="num">Active Leases</th><th class="num">Collected</th><th class="num">Arrears</th><th>Actions</th></tr>';
     props.forEach(p => {
       const u = pmsActiveUnits().filter(x => x.property_id === p.id);
@@ -10437,6 +10448,8 @@ premise: "Fee Simple / As Improved",
       '<h4 class="col-full" style="margin:8px 0 0">Add a charge</h4>' +
       pmsField("Type", pmsSel("pms-chg-type", PMS_CHARGE_TYPES.map(t => [t, t]), "Water")) +
       pmsField("Name (optional)", pmsTxt("pms-chg-label", "", "e.g. Parking slot 12")) +
+      '<div class="col-full pms-meter" id="pms-chg-meter"><div class="dim tiny">Water or electricity by meter (optional): the amount is worked out from the readings.</div><div class="pms-dep-grid">' +
+        pmsField("Previous reading", pmsNum("pms-chg-from", pmsLastReading(l, "Water"))) + pmsField("This reading", pmsNum("pms-chg-to", "")) + pmsField("Rate per unit (\u20B1)", pmsNum("pms-chg-rate", pmsLastRate(l, "Water"))) + "</div></div>" +
       pmsField("Amount (\u20B1) *", pmsNum("pms-chg-amount", "")) +
       pmsField("Due date *", pmsDate("pms-chg-due", pmsToday())) +
       pmsField("For month", pmsSel("pms-chg-period", [["", "\u2014"]].concat(pmsStatementMonths().slice(0, 3).reverse().concat([[PL().monthKey(new Date(Date.now() + 31 * 86400000)), PL().monthLabel(PL().monthKey(new Date(Date.now() + 31 * 86400000)))]])), pmsToday().slice(0, 7))) +
@@ -10444,15 +10457,32 @@ premise: "Fee Simple / As Improved",
     pmsModal("Charges", body, "charge", l.id);
     const sv = $('[data-pms-save="charge"]'); if (sv) sv.innerHTML = icon("plus", 15) + " Add charge";
   }
+  /* Meter readings (I7): the last reading and rate of the same kind of charge on this lease are
+   * offered, and amount = (this reading - previous) x rate. */
+  function pmsLastMeter(l, type) {
+    return ((l && l.charges) || []).filter(c => c && !c.archived && c.type === type && C.num(c.meterTo, 0) > 0)
+      .sort((a, b) => String(a.due || "").localeCompare(String(b.due || ""))).pop() || null;
+  }
+  function pmsLastReading(l, type) { const c = pmsLastMeter(l, type); return c ? C.num(c.meterTo, 0) : ""; }
+  function pmsLastRate(l, type) { const c = pmsLastMeter(l, type); return c ? C.num(c.rate, 0) : ""; }
+  function pmsMeterCalc() {
+    const from = C.num(($("#pms-chg-from") || {}).value, NaN), to = C.num(($("#pms-chg-to") || {}).value, NaN), rate = C.num(($("#pms-chg-rate") || {}).value, NaN);
+    if (!(to > 0) || !(rate > 0) || !(from >= 0) || to < from) return null;
+    const units = Math.round((to - from) * 100) / 100;
+    return { from: from, to: to, rate: rate, units: units, amount: Math.round(units * rate * 100) / 100 };
+  }
   function saveChargeForm() {
     const leaseId = $("#pms-modal").getAttribute("data-edit-id");
     const l = pms().leases.find(x => x.id === leaseId);
     if (!l) { closePmsModal(); return; }
+    const meter = /^(Water|Electricity)$/.test(($("#pms-chg-type") || {}).value || "") ? pmsMeterCalc() : null;
+    if (meter && !(C.num($("#pms-chg-amount").value, 0) > 0)) $("#pms-chg-amount").value = String(meter.amount);
+    if (meter && !String(($("#pms-chg-note") || {}).value || "").trim()) $("#pms-chg-note").value = "meter " + meter.from + " \u2192 " + meter.to + ", " + meter.units + " units \u00D7 \u20B1" + meter.rate;
     const amount = C.num($("#pms-chg-amount").value, 0);
     const due = $("#pms-chg-due").value;
     if (amount <= 0) { toast("Enter the amount of the charge", "err"); return; }
     if (!due) { toast("Enter when the charge is due", "err"); return; }
-    l.charges = (l.charges || []).concat([{ id: pmsNewId("c"), type: $("#pms-chg-type").value, label: $("#pms-chg-label").value.trim(), amount: amount, due: due, period: $("#pms-chg-period").value, note: $("#pms-chg-note").value.trim(), createdAt: Date.now() }]);
+    l.charges = (l.charges || []).concat([Object.assign({ id: pmsNewId("c"), type: $("#pms-chg-type").value, label: $("#pms-chg-label").value.trim(), amount: amount, due: due, period: $("#pms-chg-period").value, note: $("#pms-chg-note").value.trim(), createdAt: Date.now() }, meter ? { meterFrom: meter.from, meterTo: meter.to, rate: meter.rate } : {})]);
     l.updatedAt = Date.now();
     save(); render();
     toast("Charge added");
@@ -10778,7 +10808,7 @@ premise: "Fee Simple / As Improved",
   function openPaymentEditor(id) {
     const pre = !id && pmsPayPrefill ? pmsPayPrefill : null;
     pmsPayPrefill = null;
-    const d = id ? pms().payments.find(x => x.id === id) || {} : (pre ? { lease_id: pre.lease_id, month: pre.month, amount: pre.amount, charge_id: pre.charge_id || "", status: "paid" } : {});
+    const d = id ? pms().payments.find(x => x.id === id) || {} : (pre ? { lease_id: pre.lease_id, month: pre.month, amount: pre.amount, charge_id: pre.charge_id || "", status: "paid", date: pre.date || "", method: pre.method || "", reference: pre.reference || "", notes: pre.notes || "" } : {});
     // "Confirm" on a payment a tenant sent: the same form, set to Paid.
     const confirming = !!(id && pmsConfirmId === id && d.status === "submitted");
     pmsConfirmId = null;
@@ -10871,6 +10901,59 @@ premise: "Fee Simple / As Improved",
   function pmsMarkPaid(spec) {
     const parts = String(spec || "").split("|");
     pmsPayPrefill = { lease_id: parts[0], month: parts[1], amount: C.num(parts[2], 0), charge_id: parts[3] || "" };
+    openPaymentEditor(null);
+  }
+  /* Bank / GCash statement matching (I2): js/pms_reconcile.js reads a CSV statement and suggests
+   * which unpaid month or charge each money-in line pays. Each suggestion opens the normal payment
+   * form, filled in (date, amount, method, reference), so receipts and checks work as usual. */
+  let pmsReconRows = [], pmsReconMsg = "";
+  function pmsOpenItems() {
+    const out = [];
+    pmsActiveLeases().forEach(l => {
+      const tenant = pms().tenants.find(t => t.id === l.tenant_id) || {};
+      const unit = pms().units.find(u => u.id === l.unit_id) || {};
+      const wht = pmsWhtRate(l);
+      pmsUnpaidMonths(l).forEach(m => out.push({ key: l.id + "|" + m.key, leaseId: l.id, tenantName: tenant.name || "", unit: unit.unit_number || "", label: m.label, month: m.key, chargeId: "",
+        gross: m.balance, amount: wht > 0 ? Math.round((m.balance - PL().withholding(m.balance, wht)) * 100) / 100 : m.balance, due: m.due }));
+      pmsChargesOwed(l).forEach(c => out.push({ key: l.id + "|c|" + c.id, leaseId: l.id, tenantName: tenant.name || "", unit: unit.unit_number || "", label: c.label, month: c.period || "", chargeId: c.id, gross: c.balance, amount: c.balance, due: c.due }));
+    });
+    return out;
+  }
+  function pmsReconBody() {
+    const badge = { sure: ["green", "Sure"], likely: ["gold", "Likely"], check: ["gold", "Check"], none: ["red", "No match"], recorded: ["blue", "Already recorded"] };
+    return '<p class="col-full dim">Export the statement from your bank or GCash as a CSV file (with Date, Amount or Credit, and Description columns). Money in is matched to unpaid rent and charges by amount, then by the tenant\'s name or unit in the description. Nothing is recorded until you press Record and save the payment.</p>' +
+      '<div class="col-full row" style="gap:8px;flex-wrap:wrap;align-items:center"><label class="btn btn-ghost btn-sm" style="margin:0">' + icon("upload", 13) + ' Choose CSV file<input type="file" id="pms-recon-file" accept=".csv,text/csv" style="display:none"></label><span class="dim tiny">or paste it below</span></div>' +
+      '<textarea class="input col-full" id="pms-recon-text" rows="4" placeholder="Date,Description,Credit&#10;10/05/2026,INSTAPAY FROM KATRINA REYES,28000"></textarea>' +
+      '<div class="col-full"><button type="button" class="btn btn-primary btn-sm" data-pms-recon-run>Match</button></div>' +
+      (pmsReconMsg ? '<div class="col-full notice-banner warn">' + esc(pmsReconMsg) + "</div>" : "") +
+      (pmsReconRows.length ? '<div class="col-full table-wrap"><table class="data pms-recon"><tr><th>Date</th><th class="num">Amount</th><th>Description</th><th>Pays</th><th></th></tr>' +
+        pmsReconRows.map((m, i) => {
+          const b = badge[m.state];
+          const sel = m.candidates.length ? '<select class="input" data-pms-recon-pick="' + i + '">' + m.candidates.map((c, j) => '<option value="' + j + '">' + esc(c.tenantName + (c.unit ? " (" + c.unit + ")" : "") + " · " + c.label) + "</option>").join("") + "</select>" : "";
+          return "<tr><td>" + esc(m.line.date) + '</td><td class="num">' + C.money(m.line.amount) + '</td><td class="tiny">' + esc(m.line.text || "") + "</td><td>" + '<span class="badge ' + b[0] + '">' + b[1] + "</span>" + (sel ? '<div class="mt-8">' + sel + "</div>" : "") + "</td><td>" +
+            (m.candidates.length ? '<button type="button" class="btn btn-ghost btn-sm" data-pms-recon-record="' + i + '">Record</button>' : "") + "</td></tr>";
+        }).join("") + "</table></div>" : "");
+  }
+  function pmsOpenRecon() {
+    if (!pmsCan("manage") || !window.ESPMSRECON) return;
+    pmsModal("Match bank statement", pmsReconBody(), "recon");
+    const sv = $('[data-pms-save="recon"]'); if (sv) sv.style.display = "none";
+  }
+  function pmsRunRecon(text) {
+    const R = window.ESPMSRECON, P = window.ESREALTY_LEAD_IMPORT;
+    if (!R || !P) return;
+    const parsed = R.lines(P.parseCsv(text || ""));
+    pmsReconMsg = parsed.problem;
+    pmsReconRows = parsed.lines.length ? R.match(parsed.lines, pmsOpenItems(), pmsActivePayments().filter(p => p.status === "paid")) : [];
+    const body = $("#pms-modal .modal-body"); if (body) body.innerHTML = pmsReconBody();
+  }
+  function pmsReconRecord(i) {
+    const m = pmsReconRows[i]; if (!m) return;
+    const pick = $('[data-pms-recon-pick="' + i + '"]');
+    const c = m.candidates[pick ? Number(pick.value) || 0 : 0]; if (!c) return;
+    const ref = (String(m.line.text || "").match(/(?:ref(?:erence)?\.?\s*(?:no\.?)?\s*[:#]?\s*)([A-Za-z0-9-]{4,})/i) || [])[1] || "";
+    const method = /gcash/i.test(m.line.text || "") ? "GCash" : /maya|paymaya/i.test(m.line.text || "") ? "Maya" : "Bank Transfer";
+    pmsPayPrefill = { lease_id: c.leaseId, month: c.month, amount: c.gross, charge_id: c.chargeId || "", date: m.line.date, method: method, reference: ref, notes: "Matched from statement: " + String(m.line.text || "").slice(0, 120) };
     openPaymentEditor(null);
   }
   // Rent reminder by text message or Viber, written out and ready to send (P9).
@@ -11005,8 +11088,10 @@ premise: "Fee Simple / As Improved",
       pmsField("Category", pmsSel("pms-maint-cat", MAINT_CATEGORIES.map(c => [c, c]), d.category || "General Repair")) +
       pmsField("Priority", pmsSel("pms-maint-pri", MAINT_PRIORITIES, d.priority || "medium")) +
       pmsField("Status", pmsSel("pms-maint-status", MAINT_STATUSES.map(s => [s.value, s.label]), d.status || "open")) +
+      pmsField("Quote (\u20B1)", pmsNum("pms-maint-quote", d.quote), "What the contractor quoted, to compare with the final cost.") +
       pmsField("Cost (\u20B1)", pmsNum("pms-maint-cost", d.cost)) +
-      pmsField("Vendor", pmsTxt("pms-maint-vendor", d.vendor, "contractor / supplier")) +
+      pmsField("Vendor", '<input class="input" id="pms-maint-vendor" list="pms-vendor-list" value="' + esc(d.vendor || "") + '" placeholder="contractor / supplier" autocomplete="off"><datalist id="pms-vendor-list">' + pmsVendors().map(v => '<option value="' + esc(v.name) + '">').join("") + "</datalist>") +
+      pmsField("Repeat", pmsSel("pms-maint-repeat", [["", "Does not repeat"], ["1", "Every month"], ["3", "Every 3 months"], ["6", "Every 6 months"], ["12", "Every year"]], d.repeatMonths ? String(d.repeatMonths) : ""), "When this job is completed, the next one is added for that date (e.g. aircon cleaning).") +
       pmsField("Date", pmsDate("pms-maint-date", d.date)) +
       pmsField("Notes", '<textarea class="input" id="pms-maint-notes" rows="3">' + esc(d.notes || "") + '</textarea>', "Staff only: the tenant sees the title and status, not these notes.", true);
     if (d.source === "tenant") {
@@ -11863,6 +11948,19 @@ premise: "Fee Simple / As Improved",
     }
   }
 
+  // Vendors from past work orders, most used first, with jobs, total cost and days to fix (I5).
+  function pmsVendors() {
+    const by = {};
+    pmsActiveMaintenance().forEach(m => {
+      const n = String(m.vendor || "").trim(); if (!n) return;
+      const k = n.toLowerCase();
+      const v = by[k] = by[k] || { name: n, jobs: 0, cost: 0, quoted: 0, days: [], open: 0 };
+      v.jobs++; v.cost += C.num(m.cost, 0); v.quoted += C.num(m.quote, 0);
+      if (m.completedAt && m.date) { const d = PL().daysBetween(String(m.date).slice(0, 10), String(m.completedAt).slice(0, 10)); if (d >= 0) v.days.push(d); }
+      if (m.status === "open" || m.status === "in progress") v.open++;
+    });
+    return Object.keys(by).map(k => by[k]).sort((a, b) => b.jobs - a.jobs || a.name.localeCompare(b.name));
+  }
   function saveMaintForm() {
     const title = $("#pms-maint-title").value.trim();
     if (!title) { toast("Work order title is required", "err"); return; }
@@ -11877,18 +11975,33 @@ premise: "Fee Simple / As Improved",
       priority: $("#pms-maint-pri").value,
       status: $("#pms-maint-status").value,
       cost: C.num($("#pms-maint-cost").value, 0),
+      quote: C.num(($("#pms-maint-quote") || {}).value, 0),
       vendor: $("#pms-maint-vendor").value.trim(),
       date: $("#pms-maint-date").value,
+      repeatMonths: C.num(($("#pms-maint-repeat") || {}).value, 0) || 0,
       notes: $("#pms-maint-notes").value.trim()
     };
     const store = pms().maintenance;
+    const prev = id ? store.find(x => x.id === id) : null;
+    const nowDone = data.status === "completed" || data.status === "closed";
+    const wasDone = prev && (prev.status === "completed" || prev.status === "closed");
+    // When the job was finished, for "days to fix" in Reports.
+    if (nowDone && !(prev && prev.completedAt)) data.completedAt = pmsToday();
+    if (!nowDone) data.completedAt = "";
+    let next = null;
+    if (nowDone && !wasDone && data.repeatMonths > 0 && !(prev && prev.nextCreated)) {
+      const base = data.date || pmsToday();
+      const d0 = new Date(base + "T00:00:00"); d0.setMonth(d0.getMonth() + data.repeatMonths);
+      next = Object.assign({}, data, { id: pmsNewId("m"), status: "open", cost: 0, quote: 0, completedAt: "", date: PL().today(d0), notes: "", repeatOf: id || "", createdAt: Date.now(), archived: false });
+      data.nextCreated = next.date;
+    }
     if (id) {
-      const rec = store.find(x => x.id === id);
-      if (rec) { Object.assign(rec, data); rec.updatedAt = Date.now(); }
+      if (prev) { Object.assign(prev, data); prev.updatedAt = Date.now(); }
     } else {
       store.unshift(Object.assign({ id: pmsNewId("m"), createdAt: Date.now(), archived: false }, data));
     }
-    save(); closePmsModal(); toast("Work order saved"); render();
+    if (next) store.unshift(next);
+    save(); closePmsModal(); toast(next ? "Work order saved. The next one is set for " + pmsDispDate(pmsDateObj(next.date)) : "Work order saved"); render();
   }
 
   function saveExpenseForm() {
@@ -13491,6 +13604,30 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     if (canManageUsers() && ((SB && currentUser && currentUser.id) || (currentUser && currentUser.demo))) loadCloudProfiles();
     if (pmsHooked) return;
     pmsHooked = true;
+    const meterSync = e => {
+      const id = e.target && e.target.id;
+      if (id === "pms-chg-type") {
+        const box = $("#pms-chg-meter"), on = /^(Water|Electricity)$/.test(e.target.value);
+        if (box) box.style.display = on ? "" : "none";
+        const lid = ($("#pms-modal") || { getAttribute: () => "" }).getAttribute("data-edit-id");
+        const l = pms().leases.find(x => x.id === lid);
+        if (on && l) { const f = $("#pms-chg-from"), r = $("#pms-chg-rate"); if (f) f.value = pmsLastReading(l, e.target.value); if (r) r.value = pmsLastRate(l, e.target.value); }
+      }
+      if (id === "pms-chg-from" || id === "pms-chg-to" || id === "pms-chg-rate") {
+        const m = pmsMeterCalc(), a = $("#pms-chg-amount");
+        if (m && a) a.value = String(m.amount);
+      }
+    };
+    document.addEventListener("input", meterSync);
+    document.addEventListener("change", meterSync);
+    document.addEventListener("change", e => {
+      if (!e.target || e.target.id !== "pms-recon-file" || !e.target.files || !e.target.files[0]) return;
+      const f = e.target.files[0];
+      if (f.size > 2 * 1024 * 1024) { toast("That file is larger than 2 MB. Export a shorter period.", "err"); return; }
+      const rd = new FileReader();
+      rd.onload = () => { const ta = $("#pms-recon-text"); if (ta) ta.value = String(rd.result || ""); pmsRunRecon(String(rd.result || "")); };
+      rd.readAsText(f);
+    });
     document.addEventListener("click", e => {
       const tabBtn = e.target.closest("[data-pmtab]");
       if (tabBtn) { pmsGoTab(tabBtn.getAttribute("data-pmtab")); return; }
@@ -13526,6 +13663,10 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       if (pl) { state.pmsTab = "payments"; state.pmsQuery = ""; state.pmsStatusFilter = ""; state.pmsPropertyFilter = ""; state.pmsExtraFilter = ""; state.pmsLeaseFilter = pl.getAttribute("data-pms-paylink"); save(); render(); return; }
       const emailPayment = e.target.closest("[data-pms-email-payment]");
       if (emailPayment) { emailPmsPayment(emailPayment); return; }
+      if (e.target.closest("[data-pms-recon]")) { pmsReconRows = []; pmsReconMsg = ""; pmsOpenRecon(); return; }
+      if (e.target.closest("[data-pms-recon-run]")) { pmsRunRecon(($("#pms-recon-text") || {}).value || ""); return; }
+      const rrec = e.target.closest("[data-pms-recon-record]");
+      if (rrec) { pmsReconRecord(Number(rrec.getAttribute("data-pms-recon-record"))); return; }
       const markPaid = e.target.closest("[data-pms-markpaid]");
       if (markPaid) { pmsMarkPaid(markPaid.getAttribute("data-pms-markpaid")); return; }
       const proofBtn = e.target.closest("[data-pms-proof]");
@@ -21002,6 +21143,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   window.__ESREALTY_TEST_HELPERS = {
     selectAllPages: selectAllPages,
     pmsAgeing: function (leases) { return pmsAgeing(leases); },
+    pmsOpenItems: function () { return pmsOpenItems(); },
     personState: function () { return { query: personQuery, rows: personRows, err: personErr }; },
     vgLeadFinishHtml: function (d) { return vgLeadFinishHtml(d); },
     leadDuplicateGroups: function () { return leadDuplicateGroups(); },
