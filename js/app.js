@@ -18294,8 +18294,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     let html = '<div class="card card-pad role-matrix"><h3>Who can do what</h3><p class="dim tiny">What each role can open and change in the app. The database checks the same people again on every save, so a hidden button is never the only protection. Changing this table is a code change.</p>';
     html += '<div class="table-wrap mt-8"><table class="data"><thead><tr><th scope="col">Area</th>' + ROLES.map(r => '<th scope="col">' + esc(r.label) + "</th>").join("") + "</tr></thead><tbody>" +
       rows.map(c => '<tr><th scope="row" style="text-align:left;font-weight:600">' + esc(c[1]) + "</th>" + ROLES.map(r => has(r.value, c[0])
-        ? '<td style="text-align:center"><span aria-hidden="true">' + icon("check", 14) + '</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap">Yes</span></td>'
-        : '<td style="text-align:center" class="dim"><span aria-hidden="true">&mdash;</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap">No</span></td>').join("") + "</tr>").join("") +
+        ? '<td style="text-align:center"><span role="img" aria-label="Yes">' + icon("check", 14) + '</span></td>'
+        : '<td style="text-align:center" class="dim"><span role="img" aria-label="No">&mdash;</span></td>').join("") + "</tr>").join("") +
       "</tbody></table></div></div>";
     return html;
   }

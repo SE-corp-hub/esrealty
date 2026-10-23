@@ -22,12 +22,12 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     const table = q(".role-matrix table");
     chk("the matrix shows a column per role", !!table && table.querySelectorAll("thead th").length === 8, table && table.querySelectorAll("thead th").length);
     const rowOf = label => qa(".role-matrix tbody tr").find(tr => tr.querySelector("th").textContent === label);
-    const yes = (tr, col) => /Yes/.test(tr.children[col].textContent);
+    const yes = (tr, col) => !!tr.children[col].querySelector('[role="img"][aria-label="Yes"]');
     const users = rowOf("Users, access and change log"), pms = rowOf("Property management"), leadsM = rowOf("Add and change leads");
     chk("only Super Admin manages users", users && yes(users, 1) && [2, 3, 4, 5, 6, 7].every(i => !yes(users, i)), users && users.textContent);
     chk("owners and tenants see property management", pms && yes(pms, 6) && yes(pms, 7), pms && pms.textContent);
     chk("brokers and agents change leads, buyers do not", leadsM && yes(leadsM, 2) && yes(leadsM, 3) && !yes(leadsM, 4), leadsM && leadsM.textContent);
-    chk("yes and no are readable as text, not only as icons", /Yes/.test(users.textContent) && /No/.test(users.textContent));
+    chk("yes and no are named for screen readers, not only shown as icons", !!users.querySelector('[role="img"][aria-label="Yes"]') && !!users.querySelector('[role="img"][aria-label="No"]'));
 
     // ---- J3
     chk("closing needs the core papers", H.txClosingMissing({ stage: "cts", checklist: ["id", "tin"] }, "doas").length === 3, H.txClosingMissing({ stage: "cts", checklist: ["id", "tin"] }, "doas").join(" | "));
