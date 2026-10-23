@@ -625,6 +625,40 @@ const callerAddress = (req: Request) => req.headers.get("cf-connecting-ip")
   || (req.headers.get("x-forwarded-for") || "").split(",")[0].trim()
   || "unknown";
 
+// Rental application details sent with an inquiry on a listing for rent (roadmap I10). All optional;
+// anything unexpected is dropped, and wrong values are refused with the field's name.
+const INCOME_BANDS = ["Below 20,000", "20,000 to 39,999", "40,000 to 79,999", "80,000 to 149,999", "150,000 or more"];
+const rentalApplication = (raw: unknown) => {
+  if (raw == null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) throw new HttpError(400, "application is invalid");
+  const a = raw as JsonRecord;
+  const out: JsonRecord = {};
+  const moveIn = stringValue(a.move_in, 10, "application.move_in");
+  if (moveIn) { if (!/^\d{4}-\d{2}-\d{2}$/.test(moveIn)) throw new HttpError(400, "application.move_in must be a date"); out.move_in = moveIn; }
+  if (a.occupants != null && a.occupants !== "") {
+    const n = Number(a.occupants);
+    if (!Number.isInteger(n) || n < 1 || n > 20) throw new HttpError(400, "application.occupants must be 1 to 20");
+    out.occupants = n;
+  }
+  const employment = stringValue(a.employment, 120, "application.employment");
+  if (employment) out.employment = employment;
+  const income = stringValue(a.income, 40, "application.income");
+  if (income) { if (!INCOME_BANDS.includes(income)) throw new HttpError(400, "application.income is not one of the choices"); out.income = income; }
+  const months = stringValue(a.lease_months, 3, "application.lease_months");
+  if (months) { if (!["6", "12", "24"].includes(months)) throw new HttpError(400, "application.lease_months is not one of the choices"); out.lease_months = Number(months); }
+  const pets = stringValue(a.pets, 10, "application.pets");
+  if (pets) { if (!["cat", "dog", "other"].includes(pets)) throw new HttpError(400, "application.pets is not one of the choices"); out.pets = pets; }
+  return Object.keys(out).length ? out : null;
+};
+const applicationSummary = (a: JsonRecord) => "Rental application: " + [
+  a.move_in ? `move in ${a.move_in}` : "",
+  a.occupants ? `${a.occupants} ${a.occupants === 1 ? "person" : "people"}` : "",
+  a.employment ? `work: ${a.employment}` : "",
+  a.income ? `income ${a.income}` : "",
+  a.lease_months ? `${a.lease_months} months` : "",
+  a.pets ? `pets: ${a.pets}` : "",
+].filter(Boolean).join(", ") + ".";
+
 const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pepper: string) => {
   const body = await parseBody(req, MAX_FORM_BODY);
   const fullName = stringValue(body.full_name, 160, "full_name", true);
@@ -634,6 +668,7 @@ const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pe
   const message = stringValue(body.message, 5000, "message");
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new HttpError(400, "email is invalid");
   if (body.consent !== true) throw new HttpError(400, "Privacy consent is required");
+  const application = rentalApplication(body.application);
 
   const { data: listing, error: listingError } = await admin
     .from("public_listing_catalog")
@@ -664,7 +699,7 @@ const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pe
     message,
     consent_at: new Date().toISOString(),
     source: "website-api",
-    metadata: { userAgent: stringValue(req.headers.get("user-agent"), 500, "user-agent") },
+    metadata: { userAgent: stringValue(req.headers.get("user-agent"), 500, "user-agent"), ...(application ? { application } : {}) },
   };
   const { data: created, error: inquiryError } = await admin
     .from("listing_inquiries")
@@ -691,7 +726,8 @@ const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pe
     propertyInterest: listing.title,
     listingId: listing.id,
     listingTitle: listing.title,
-    notes: message || "Inquiry from listing API.",
+    notes: [message || "Inquiry from listing API.", application ? applicationSummary(application) : ""].filter(Boolean).join("\n\n"),
+    ...(application ? { application, serviceRequested: "Rental application" } : {}),
     assignedTo: listing.agent_name || "",
     assignedToId: listing.agent_id,
     createdBy: listing.agent_id,

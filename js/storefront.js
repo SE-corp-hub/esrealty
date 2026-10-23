@@ -1179,6 +1179,20 @@
 
   /* Rendered from the same SERVICES array as the nav dropdown, so the two can
    * never disagree about what services exist or where they lead. */
+  /* Rental application (roadmap I10): on a listing for rent, the inquiry can carry the details an
+   * agent asks first. All optional; nothing is uploaded (IDs and payslips are shown at the
+   * viewing). The listing function keeps them with the inquiry and the lead. */
+  function rentApplicationFields() {
+    return '<details class="sf-apply" data-sf-apply><summary>Applying to rent? Add your details (optional)</summary>' +
+      '<label>Move-in date<input type="date" name="move_in"></label>' +
+      '<label>People who will live here<input type="number" name="occupants" min="1" max="20" inputmode="numeric"></label>' +
+      '<label>Work or business<input name="employment" maxlength="120" placeholder="e.g. Nurse at Lipa Medix, or own sari-sari store"></label>' +
+      '<label>Monthly household income<select name="income"><option value="">Prefer not to say</option><option>Below 20,000</option><option>20,000 to 39,999</option><option>40,000 to 79,999</option><option>80,000 to 149,999</option><option>150,000 or more</option></select></label>' +
+      '<label>Lease length wanted<select name="lease_months"><option value="">Not sure yet</option><option value="6">6 months</option><option value="12">1 year</option><option value="24">2 years or more</option></select></label>' +
+      '<label>Pets<select name="pets"><option value="">None</option><option value="cat">Cat</option><option value="dog">Dog</option><option value="other">Other</option></select></label>' +
+      '</details>';
+  }
+
   function servicesSection() {
     return '<section class="sf-section sf-services" id="sf-services"><div class="sf-section-head sf-reveal"><div>' +
       '<p class="sf-eyebrow">HOW WE CAN HELP</p><h2 class="sf-blur"><span>Help</span> <span>with</span> <span>your</span> <span>next</span> <span>property</span> <span>move.</span></h2></div>' +
@@ -1433,7 +1447,9 @@
       (listing.details && listing.details.license_to_sell ? '<section class="sf-dhsud"><span class="sf-badge">' + esc(listing.details.license_to_sell) + '</span> DHSUD License to Sell number for this property.</section>' : '') +
       '<section><h2>Location</h2><div class="sf-detail-map" id="sf-detail-map"><span>' + esc(locationText(listing)) + '</span></div></section></article>' +
       '<aside class="sf-contact-card"><p>Listed at</p><h2>' + esc(money(listing.display_price, listing.offer_type === "rent" ? "/mo" : "")) + '</h2>' +
-      '<button class="sf-outline-btn" data-sf-save="' + esc(listing.id) + '">♡ Save this property</button><form novalidate data-sf-inquiry="' + esc(listing.id) + '"><h3>Request more information</h3><label>Full name<input name="full_name" required maxlength="160"></label><label>Email<input type="email" name="email" maxlength="254"></label><label>Phone<input name="phone" required maxlength="50"></label><label>Message<textarea name="message" rows="4" maxlength="5000" placeholder="I would like to know more about this property."></textarea></label><label class="sf-consent"><input type="checkbox" name="consent" required><span>I consent to the processing of my contact details for this inquiry. See our <a href="#/privacy">Privacy Notice</a>.</span></label><button type="submit">Send inquiry</button><p class="sf-form-status" aria-live="polite"></p></form></aside></div></section>');
+      '<button class="sf-outline-btn" data-sf-save="' + esc(listing.id) + '">♡ Save this property</button><form novalidate data-sf-inquiry="' + esc(listing.id) + '"' + (listing.offer_type === "rent" ? ' data-sf-rent="1"' : "") + '><h3>Request more information</h3><label>Full name<input name="full_name" required maxlength="160"></label><label>Email<input type="email" name="email" maxlength="254"></label><label>Phone<input name="phone" required maxlength="50"></label>' +
+        (listing.offer_type === "rent" ? rentApplicationFields() : "") +
+        '<label>Message<textarea name="message" rows="4" maxlength="5000" placeholder="I would like to know more about this property."></textarea></label><label class="sf-consent"><input type="checkbox" name="consent" required><span>I consent to the processing of my contact details for this inquiry. See our <a href="#/privacy">Privacy Notice</a>.</span></label><button type="submit">Send inquiry</button><p class="sf-form-status" aria-live="polite"></p></form></aside></div></section>');
   }
 
   /* document.title was never set anywhere, so every route shipped the same
@@ -1864,8 +1880,16 @@
         if (!checkFields(inquiry)) return;
         var status = inquiry.querySelector(".sf-form-status"); var button = inquiry.querySelector("button[type=submit]"); var data = new FormData(inquiry);
         button.disabled = true; status.textContent = "Sending…";
-        API.inquire(inquiry.getAttribute("data-sf-inquiry"), { full_name: data.get("full_name"), email: data.get("email"), phone: data.get("phone"), message: data.get("message"), contact_type: "buyer", consent: data.get("consent") === "on" }).then(function () {
-          inquiry.reset(); status.textContent = "Inquiry sent. The listing agent will contact you soon."; status.className = "sf-form-status success";
+        var application = null;
+        if (inquiry.getAttribute("data-sf-rent")) {
+          application = {};
+          ["move_in", "occupants", "employment", "income", "lease_months", "pets"].forEach(function (k) { var v = String(data.get(k) || "").trim(); if (v) application[k] = v; });
+          if (!Object.keys(application).length) application = null;
+        }
+        var payload = { full_name: data.get("full_name"), email: data.get("email"), phone: data.get("phone"), message: data.get("message"), contact_type: inquiry.getAttribute("data-sf-rent") ? "renter" : "buyer", consent: data.get("consent") === "on" };
+        if (application) payload.application = application;
+        API.inquire(inquiry.getAttribute("data-sf-inquiry"), payload).then(function () {
+          inquiry.reset(); status.textContent = application ? "Application sent. The listing agent will contact you to arrange a viewing." : "Inquiry sent. The listing agent will contact you soon."; status.className = "sf-form-status success";
         }).catch(function (error) { status.textContent = error.message || "Could not send inquiry."; status.className = "sf-form-status error"; }).finally(function () { button.disabled = false; });
       }
       /* Project B.T launch notification. Separate inquiry_type from "guide" so

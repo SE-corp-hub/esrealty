@@ -16187,6 +16187,12 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       (can ? '<button class="btn btn-ghost btn-sm" data-lead-del="' + esc(l.id) + '">' + icon("trash", 14) + " Delete</button>" : "") +
       "</div></div>";
     html += leadDuplicateBanner(l, can);
+    if (l.application && typeof l.application === "object") {
+      const a = l.application, pets = { cat: "Cat", dog: "Dog", other: "Other pet" };
+      const rows = [["Move-in date", a.move_in], ["People", a.occupants], ["Work or business", a.employment], ["Monthly income", a.income], ["Lease wanted", a.lease_months ? a.lease_months + " months" : ""], ["Pets", a.pets ? pets[a.pets] || a.pets : ""]].filter(r => r[1]);
+      html += '<div class="card card-pad mb-24" data-lead-application><h3>Rental application</h3><p class="dim tiny mt-8">Sent with the inquiry from the website. Ask for an ID and proof of income at the viewing.</p>' +
+        '<div class="table-wrap mt-8"><table class="data"><tbody>' + rows.map(r => leadDetailRow(r[0], String(r[1]))).join("") + "</tbody></table></div></div>";
+    }
     html += vgRequestCard(l, can);
     const scd = leadScoreOf(l), scb = LEAD_SCORE_BADGE[scd.band];
     if (scb) html += '<div class="card card-pad mb-24 lead-score-card" data-lead-score-card><div class="row spread" style="flex-wrap:wrap;gap:8px"><h3 style="margin:0">Lead score</h3><span class="badge ' + scb[0] + '">' + scb[1] + " " + scd.score + " / 100</span></div>" +
