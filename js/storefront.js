@@ -1484,7 +1484,8 @@
       '<h1>' + esc(listing.title) + '</h1><p class="sf-detail-location">' + esc(locationText(listing)) + '</p><div class="sf-key-stats">' + propertyFacts(listing, true) + '</div>' +
       '<section><h2>About this property</h2><p class="sf-description">' + esc(listing.description || "Contact the listing agent for complete property information.") + '</p></section>' +
       trustBadges(listing) +
-      (listing.details && listing.details.license_to_sell ? '<section class="sf-dhsud"><span class="sf-badge">' + esc(listing.details.license_to_sell) + '</span> DHSUD License to Sell number for this property.</section>' : '') +
+      (listing.details && listing.details.license_to_sell ? '<section class="sf-dhsud"><span class="sf-badge">' + esc(listing.details.license_to_sell) + '</span> DHSUD License to Sell number for this property' +
+        (/^\d{4}-\d{2}-\d{2}$/.test(listing.details.license_to_sell_until || "") ? ', valid until ' + esc(listing.details.license_to_sell_until) : '') + '.</section>' : '') +
       '<section><h2>Location</h2><div class="sf-detail-map" id="sf-detail-map"><span>' + esc(locationText(listing)) + '</span></div></section></article>' +
       '<aside class="sf-contact-card"><p>Listed at</p><h2>' + esc(money(listing.display_price, listing.offer_type === "rent" ? "/mo" : "")) + '</h2>' +
       '<button class="sf-outline-btn" data-sf-save="' + esc(listing.id) + '">♡ Save this property</button><form novalidate data-sf-inquiry="' + esc(listing.id) + '"' + (listing.offer_type === "rent" ? ' data-sf-rent="1"' : "") + '><h3>Request more information</h3><label>Full name<input name="full_name" required maxlength="160"></label><label>Email<input type="email" name="email" maxlength="254"></label><label>Phone<input name="phone" required maxlength="50"></label>' +
@@ -1581,7 +1582,7 @@
     var photo = safeImage(a.photo);
     var href = "#/agents/" + encodeURIComponent(a.slug);
     var nums = [];
-    if (Number(a.deals) > 0) nums.push('<div><b>' + Number(a.deals) + '</b><span>' + (Number(a.deals) === 1 ? "deal" : "deals") + ' since ' + esc(P.month(a.deals_since)) + '</span></div>');
+    if (Number(a.deals) > 0) nums.push('<div><b>' + Number(a.deals) + '</b><span>' + (Number(a.deals) === 1 ? "deal" : "deals") + (a.deals_window === "3y" ? " in 3 years" : ' since ' + esc(P.month(a.deals_since))) + '</span></div>');
     if (Number(a.listing_count) > 0) nums.push('<div><b>' + Number(a.listing_count) + '</b><span>' + (Number(a.listing_count) === 1 ? "listing" : "listings") + '</span></div>');
     if (Number(a.review_count) > 0) nums.push('<div><b>' + Number(a.review_count) + '</b><span>' + (Number(a.review_count) === 1 ? "review" : "reviews") + '</span></div>');
     return '<article class="agd-card">' +
@@ -1595,7 +1596,8 @@
       '<p class="agd-line">' + (a.reply ? 'Usually replies ' + esc(a.reply) : 'New on SEA ESTATES') + '</p>' +
       (needs.length ? '<p class="agd-line">' + esc(needs.join(", ")) + '</p>' : '') + '</div>' +
       (nums.length ? '<div class="agd-nums">' + nums.join("") + '</div>' : '') +
-      '<a class="agd-btn agd-btn-primary agd-go" href="' + href + '">View website<span class="sr-only">: ' + esc(a.name) + '</span></a></article>';
+      '<div class="agd-acts"><a class="agd-btn agd-btn-primary agd-go" href="' + href + '">View website<span class="sr-only">: ' + esc(a.name) + '</span></a>' +
+      (a.viber ? '<a class="agd-btn agd-go" href="viber://chat?number=' + encodeURIComponent(a.viber) + '" data-agd-viber="' + esc(a.slug) + '">Viber<span class="sr-only">: message ' + esc(a.name) + '</span></a>' : '') + '</div></article>';
   }
 
   function checkAgentBox() {
@@ -1652,7 +1654,7 @@
       '<li><b>Verified badge:</b> government ID seen and phone confirmed by our office: shown when done.</li></ol>' +
       '<p>No agent pays to be here. Agents with a measured reply time come first, then the most recently updated pages. When a licence expires, the agent’s page comes down until it is renewed.</p></section>' +
       '<section class="agd-box agd-join" aria-labelledby="agd-join-h"><h2 id="agd-join-h">Licensed agent?</h2><p>Get your own website and appear here, free.</p>' +
-      '<button type="button" class="agd-btn agd-btn-primary" data-sf-auth="signup">Join as an agent</button></section></aside></div></div>');
+      '<button type="button" class="agd-btn agd-btn-primary" data-sf-auth="signup-agent">Join as an agent</button></section></aside></div></div>');
   }
 
   function directoryGo(form) {
@@ -2063,6 +2065,8 @@
         return;
       }
       if (event.target.closest("[data-agd-retry]")) { loadCurrent(true); return; }
+      var agdViber = event.target.closest("[data-agd-viber]");
+      if (agdViber && API.agentTap) API.agentTap(agdViber.getAttribute("data-agd-viber"), "viber").catch(function () {}); // counted, as on the agent's page
       var page = event.target.closest("[data-sf-page]");
       if (page && !page.disabled) { var r = route(); r.params.set("page", page.getAttribute("data-sf-page")); go("search?" + r.params.toString()); }
     });

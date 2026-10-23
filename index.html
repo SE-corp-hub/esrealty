@@ -124,6 +124,18 @@
             <option value="tenant">Tenant</option>
           </select>
         </div>
+        <!-- Brokers and agents (agent websites): the office checks these before a public page goes live. -->
+        <div class="field" id="auth-prc-field" style="display:none">
+          <label for="auth-prc">PRC licence or accreditation number</label>
+          <input class="input" id="auth-prc" type="text" maxlength="40" autocomplete="off" aria-describedby="auth-prc-hint">
+          <div class="field-hint" id="auth-prc-hint">Our office checks it against the PRC record before your page goes live.</div>
+          <div class="field-err" id="auth-err-prc"></div>
+        </div>
+        <div class="field" id="auth-broker-field" style="display:none">
+          <label for="auth-broker">Your supervising broker</label>
+          <input class="input" id="auth-broker" type="text" maxlength="120" autocomplete="off" placeholder="Full name of the licensed broker who supervises you">
+          <div class="field-err" id="auth-err-broker"></div>
+        </div>
         <div class="field" id="auth-role-field" style="display:none">
           <label>Test role (localhost only)</label>
           <select class="input" id="auth-role">

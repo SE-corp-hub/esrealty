@@ -20,7 +20,8 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
         towns: i % 2 ? ["batangas-city"] : ["lipa-city", "malvar", "tanauan-city"], needs: i % 3 ? ["buy"] : ["sell", "lots"], languages: ["filipino", "english"],
         licence_checked_on: "2026-10-12" };
       if (i < 6) a.reply = "within 30 minutes";
-      if (i === 0) Object.assign(a, { verified_on: "2026-10-20", deals: 2, deals_since: "2025-03", listing_count: 3, review_count: 1 });
+      if (i === 0) Object.assign(a, { verified_on: "2026-10-20", deals: 2, deals_since: "2025-03", listing_count: 3, review_count: 1, viber: "+639171234567" });
+      if (i === 4) Object.assign(a, { deals: 14, deals_since: "2023-11", deals_window: "3y" });
       if (i === 3) Object.assign(a, { deals: 9, deals_since: "2024-11" });
       return a;
     });
@@ -30,7 +31,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
       broker: { name: "Alfredo B. Reyes", licence_no: "0004321" }, pitch: "Lots and homes in Lipa.", bio: "I grew up in Lipa.", bio_lang: "en",
       photo: "", towns: ["lipa-city"], needs: ["sell", "lots"], languages: ["filipino"], contacts: { call: "+639171234567" },
       sections: ["listings", "about"], accent: "rust", reply: "within 30 minutes", listing_count: 0, listings: [],
-      record: { deals: 2, buyer: 1, seller: 1, since: "2025-03", rows: [{ month: "2025-03", side: "buyer", type: "lot-only", town: "Lipa City", lot_sqm: 300 }] },
+      record: { deals: 3, buyer: 1, seller: 1, rentals: 1, since: "2025-03", rows: [{ month: "2025-03", side: "buyer", type: "lot-only", town: "Lipa City", lot_sqm: 300 }, { month: "2026-05", side: "rental", type: "house-and-lot", town: "Lipa City" }] },
       reviews: [{ label: "Rhea D.", town: "Lipa City", month: "2026-09", body: "We were buying from Dubai and Maria sent the title before we paid anything.", reply: "Salamat, Rhea!" }]
     };
     const OPEN = "a".repeat(64), USED = "b".repeat(64);
@@ -48,7 +49,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
         return reply(200, { data: u.searchParams.get("q") === "0012345" ? [{ slug: PAGE.slug, name: PAGE.name, role_label: PAGE.role_label, licence_no: "0012345", verified_on: "2026-10-20" }] : [] });
       }
       if (/\/agents\/maria-santos-dela-cruz$/.test(p)) return reply(200, { data: PAGE });
-      if (/\/agents\/[^/]+\/taps$/.test(p)) return reply(202, { ok: true });
+      if (/\/agents\/[^/]+\/taps$/.test(p)) { sent.push({ kind: "tap", url: p, body: JSON.parse(init.body) }); return reply(202, { ok: true }); }
       if (/\/reviews\/lookup$/.test(p)) {
         const t = JSON.parse(init.body).token;
         sent.push({ kind: "lookup", url: String(url) });
@@ -58,7 +59,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
       }
       if (/\/reviews$/.test(p)) { sent.push({ kind: "review", body: JSON.parse(init.body) }); return reply(201, { message: "Thank you." }); }
       if (/\/listings\/L1$/.test(p)) return reply(200, { data: { id: "L1", title: "Corner lot in Sabang", property_type: "lot-only", offer_type: "sale", price: 2850000, display_price: 2850000,
-        city: "Lipa City", province: "Batangas", status: "available", agent_name: "Maria Santos Dela Cruz", images: [], details: { agent_prc: "0012345", agent_slug: "maria-santos-dela-cruz" } } });
+        city: "Lipa City", province: "Batangas", status: "available", agent_name: "Maria Santos Dela Cruz", images: [], details: { agent_prc: "0012345", agent_slug: "maria-santos-dela-cruz", license_to_sell: "LTS No. 0123", license_to_sell_until: "2027-06-30" } } });
       return realFetch.apply(this, arguments);
     };
     document.addEventListener("click", e => { const a = e.target.closest && e.target.closest("a[data-ag-tap]"); if (a) e.preventDefault(); }, true);
@@ -78,6 +79,12 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     chk("measured reply time shows; without it, New on SEA ESTATES", /Usually replies within 30 minutes/.test(first.textContent) && /New on SEA ESTATES/.test(qa(".agd-card")[7].textContent));
     chk("numbers show only with a record behind them", /2\s*deals since Mar 2025/.test(first.textContent) && /3\s*listings/.test(first.textContent) && /1\s*review/.test(first.textContent)
       && !qa(".agd-card")[1].querySelector(".agd-nums") && !/\b0\b/.test(qa(".agd-card")[1].textContent));
+    const viber = first.querySelector("[data-agd-viber]");
+    chk("a card has a Viber button when the agent published a Viber number, and only then", !!viber && /^viber:\/\/chat\?number=%2B639171234567$/.test(viber.getAttribute("href")) && !qa(".agd-card")[1].querySelector("[data-agd-viber]"));
+    document.addEventListener("click", e => { if (e.target.closest && e.target.closest("[data-agd-viber]")) e.preventDefault(); }, { capture: true, once: true });
+    viber.click(); await wait(300);
+    chk("a Viber tap from the directory is counted for that agent", sent.some(s => s.kind === "tap" && /maria-santos-dela-cruz\/taps$/.test(s.url) && s.body.kind === "viber"));
+    chk("an agent with 36 months of records shows deals in 3 years", /14\s*deals in 3 years/.test(qa(".agd-card")[4].textContent));
     chk("every card links to the agent's website", qa(".agd-card").every(c => c.querySelector('a.agd-go[href^="#/agents/"]')) && /View website: Maria Santos Dela Cruz/.test(first.querySelector(".agd-go").textContent));
     chk("the check-an-agent box and how we check are beside the list", !!q("#agd-check") && /No agent pays to be here/.test(text(".agd-aside")) && /never asks you to pay into a personal account/.test(text("#agd-check")));
     chk("a fallback ends the list", /Not finding the right person\?/.test(text(".agd-fallback")) && !!q('.agd-fallback a[href*="property-value"]'));
@@ -94,7 +101,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     chk("removing it shows everyone again", !/town=/.test(location.hash) && /12 agents/.test(text(".agd-status")));
     q('.agd-filters select[name="sort"]').value = "deals";
     q(".agd-filters button[type=submit]").click(); await wait(1000);
-    chk("Most deals puts the agent with the most deals first", /Dana Uy/.test(qa(".agd-card")[0].textContent));
+    chk("Most deals puts the agent with the most deals first", /Eli Ramos/.test(qa(".agd-card")[0].textContent) && /Dana Uy/.test(qa(".agd-card")[1].textContent));
     chk("changing a filter alone does not reload the page (it waits for Show agents)", (() => { const before = location.hash; q('.agd-filters select[name="need"]').value = "sell"; q('.agd-filters select[name="need"]').dispatchEvent(new Event("change", { bubbles: true })); return location.hash === before; })());
 
     // Check an agent.
@@ -114,12 +121,18 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     location.hash = "#/agents?check=1"; await wait(1200);
     chk("the agent page's Check an agent link lands in the lookup", document.activeElement && document.activeElement.id === "agd-q");
 
+    q('[data-sf-auth="signup-agent"]').click(); await wait(600);
+    chk("Join as an agent opens sign-up with the agent role and asks for the licence number",
+      !q("#auth-screen").classList.contains("hidden") && q("#auth-request-role").value === "agent" && q("#auth-prc-field").style.display === "" && q("#auth-broker-field").style.display === "");
+    const closeAuth = q("#auth-close"); if (closeAuth) closeAuth.click(); else q("#auth-screen").classList.add("hidden");
+    await wait(400);
+
     // An agent's page with Phase 3 proof.
     location.hash = "#/agents/maria-santos-dela-cruz"; await wait(1200);
     chk("Verified shows in the hero and on the licence card with its date", /Verified 20 Oct 2026/.test(text(".ag-chips")) && /Verified on 20 Oct 2026: government ID seen and phone confirmed by our office\./.test(text(".ag-card")));
-    chk("the hero counts deals since the first month, and reviews", /2\s*deals recorded since Mar 2025/.test(text(".ag-stats")) && /1\s*client review/.test(text(".ag-stats")));
-    chk("the track record counts by side, from our records", /2 deals closed through SEA ESTATES since Mar 2025/.test(text(".ag-record")) && /1\s*as buyer’s agent/.test(text(".ag-record")) && /1\s*as seller’s agent/.test(text(".ag-record")));
-    chk("only the deal the client agreed to is listed, without a price", qa(".ag-table tbody tr").length === 1 && /Mar 2025\s*Lot, 300 sqm\s*Lipa City\s*Buyer\s*Not shown/.test(text(".ag-table tbody")) && /Other deals are counted but not listed\./.test(text(".ag-record")), text(".ag-table tbody"));
+    chk("the hero counts deals since the first month, and reviews", /3\s*deals recorded since Mar 2025/.test(text(".ag-stats")) && /1\s*client review/.test(text(".ag-stats")));
+    chk("the track record counts by side and rentals, from our records", /3 deals closed through SEA ESTATES since Mar 2025/.test(text(".ag-record")) && /1\s*as buyer’s agent/.test(text(".ag-record")) && /1\s*as seller’s agent/.test(text(".ag-record")) && /1\s*rental(?!s)/.test(text(".ag-record")), text(".ag-record").slice(0, 300));
+    chk("only deals the client agreed to are listed, without a price", qa(".ag-table tbody tr").length === 2 && /Mar 2025\s*Lot, 300 sqm\s*Lipa City\s*Buyer\s*Not shown/.test(text(".ag-table tbody")) && /May 2026\s*House and lot\s*Lipa City\s*Rental/.test(text(".ag-table tbody")) && /Other deals are counted but not listed\./.test(text(".ag-record")), text(".ag-table tbody"));
     chk("the review shows with first name, initial, town and month, and the agent's reply", /We were buying from Dubai/.test(text(".ag-reviews")) && /Rhea D\., Lipa City, Sep 2026\. Linked to a closed deal\./.test(text(".ag-reviews")) && /Maria replied: Salamat, Rhea!/.test(text(".ag-reviews")));
     chk("no star ratings anywhere", !/★|\bstars?\b/i.test(text(".ag")));
     const sell = q("[data-ag-sell]");
@@ -153,6 +166,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     // Listed by.
     location.hash = "#/listing/L1"; await wait(1500);
     const listed = q(".sf-trust-agent a");
+    chk("a pre-selling licence to sell shows with its valid-until date", /LTS No\. 0123\s*DHSUD License to Sell number for this property, valid until 2027-06-30\./.test(text(".sf-dhsud")), text(".sf-dhsud"));
     chk("Listed by links to the agent's page", !!listed && listed.getAttribute("href") === "#/agents/maria-santos-dela-cruz" && /Maria Santos Dela Cruz/.test(listed.textContent), text(".sf-trust-agent"));
   } catch (e) {
     chk("test ran without error", false, String(e && e.stack || e));

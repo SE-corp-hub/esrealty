@@ -2877,8 +2877,10 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
           host: $("#content"),
           openAuth: mode => {
             showAuth();
-            const tab = $(mode === "signup" ? "#auth-tab-register" : "#auth-tab-login");
+            const tab = $(mode === "signup" || mode === "signup-agent" ? "#auth-tab-register" : "#auth-tab-login");
             if (tab) tab.click();
+            // "Join as an agent" (agent directory): sign-up with the agent role already chosen.
+            if (mode === "signup-agent") { const r = $("#auth-request-role"); if (r) { r.value = "agent"; r.dispatchEvent(new Event("change")); } }
           }
         });
       }
@@ -3555,7 +3557,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     if (el) { el.textContent = ""; el.classList.remove("show"); }
     if (input) input.classList.remove("input-err");
   }
-  function clearAllErrs() { ["auth-err-name", "auth-err-email", "auth-err-pass", "auth-err-confirm"].forEach(clearFieldErr); }
+  function clearAllErrs() { ["auth-err-name", "auth-err-email", "auth-err-pass", "auth-err-confirm", "auth-err-prc", "auth-err-broker"].forEach(clearFieldErr); }
   function showFormMsg(html, type) {
     const m = $("#auth-form-msg");
     m.innerHTML = html;
@@ -3569,6 +3571,15 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     const passError = () => { const v = $("#auth-pass").value; if (!v) return "Password is required."; if (mode === "signup" && v.length < 6) return "Password must be at least 6 characters."; return ""; };
     const nameError = () => (mode !== "signup" ? "" : ($("#auth-name").value.trim() ? "" : "Full name is required."));
     const confirmError = () => { if (mode !== "signup") return ""; const v = $("#auth-confirm").value; if (!v) return "Confirm your password."; return v === $("#auth-pass").value ? "" : "Passwords do not match."; };
+    // Brokers and agents give their licence number at sign-up; agents also name their supervising broker.
+    const licenceRole = () => (mode === "signup" ? $("#auth-request-role").value : "");
+    const showLicenceFields = () => {
+      const r = licenceRole();
+      $("#auth-prc-field").style.display = r === "broker" || r === "agent" ? "" : "none";
+      $("#auth-broker-field").style.display = r === "agent" ? "" : "none";
+    };
+    const prcError = () => { const r = licenceRole(); return (r === "broker" || r === "agent") && $("#auth-prc").value.trim().length < 3 ? "Enter your PRC licence or accreditation number." : ""; };
+    const brokerError = () => (licenceRole() === "agent" && $("#auth-broker").value.trim().length < 3 ? "Enter the name of your supervising broker." : "");
     const setMode = m => {
       mode = m;
       const signup = m === "signup";
@@ -3581,6 +3592,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
       nameField.style.display = signup ? "" : "none";
       $("#auth-confirm-field").style.display = signup ? "" : "none";
       $("#auth-request-role-field").style.display = signup ? "" : "none";
+      showLicenceFields();
       $("#auth-pass-field").style.display = forgot ? "none" : "";
       $("#auth-role-field").style.display = !signup && !forgot && IS_LOCAL_DEV ? "" : "none";
       $("#auth-test").style.display = !signup && !forgot && IS_LOCAL_DEV ? "" : "none";
@@ -3596,6 +3608,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     if (close) close.addEventListener("click", () => { hideAuth(); if (!currentUser) render(); });
     $("#auth-tab-login").addEventListener("click", () => setMode("signin"));
     $("#auth-tab-register").addEventListener("click", () => setMode("signup"));
+    $("#auth-request-role").addEventListener("change", showLicenceFields);
     $("#auth-tab-forgot").addEventListener("click", () => setMode("forgot"));
     $("#auth-back-login").addEventListener("click", () => setMode("signin"));
     $("#auth-email").addEventListener("blur", () => { const err = emailError(); if (err) fieldErr("auth-err-email", err); });
@@ -3654,7 +3667,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
         }
         return;
       }
-      const firstBad = [["auth-err-name", nameError], ["auth-err-email", emailError], ["auth-err-pass", passError], ["auth-err-confirm", confirmError]]
+      const firstBad = [["auth-err-name", nameError], ["auth-err-email", emailError], ["auth-err-pass", passError], ["auth-err-confirm", confirmError], ["auth-err-prc", prcError], ["auth-err-broker", brokerError]]
         .filter(([, fn]) => fn()).map(([id, fn]) => { fieldErr(id, fn()); return id; })[0];
       if (firstBad) { const el = document.getElementById(firstBad.replace("auth-err-", "auth-")); if (el) el.focus(); return; }
       const email = $("#auth-email").value.trim();
@@ -3667,7 +3680,9 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
         if (!SB) throw new Error("Supabase client could not load");
         let auth;
         if (mode === "signup") {
-          auth = await withTimeout(SB.auth.signUp({ email, password: pass, options: { data: { full_name: name, requested_role: requestedRole } } }), 20000);
+          const licence = requestedRole === "broker" || requestedRole === "agent"
+            ? { requested_prc: $("#auth-prc").value.trim().slice(0, 40), requested_broker: requestedRole === "agent" ? $("#auth-broker").value.trim().slice(0, 120) : "" } : {};
+          auth = await withTimeout(SB.auth.signUp({ email, password: pass, options: { data: Object.assign({ full_name: name, requested_role: requestedRole }, licence) } }), 20000);
           if (auth.error) throw auth.error;
           if (!auth.data.session) {
             $("#auth-email").value = email;
@@ -14043,7 +14058,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         lsDetailRow("Facing", l.facing ? l.facing.charAt(0).toUpperCase() + l.facing.slice(1) : "—") +
         lsDetailRow("Access / RROW", l.accessNote || "—") +
         lsDetailRow("Turnover Date", l.turnoverDate) +
-        (presell ? lsDetailRow("DHSUD License to Sell", l.licenseToSell || "Pending") : "") +
+        (presell ? lsDetailRow("DHSUD License to Sell", (l.licenseToSell || "Pending") + (l.licenseToSellUntil ? ", valid until " + l.licenseToSellUntil : "")) : "") +
         (safeHttpsUrl(l.videoUrl) ? '<tr><td>Virtual Tour</td><td><a href="' + esc(safeHttpsUrl(l.videoUrl)) + '" target="_blank" rel="noopener">Watch video</a></td></tr>' : "") +
       "</tbody></table></div></div>";
     html += '<div class="card card-pad"><h3>Location</h3><div id="ls-static-map" class="ls-map mt-8"></div></div>';
@@ -14311,6 +14326,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         lsFld("Turnover date (RFO/pre-selling)", lsTxt("ls-turnover", l.turnoverDate, "e.g. Q4 2027")) +
         lsFld("Developer / Broker", lsTxt("ls-developer", l.developer)) +
         lsFld("DHSUD License to Sell", lsTxt("ls-lts", l.licenseToSell), "Required for pre-selling projects") +
+        lsFld("License to Sell valid until", '<input class="input" id="ls-lts-until" type="date" value="' + esc(l.licenseToSellUntil || "") + '">', "A published pre-selling listing hides itself after this date") +
         lsFld("HOA dues (₱/mo)", lsNum("ls-hoa", l.hoaDues)) +
         lsFld("Condo dues (₱/mo)", lsNum("ls-condo", l.condoDues)) +
       "</div>" +
@@ -14393,7 +14409,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     rec.floors = $n("ls-floors");
     rec.region = $v("ls-m-region"); rec.province = $v("ls-m-province"); rec.city = $v("ls-m-city"); rec.barangay = $v("ls-brgy"); rec.address = $v("ls-addr");
     rec.titleType = $v("ls-titletype"); rec.titleNo = $v("ls-title-no"); rec.taxDecNo = $v("ls-taxdec"); rec.zoning = $v("ls-zoning");
-    rec.turnoverDate = $v("ls-turnover"); rec.developer = $v("ls-developer"); rec.licenseToSell = $v("ls-lts");
+    rec.turnoverDate = $v("ls-turnover"); rec.developer = $v("ls-developer"); rec.licenseToSell = $v("ls-lts"); rec.licenseToSellUntil = $v("ls-lts-until");
     rec.hoaDues = $n("ls-hoa"); rec.condoDues = $n("ls-condo");
     rec.balcony = $v("ls-ed-balcony"); rec.facing = $v("ls-facing");
     rec.furnishing = $v("ls-ed-furnishing"); rec.petFriendly = $v("ls-ed-pet");
@@ -14406,6 +14422,12 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     rec.isPublished = $("#ls-published") ? $("#ls-published").checked : false;
     rec.exclusive = $("#ls-exclusive") ? $("#ls-exclusive").checked : rec.exclusive === true;
     rec.docsChecked = $("#ls-docs-checked") ? $("#ls-docs-checked").checked : rec.docsChecked === true;
+    // The listing function refuses a published pre-selling listing without these (migration 0017).
+    if (rec.status === "pre-selling" && rec.isPublished) {
+      if (!rec.licenseToSell) { fieldInErr("ls-lts", "A published pre-selling listing needs its DHSUD License to Sell number"); return; }
+      if (!rec.licenseToSellUntil) { fieldInErr("ls-lts-until", "Enter the date the License to Sell is valid until"); return; }
+      if (rec.licenseToSellUntil < new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)) { fieldInErr("ls-lts-until", "This License to Sell has expired. Renew it, or untick Published"); return; }
+    }
     if (rec.featured && !(rec.photos && rec.photos.length)) {
       toast("Featured listings need at least one photo — attach a photo or untick Featured", "err");
       return;
@@ -14933,6 +14955,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         turnover_date: rec.turnoverDate || "",
         developer: rec.developer || "",
         license_to_sell: rec.licenseToSell || "",
+        license_to_sell_until: rec.licenseToSellUntil || "",
         pms_unit_id: rec.pmsUnitId || "",
         exclusive: rec.exclusive === true,
         docs_checked: rec.docsChecked === true,
@@ -17851,8 +17874,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
   }
 
   /* ================= BROKERAGE: ROLES, i18n, USERS ================= */
-  const FIL_TITLES = { dashboard: "Dashboard", wizard: "Bagong Investment", deal: "Pagsusuri ng Deal", portfolio: "Portfolio", pms: "Pamamahala ng Ari-arian", assistant: "AI Katulong", reports: "Mga Ulat", appraisal: "Pagtatasa", "value-guide": "Value Guide", market: "Market Scan", listings: "Mga Listahan", leads: "CRM / Mga Leads", transactions: "Mga Transaksyon", financing: "Pagpopondo", playbook: "Sales Playbook", users: "Mga User at Access", admin: "Brokerage", website: "Aking website", settings: "Mga Setting" };
-  const LANG_NAV = { dashboard: ["Dashboard", "Dashboard"], wizard: ["New Investment", "Bagong Investment"], deal: ["Deal Analysis", "Pagsusuri ng Deal"], appraisal: ["Appraisal", "Pagtatasa"], "value-guide": ["Value Guide", "Gabay sa Halaga"], market: ["Market Scan", "Market Scan"], leads: ["CRM / Leads", "CRM / Mga Leads"], listings: ["Listings", "Mga Listahan"], portfolio: ["Portfolio", "Portfolio"], pms: ["Property Manager", "Pamamahala ng Ari-arian"], assistant: ["AI Assistant", "AI Katulong"], reports: ["Reports", "Mga Ulat"], transactions: ["Transactions", "Mga Transaksyon"], financing: ["Financing", "Pagpopondo"], playbook: ["Sales Playbook", "Sales Playbook"], users: ["Users", "Mga User"], admin: ["Brokerage", "Brokerage"], settings: ["Settings", "Mga Setting"] };
+  const FIL_TITLES = { website: "Aking website", dashboard: "Dashboard", wizard: "Bagong Investment", deal: "Pagsusuri ng Deal", portfolio: "Portfolio", pms: "Pamamahala ng Ari-arian", assistant: "AI Katulong", reports: "Mga Ulat", appraisal: "Pagtatasa", "value-guide": "Value Guide", market: "Market Scan", listings: "Mga Listahan", leads: "CRM / Mga Leads", transactions: "Mga Transaksyon", financing: "Pagpopondo", playbook: "Sales Playbook", users: "Mga User at Access", admin: "Brokerage", website: "Aking website", settings: "Mga Setting" };
+  const LANG_NAV = { website: ["My website", "Aking website"], dashboard: ["Dashboard", "Dashboard"], wizard: ["New Investment", "Bagong Investment"], deal: ["Deal Analysis", "Pagsusuri ng Deal"], appraisal: ["Appraisal", "Pagtatasa"], "value-guide": ["Value Guide", "Gabay sa Halaga"], market: ["Market Scan", "Market Scan"], leads: ["CRM / Leads", "CRM / Mga Leads"], listings: ["Listings", "Mga Listahan"], portfolio: ["Portfolio", "Portfolio"], pms: ["Property Manager", "Pamamahala ng Ari-arian"], assistant: ["AI Assistant", "AI Katulong"], reports: ["Reports", "Mga Ulat"], transactions: ["Transactions", "Mga Transaksyon"], financing: ["Financing", "Pagpopondo"], playbook: ["Sales Playbook", "Sales Playbook"], users: ["Users", "Mga User"], admin: ["Brokerage", "Brokerage"], settings: ["Settings", "Mga Setting"] };
   const LANG_SECTIONS = { ANALYSIS: ["ANALYSIS", "PAGSUSURI"], WORKSPACE: ["WORKSPACE", "WORKSPACE"], BROKERAGE: ["BROKERAGE", "BROKERAGE"], ACCOUNT: ["ACCOUNT", "ACCOUNT"] };
   let lang = "en";
   function setLang(l) { lang = (l === "fil") ? "fil" : "en"; state.lang = lang; save(); render(); }
@@ -18179,7 +18202,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     ov.innerHTML = '<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="lc-title"><div class="modal-head"><h3 id="lc-title">' + icon("shield", 15) + " Licence check: " + esc(u.full_name || u.email || "") + '</h3><button class="icon-btn" data-lc-cancel aria-label="Close">&times;</button></div>' +
       '<div class="modal-body"><p class="dim">Compare these with the PRC record before saving. Saving records your name and the time. ' + (agent ? "A salesperson" : "A broker") + "'s public page needs a current licence check.</p>" +
       '<div class="field"><label>Licence type</label><input class="input" value="' + (agent ? "Real estate salesperson (accreditation)" : "Real estate broker (licence)") + '" readonly></div>' +
-      '<div class="field"><label for="lc-no">Licence or accreditation number</label><input class="input" id="lc-no" maxlength="40" value="' + esc(v.licence_no || u.prc || "") + '"></div>' +
+      '<div class="field"><label for="lc-no">Licence or accreditation number</label><input class="input" id="lc-no" maxlength="40" value="' + esc(v.licence_no || u.prc || u.requested_prc || "") + '"></div>' +
       '<div class="field"><label for="lc-name">Name exactly as on the PRC record</label><input class="input" id="lc-name" maxlength="120" value="' + esc(v.prc_name || u.full_name || "") + '"><span class="field-hint">This name shows on their public page.</span></div>' +
       '<div class="field"><label for="lc-until">Valid until</label><input class="input" id="lc-until" type="date" value="' + esc(v.valid_until || "") + '"></div>' +
       (agent ? (u.broker ? '<label class="site-check"><input type="checkbox" id="lc-broker"' + (v.broker_accepted ? " checked" : "") + "> Their supervising broker, " + esc(brokerName) + ", has accepted them</label>"
@@ -18246,6 +18269,9 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     }
     if (u.agency) extra.push('<span class="chip">' + esc(u.agency) + "</span>");
     if (u.prc) extra.push('<span class="chip">PRC ' + esc(u.prc) + "</span>");
+    // What a broker or agent typed at sign-up (migration 0017), to check before approving.
+    if (!u.prc && u.requested_prc) extra.push('<span class="chip" data-signup-prc>Licence no. given at sign-up: ' + esc(u.requested_prc) + "</span>");
+    if (u.requested_broker && !u.broker) extra.push('<span class="chip" data-signup-broker>Supervising broker named: ' + esc(u.requested_broker) + "</span>");
     const lchip = licenceChip(u); if (lchip) extra.push(lchip);
     if (u.resa) extra.push('<span class="chip">' + esc(u.resa) + "</span>");
     const pmsOwner = (pms().owners || []).find(o => o.archived !== true && String(o.authUserId || "") === String(u.id || ""));
@@ -18902,7 +18928,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     if (remoteProfilesLoaded && remoteProfiles.length) return remoteProfiles;
     return [
       { id: "demo-pending-1", email: "juan@esrealty.ph", full_name: "Juan Dela Cruz", role: "buyer", registration_status: "pending", requested_role: "agent" },
-      { id: "demo-pending-2", email: "maria@esrealty.ph", full_name: "Maria Santos", role: "buyer", registration_status: "pending", requested_role: "broker" },
+      { id: "demo-pending-2", email: "maria@esrealty.ph", full_name: "Maria Santos", role: "buyer", registration_status: "pending", requested_role: "broker", requested_prc: "0098765" },
       { id: "demo-pending-3", email: "carlos@esrealty.ph", full_name: "Carlos Reyes", role: "buyer", registration_status: "pending", requested_role: "owner" },
       { id: "demo-approved-1", email: "ana@esrealty.ph", full_name: "Ana Lopez", role: "agent", registration_status: "approved", last_sign_in_at: new Date(Date.now() - 3 * 86400000).toISOString(), requested_role: "agent", broker: "demo-approved-2", agency: "Villanueva & Co." },
       { id: "demo-approved-2", email: "broker@esrealty.ph", full_name: "Marco Villanueva", role: "broker", registration_status: "approved", requested_role: "broker", prc: "0012345", resa: "RESA-2024-0881", agency: "Villanueva & Co." },
@@ -19854,7 +19880,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const all = state.transactions || [];
     if (!currentUser || currentUser.demo || roleIs("super-admin")) return all;
     if (roleIs("broker")) return all.filter(t => t.brokerId === currentUser.id || t.createdBy === currentUser.id);
-    if (roleIs("agent")) return all.filter(t => currentUser.brokerId && t.brokerId === currentUser.brokerId);
+    // An agent sees their broker's deals and any deal that credits them (read-only; migration 0017).
+    if (roleIs("agent")) return all.filter(t => (currentUser.brokerId && t.brokerId === currentUser.brokerId) || t.buyerAgentId === currentUser.id || t.sellerAgentId === currentUser.id);
     return [];
   }
   function txRef() { return "TX-" + String(transactionScope().length + 1).padStart(4, "0"); }
@@ -19936,7 +19963,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const canManageTx = txCanManage();
     let html = '<div class="hero"><div><h1>Transactions</h1><p>Reservation &rarr; Contract to Sell &rarr; Deed of Absolute Sale &rarr; Completed, with computation sheets and closing-cost estimates.</p></div>' +
       '<div class="actions">' + (canManageTx ? '<button class="btn btn-primary" data-tx-new>' + icon("plus", 15) + " New Transaction</button>" : "") + "</div></div>";
-    html += roleIs("agent") ? '<div class="notice-banner">' + icon("shield", 14) + '<span>Read-only transactions shared by your linked licensed broker.</span></div>' : '<div class="notice-banner">' + icon("shield", 14) + ' <span>Computation sheets and transfer-cost figures are <b>estimates only</b>, subject to verification by the LGU, BIR, Registry of Deeds, and notary. This system does not provide legal or tax advice. Have a licensed broker or lawyer review documents before signing.</span></div>';
+    html += roleIs("agent") ? '<div class="notice-banner">' + icon("shield", 14) + '<span>Read-only: transactions shared by your linked licensed broker, and deals that name you as an agent.</span></div>' : '<div class="notice-banner">' + icon("shield", 14) + ' <span>Computation sheets and transfer-cost figures are <b>estimates only</b>, subject to verification by the LGU, BIR, Registry of Deeds, and notary. This system does not provide legal or tax advice. Have a licensed broker or lawyer review documents before signing.</span></div>';
     html += txResultsHTML();
     return html;
   }
@@ -19973,7 +20000,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       txRow("Linked listing", lt ? (ltLink ? '<a class="link" data-tx-goto-listing="' + esc(ltLink.id) + '">' + esc(lt) + "</a>" : esc(lt)) : "") +
       txRow("Buyer / Client", t.buyerName) + txRow("Seller / Developer", t.sellerName) +
       txRow("Handling agent", t.agentName) + txRow("Referral (if any)", t.referralName) +
-      (t.buyerAgentId ? txRow("Buyer's agent", esc(t.buyerAgentName || "")) : "") + (t.sellerAgentId ? txRow("Seller's agent", esc(t.sellerAgentName || "")) : "") +
+      (t.dealKind === "rental" ? txRow("Deal type", "Rental (lease)") : "") +
+      (t.buyerAgentId ? txRow(t.dealKind === "rental" ? "Tenant's agent" : "Buyer's agent", esc(t.buyerAgentName || "")) : "") + (t.sellerAgentId ? txRow(t.dealKind === "rental" ? "Landlord's agent" : "Seller's agent", esc(t.sellerAgentName || "")) : "") +
       (t.buyerAgentId || t.sellerAgentId ? txRow("On the agents' pages", t.showDeal ? (t.showPrice ? "Listed with price (client agreed)" : "Listed without price (client agreed)") : "Counted, not listed") : "") +
       txRow("Price", C.money(c.price)) + txRow("Reservation fee", C.money(c.reservationFee)) +
       (t.reservationDate ? txRow("Reservation date", t.reservationDate) : "") +
@@ -20184,8 +20212,10 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       '<div class="field"><label>Seller / developer</label><input class="input" id="tx-seller" type="text" value="' + esc(t.sellerName || "") + '"></div>' +
       '<div class="field"><label>Handling agent</label><input class="input" id="tx-agent" type="text" value="' + esc(t.agentName || "") + '"></div>' +
       '<div class="field"><label>Referral (if any)</label><input class="input" id="tx-referral" type="text" value="' + esc(t.referralName || "") + '"></div>' +
-      dealAgentSelect("tx-buyer-agent", t.buyerAgentId, t.buyerAgentName, "Buyer's agent") +
-      dealAgentSelect("tx-seller-agent", t.sellerAgentId, t.sellerAgentName, "Seller's agent") +
+      '<div class="field"><label for="tx-kind">Deal type</label><select class="input" id="tx-kind"><option value="sale"' + (t.dealKind === "rental" ? "" : " selected") + '>Sale</option><option value="rental"' + (t.dealKind === "rental" ? " selected" : "") + ">Rental (lease)</option></select></div>" +
+      '<div class="field"></div>' +
+      dealAgentSelect("tx-buyer-agent", t.buyerAgentId, t.buyerAgentName, "Buyer's or tenant's agent") +
+      dealAgentSelect("tx-seller-agent", t.sellerAgentId, t.sellerAgentName, "Seller's or landlord's agent") +
       '<fieldset class="field tx-consent" style="grid-column:span 2"><legend>Agent websites</legend>' +
       '<p class="field-hint">Closed deals are counted on the agents\' pages. Tick these only if the client agreed.</p>' +
       '<label class="site-check"><input type="checkbox" id="tx-show-deal"' + (t.showDeal ? " checked" : "") + "> The client agreed to list this deal (month, property type and town, no names)</label>" +
@@ -20248,6 +20278,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (document.getElementById("tx-buyer-agent")) {
       [rec.buyerAgentId, rec.buyerAgentName] = agentPick("tx-buyer-agent");
       [rec.sellerAgentId, rec.sellerAgentName] = agentPick("tx-seller-agent");
+      rec.dealKind = $v("tx-kind") === "rental" ? "rental" : "sale";
       rec.showDeal = !!(document.getElementById("tx-show-deal") || {}).checked;
       rec.showPrice = rec.showDeal && !!(document.getElementById("tx-show-price") || {}).checked;
     }
@@ -21021,7 +21052,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       pitch: String(j.pitch || "").trim().slice(0, 160), bio: String(j.bio || "").trim().slice(0, 1500), bio_lang: j.bio_lang === "fil" ? "fil" : "en",
       photo: /^https:\/\//.test(j.photo || "") ? j.photo : "", towns: pick(j.towns, keys(P.TOWNS)), needs: pick(j.needs, keys(P.NEEDS)),
       languages: pick(j.languages, keys(P.LANGUAGES)), contacts: contacts, sections: pick(j.sections, ["listings", "about", "video"]),
-      accent: ["rust", "sea", "forest", "ink"].indexOf(j.accent) >= 0 ? j.accent : "rust", featured: pick(j.featured, (j.featured || []).slice(0, 6))
+      accent: ["rust", "sea", "forest", "ink"].indexOf(j.accent) >= 0 ? j.accent : "rust", featured: pick(j.featured, (j.featured || []).slice(0, 6)),
+      og_image: /^https:\/\//.test(j.og_image || "") ? j.og_image : ""
     };
   }
   function siteDemoOpen() {
@@ -21099,57 +21131,62 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (!siteData && !siteError) { setTimeout(loadSite, 0); return '<div class="card card-pad empty">Loading your page…</div>'; }
     if (siteError) return '<div class="card card-pad empty"><h3>Could not open My website</h3><p class="dim">' + esc(siteError) + '</p><button class="btn btn-primary mt-8" data-site-retry>' + icon("refresh", 14) + " Try again</button></div>";
     const P = window.SEA_AGENT_PAGE;
+    const fw = (en, fil) => (lang === "fil" ? fil : en); // My website in Filipino when the menu is
     const d = siteDraft || {};
     const c = d.contacts || {};
     const live = !!siteData.published_at;
     const blockers = siteData.blockers || [];
     const ready = siteReadiness(siteClean(d));
     const done = ready.filter(r => r[1]).length;
-    const address = siteData.slug ? location.origin + location.pathname.replace(/[^/]*$/, "") + "agents/" + siteData.slug : "";
-    const status = live ? (siteData.unpublished_changes ? "Live, with changes not published yet" : "Live") : "Not published";
+    const address = siteData.slug && P ? P.pageUrl(siteData.slug) : "";
+    const status = live ? (siteData.unpublished_changes ? fw("Live, with changes not published yet", "Live, may mga pagbabagong hindi pa naka-publish") : "Live") : fw("Not published", "Hindi pa naka-publish");
     const month = siteData.month || {};
     const taps = ["call", "viber", "whatsapp", "messenger", "save"].reduce((n, k) => n + Number(month[k] || 0), 0);
     const sections = d.sections || [];
     const pv = sitePreviewData();
     const lic = pv.licence;
-    let html = '<section class="site-editor"><div class="hero"><div><h1>My website</h1><p>Your own page on SEA ESTATES. Visitors can message you, call or chat, and see your licence and listings.</p></div>' +
+    let html = '<section class="site-editor"' + (lang === "fil" ? ' lang="fil"' : "") + '><div class="hero"><div><h1>' + fw("My website", "Aking website") + "</h1><p>" + fw("Your own page on SEA ESTATES. Visitors can message you, call or chat, and see your licence and listings.", "Ang sarili mong page sa SEA ESTATES. Puwede kang i-message, tawagan o i-chat ng mga bisita, at makikita nila ang lisensya at mga listing mo.") + "</p></div>" +
       '<div class="actions"><span class="site-status' + (live ? " is-live" : "") + '" data-site-status>' + esc(status) + "</span>" +
-      (live && siteData.slug ? '<a class="btn btn-ghost" href="#/agents/' + esc(siteData.slug) + '">View my page</a>' : "") +
-      '<button class="btn btn-ghost" data-site-save' + (siteBusy ? " disabled" : "") + ">" + (siteBusy === "save" ? "Saving…" : "Save draft") + "</button>" +
-      '<button class="btn btn-primary" data-site-publish' + (siteBusy || blockers.length ? " disabled" : "") + ">" + (siteBusy === "publish" ? "Publishing…" : live ? "Publish changes" : "Publish my page") + "</button></div></div>";
-    if (blockers.length) html += '<div class="notice-banner mt-16 site-blockers" role="status">' + icon("shield", 14) + ' <div><b>Your page cannot go public yet.</b><ul>' + blockers.map(b => "<li>" + esc(b) + "</li>").join("") + "</ul></div></div>";
+      (live && siteData.slug ? '<a class="btn btn-ghost" href="#/agents/' + esc(siteData.slug) + '">' + fw("View my page", "Tingnan ang aking page") + "</a>" : "") +
+      '<button class="btn btn-ghost" data-site-save' + (siteBusy ? " disabled" : "") + ">" + (siteBusy === "save" ? fw("Saving…", "Sine-save…") : fw("Save draft", "I-save ang draft")) + "</button>" +
+      '<button class="btn btn-primary" data-site-publish' + (siteBusy || blockers.length ? " disabled" : "") + ">" + (siteBusy === "publish" ? fw("Publishing…", "Pinapublish…") : live ? fw("Publish changes", "I-publish ang mga pagbabago") : fw("Publish my page", "I-publish ang aking page")) + "</button></div></div>";
+    if (blockers.length) html += '<div class="notice-banner mt-16 site-blockers" role="status">' + icon("shield", 14) + " <div><b>" + fw("Your page cannot go public yet.", "Hindi pa puwedeng ilabas ang page mo.") + "</b><ul>" + blockers.map(b => "<li>" + esc(b) + "</li>").join("") + "</ul></div></div>";
     html += '<div class="site-grid"><div class="site-form">';
-    html += '<div class="card card-pad"><h3>Page address</h3>' + (address
-      ? '<div class="site-address"><code data-site-address>' + esc(address) + '</code><button class="btn btn-ghost btn-sm" data-site-copy>' + icon("copy", 14) + " Copy link</button></div><p class=\"dim tiny\">Set once from the name on your licence check, so printed links keep working.</p>"
-      : '<p class="dim">Your address is made when you first publish, from the name on your licence check (for example agents/maria-santos).</p>') + "</div>";
-    html += '<div class="card card-pad"><h3>Name and licence</h3><p>' + esc(pv.name || "") + " · " + esc(pv.role_label || "") + "</p>" +
+    html += '<div class="card card-pad"><h3>' + fw("Page address", "Address ng page") + "</h3>" + (address
+      ? '<div class="site-address"><code data-site-address>' + esc(address) + '</code><button class="btn btn-ghost btn-sm" data-site-copy>' + icon("copy", 14) + " " + fw("Copy link", "Kopyahin ang link") + "</button>" +
+        '<button class="btn btn-ghost btn-sm" data-site-qr>' + icon("download", 14) + " " + fw("Download QR", "I-download ang QR") + "</button></div>" +
+        '<p class="dim tiny">' + fw("Set once from the name on your licence check, so printed links and QR codes keep working.", "Isang beses lang itinatakda mula sa pangalan sa licence check mo, kaya gagana pa rin ang mga naka-print na link at QR.") + "</p>"
+      : '<p class="dim">' + fw("Your address is made when you first publish, from the name on your licence check (for example agents/maria-santos).", "Gagawin ang address mo sa unang pag-publish, mula sa pangalan sa licence check mo (halimbawa agents/maria-santos).") + "</p>") + "</div>";
+    html += '<div class="card card-pad"><h3>' + fw("Name and licence", "Pangalan at lisensya") + '</h3><p>' + esc(pv.name || "") + " · " + esc(pv.role_label || "") + "</p>" +
       (lic ? '<p class="dim tiny">Licence no. ' + esc(lic.no) + ", valid until " + esc(lic.valid_until) + ". Checked by our office on " + esc(lic.checked_on) + ".</p>" : '<p class="dim tiny">Our office has not recorded your licence check yet.</p>') +
       '<p class="dim tiny">Your name and licence come from the licence check our office records. Ask a Super Admin to change them.</p></div>';
-    html += '<div class="card card-pad"><h3>About you</h3>' +
+    html += '<div class="card card-pad"><h3>' + fw("About you", "Tungkol sa iyo") + "</h3>" +
       '<div class="field"><label for="site-photo-file">Photo</label><div class="site-photo-row">' + (d.photo ? '<img src="' + esc(d.photo) + '" alt="Your current photo" class="site-photo">' : '<span class="site-photo site-photo-empty" aria-hidden="true">' + esc(String(pv.name || "?").charAt(0)) + "</span>") +
       '<input id="site-photo-file" type="file" accept="image/*" data-site-photo><span class="dim tiny" data-site-photo-status></span></div></div>' +
       '<div class="field"><label for="site-pitch">Pitch, one sentence</label><input class="input" id="site-pitch" data-site-field="pitch" maxlength="160" value="' + esc(d.pitch || "") + '" placeholder="I help families find lots and homes in Lipa, with the title checked first."><span class="field-hint"><span data-site-count="pitch">' + String(d.pitch || "").length + "</span> of 160 characters</span></div>" +
       '<div class="field"><label for="site-bio">About me</label><textarea class="input" id="site-bio" data-site-field="bio" rows="5" maxlength="1500">' + esc(d.bio || "") + '</textarea><span class="field-hint"><span data-site-count="bio">' + String(d.bio || "").length + "</span> of 1,500 characters</span></div>" +
       '<label class="site-check"><input type="checkbox" data-site-fil' + (d.bio_lang === "fil" ? " checked" : "") + "> My About me is in Filipino or Taglish</label></div>";
-    html += '<div class="card card-pad"><h3>Where and what</h3>' + siteChecks("Towns you cover", P.TOWNS, d.towns) + siteChecks("What you help with", P.NEEDS, d.needs) + siteChecks("Languages you speak", P.LANGUAGES, d.languages) + "</div>";
-    html += '<div class="card card-pad"><h3>Contact buttons</h3><p class="dim tiny">Only the numbers you add here show on your page. Leave a box empty to hide that button.</p><div class="grid-2">' +
+    html += '<div class="card card-pad"><h3>' + fw("Where and what", "Saan at ano") + "</h3>" + siteChecks("Towns you cover", P.TOWNS, d.towns) + siteChecks("What you help with", P.NEEDS, d.needs) + siteChecks("Languages you speak", P.LANGUAGES, d.languages) + "</div>";
+    html += '<div class="card card-pad"><h3>' + fw("Contact buttons", "Mga button para makontak ka") + '</h3><p class="dim tiny">' + fw("Only the numbers you add here show on your page. Leave a box empty to hide that button.", "Ang mga numerong ilalagay mo lang dito ang lalabas sa page mo. Iwanang blangko para itago ang button.") + '</p><div class="grid-2">' +
       [["call", "Mobile for calls", "tel"], ["viber", "Viber number", "tel"], ["whatsapp", "WhatsApp number", "tel"], ["messenger", "Messenger username (m.me/…)", "text"]].map(x =>
         '<div class="field"><label for="site-c-' + x[0] + '">' + esc(x[1]) + '</label><input class="input" id="site-c-' + x[0] + '" type="' + x[2] + '"' + (x[2] === "tel" ? ' inputmode="tel"' : "") + ' data-site-contact="' + x[0] + '" value="' + esc(x[0] === "messenger" ? (c.messenger || "") : (c[x[0]] ? P.phoneText(c[x[0]]) : "")) + '" placeholder="' + (x[2] === "tel" ? "For example 0917 123 4567" : "For example maria.santos") + '"><span class="field-hint" data-site-contact-hint="' + x[0] + '"></span></div>').join("") + "</div></div>";
-    html += '<div class="card card-pad"><h3>What your page shows</h3>' +
+    html += '<div class="card card-pad"><h3>' + fw("What your page shows", "Ano ang makikita sa page mo") + "</h3>" +
       [["listings", "My listings"], ["about", "About me"], ["video", "I offer video viewings for buyers abroad"]].map(x =>
         '<label class="site-check"><input type="checkbox" data-site-section="' + x[0] + '"' + (sections.indexOf(x[0]) >= 0 ? " checked" : "") + "> " + esc(x[1]) + "</label>").join("") +
       '<p class="dim tiny">Your licence card always shows. Your track record and client reviews do too, once there are records: closed deals that name you, and reviews our office published.</p>' +
       '<fieldset class="site-checks"><legend>Colour</legend><div class="site-check-grid">' + [["rust", "Rust"], ["sea", "Sea"], ["forest", "Forest"], ["ink", "Ink"]].map(x =>
         '<label class="site-check"><input type="radio" name="site-accent" data-site-accent value="' + x[0] + '"' + ((d.accent || "rust") === x[0] ? " checked" : "") + '> <span class="site-swatch" style="background:' + P.ACCENTS[x[0]][0] + '" aria-hidden="true"></span>' + x[1] + "</label>").join("") + "</div></fieldset></div>";
-    if (siteReviews && siteReviews.length) html += '<div class="card card-pad site-reviews"><h3>Client reviews</h3><p class="dim tiny">Reviews our office published on your page. You can reply once to each; your reply shows under the review and cannot be changed.</p>' +
+    if (siteReviews && siteReviews.length) html += '<div class="card card-pad site-reviews"><h3>' + fw("Client reviews", "Mga review ng kliyente") + '</h3><p class="dim tiny">Reviews our office published on your page. You can reply once to each; your reply shows under the review and cannot be changed.</p>' +
       siteReviews.map(r => '<div class="review-row"><p class="review-body">“' + esc(r.body || "") + '”</p><p class="dim tiny">' + esc(r.label || "Client") + (r.town ? ", " + esc(r.town) : "") + (r.month ? ", " + esc(r.month) : "") + "</p>" +
         (r.reply ? '<p class="tiny"><b>Your reply:</b> ' + esc(r.reply) + "</p>"
           : '<div class="field"><label for="site-reply-' + esc(r.id) + '">Your reply</label><textarea class="input" id="site-reply-' + esc(r.id) + '" rows="2" maxlength="600"></textarea></div><button class="btn btn-ghost btn-sm" data-site-reply="' + esc(r.id) + '">Post reply</button>') + "</div>").join("") + "</div>";
-    if (live) html += '<div class="card card-pad"><h3>Take my page down</h3><p class="dim">Your page stops showing to visitors. Your draft stays here.</p><button class="btn btn-ghost danger" data-site-unpublish>Take my page down</button></div>';
+    if (live) html += '<div class="card card-pad"><h3>' + fw("Take my page down", "Alisin ang aking page") + '</h3><p class="dim">' + fw("Your page stops showing to visitors. Your draft stays here.", "Hindi na makikita ng mga bisita ang page mo. Maiiwan dito ang draft mo.") + '</p><button class="btn btn-ghost danger" data-site-unpublish>' + fw("Take my page down", "Alisin ang aking page") + "</button></div>";
     html += '</div><aside class="site-aside">';
-    html += '<div class="card card-pad"><h3>Ready for visitors</h3><p class="dim tiny" data-site-ready-count>' + done + " of " + ready.length + " done</p><ul class=\"site-ready\" data-site-ready>" + ready.map(r => '<li class="' + (r[1] ? "is-done" : "") + '">' + icon(r[1] ? "check" : "circle", 14) + " " + esc(r[0]) + "</li>").join("") + "</ul></div>";
-    html += '<div class="card card-pad"><h3>This month</h3><dl class="site-month">' + [["Page views", month.view || 0], ["Taps on contact buttons", taps], ["Messages from your page", siteData.month_leads || 0]].map(x => "<div><dt>" + esc(x[0]) + "</dt><dd>" + esc(String(x[1])) + "</dd></div>").join("") + "</dl></div>";
-    html += '<div class="card card-pad"><h3>Preview</h3><p class="dim tiny">How visitors will see your page after you publish.</p><div class="site-preview" inert data-site-preview><div class="ag-preview">' + (P ? P.html(pv, { preview: true }) : "") + "</div></div></div>";
+    html += '<div class="card card-pad"><h3>' + fw("Ready for visitors", "Handa na para sa mga bisita") + '</h3><p class="dim tiny" data-site-ready-count>' + done + " of " + ready.length + " done</p><ul class=\"site-ready\" data-site-ready>" + ready.map(r => '<li class="' + (r[1] ? "is-done" : "") + '">' + icon(r[1] ? "check" : "circle", 14) + " " + esc(r[0]) + "</li>").join("") + "</ul></div>";
+    // Typical first reply, measured by the database once there are 5 leads in 90 days.
+    const replyText = pv.reply ? pv.reply.charAt(0).toUpperCase() + pv.reply.slice(1) : fw("Shows after 5 leads", "Lalabas pagkatapos ng 5 lead");
+    html += '<div class="card card-pad"><h3>' + fw("This month", "Ngayong buwan") + '</h3><dl class="site-month">' + [[fw("Page views", "Mga bumisita sa page"), month.view || 0], [fw("Taps on contact buttons", "Mga pindot sa contact button"), taps], [fw("Messages from your page", "Mga mensahe mula sa page mo"), siteData.month_leads || 0], [fw("Typical first reply (90 days)", "Karaniwang unang sagot (90 araw)"), replyText]].map(x => "<div><dt>" + esc(x[0]) + "</dt><dd" + (typeof x[1] === "string" ? ' data-site-reply-time' : "") + ">" + esc(String(x[1])) + "</dd></div>").join("") + "</dl></div>";
+    html += '<div class="card card-pad"><h3>' + fw("Preview", "Silip") + '</h3><p class="dim tiny">' + fw("How visitors will see your page after you publish.", "Ganito makikita ng mga bisita ang page mo pagka-publish.") + '</p><div class="site-preview" inert data-site-preview><div class="ag-preview">' + (P ? P.html(pv, { preview: true }) : "") + "</div></div></div>";
     html += "</aside></div></section>";
     return html;
   }
@@ -21166,6 +21203,11 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   }
   async function siteSave(publish) {
     siteBusy = publish ? "publish" : "save"; render({ keepScroll: true });
+    // Publishing also makes the page's 1200 x 630 preview image for Facebook and Google. Best effort:
+    // the page publishes without it if drawing or uploading fails.
+    if (publish && !currentUser.demo) {
+      try { siteDraft = Object.assign({}, siteDraft, { og_image: await siteCardUpload(sitePreviewData()) }); } catch (e) { /* keep publishing */ }
+    }
     try {
       siteData = await siteCall("agent_site_save", { p_draft: siteClean(siteDraft || {}) });
       if (publish) siteData = await siteCall("agent_site_publish");
@@ -21234,6 +21276,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
           const row = (siteReviews || []).find(x => String(x.id) === String(id)); if (row) row.reply = text;
           toast("Reply posted"); render({ keepScroll: true });
         }).catch(err => toast("Could not post the reply: " + esc(friendlyErr(String((err && err.message) || err))), "err"));
+      } else if (e.target.closest("[data-site-qr]")) {
+        siteQr((root.querySelector("[data-site-address]") || {}).textContent || "");
       } else if (e.target.closest("[data-site-copy]")) {
         const text = (root.querySelector("[data-site-address]") || {}).textContent || "";
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => toast("Link copied")).catch(() => toast(text, "info"));
@@ -21241,6 +21285,103 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       }
     });
   }
+  /* The QR code for printed signs and flyers: the page address, with the agent's name under it. */
+  function siteQrLib() {
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    if (!siteQrLib._p) siteQrLib._p = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "vendor/qrcode/qrcode.min.js?v=1";
+      s.onload = () => (window.qrcode ? resolve(window.qrcode) : reject(new Error("QR library did not load")));
+      s.onerror = () => { siteQrLib._p = null; reject(new Error("Could not load the QR library")); };
+      document.head.appendChild(s);
+    });
+    return siteQrLib._p;
+  }
+  function siteQrCanvas(qrcode, text, name) {
+    const qr = qrcode(0, "M"); qr.addData(text); qr.make();
+    const n = qr.getModuleCount(), quiet = 4, cell = Math.floor(960 / (n + quiet * 2));
+    const size = cell * (n + quiet * 2);
+    const canvas = document.createElement("canvas");
+    canvas.width = size; canvas.height = size + 150;
+    const g = canvas.getContext("2d");
+    g.fillStyle = "#FFFFFF"; g.fillRect(0, 0, canvas.width, canvas.height);
+    g.fillStyle = "#1C1917";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) g.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
+    g.textAlign = "center";
+    g.font = "700 46px Inter, Arial, sans-serif"; g.fillText(String(name || "").slice(0, 40), size / 2, size + 40);
+    g.font = "400 30px Inter, Arial, sans-serif"; g.fillStyle = "#443C36"; g.fillText("Scan to see my page \u00b7 SEA ESTATES", size / 2, size + 95);
+    return canvas;
+  }
+  async function siteQr(address) {
+    if (!address) return;
+    try {
+      const canvas = siteQrCanvas(await siteQrLib(), address, sitePreviewData().name);
+      const blob = await new Promise(res => canvas.toBlob(res, "image/png"));
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = ((siteData && siteData.slug) || "my-page") + "-qr.png";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      toast("QR code downloaded");
+    } catch (e) { toast("Could not make the QR code: " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
+  }
+  /* The page's preview image (1200 x 630): name, role, towns and the licence line on warm paper,
+   * with the photo when the browser may draw it. */
+  function siteCardCanvas(pv, photo) {
+    const P = window.SEA_AGENT_PAGE;
+    const canvas = document.createElement("canvas");
+    canvas.width = 1200; canvas.height = 630;
+    const g = canvas.getContext("2d");
+    const display = '"Schibsted Grotesk", Inter, Arial, sans-serif';
+    g.fillStyle = "#F7F3EE"; g.fillRect(0, 0, 1200, 630);
+    g.fillStyle = "#0E5F63"; g.fillRect(0, 530, 1200, 100);
+    const textRight = photo ? 760 : 1120;
+    const fit = (txt, font, max) => { g.font = font; let t = String(txt || ""); while (t.length > 3 && g.measureText(t).width > max) t = t.slice(0, -2); return t === String(txt || "") ? t : t.trim() + "\u2026"; };
+    g.fillStyle = "#1C1917"; g.textBaseline = "alphabetic";
+    let size = 84; g.font = "800 " + size + "px " + display;
+    while (size > 48 && g.measureText(pv.name || "").width > textRight - 80) { size -= 4; g.font = "800 " + size + "px " + display; }
+    g.fillText(fit(pv.name, "800 " + size + "px " + display, textRight - 80), 80, 200);
+    g.fillStyle = "#443C36";
+    g.fillText(fit(pv.role_label, "500 34px Inter, Arial, sans-serif", textRight - 80), 80, 262);
+    const towns = P ? P.labels(P.TOWNS, pv.towns || []).slice(0, 3) : [];
+    if (towns.length) g.fillText(fit(towns.join(", ") + ", Batangas", "400 32px Inter, Arial, sans-serif", textRight - 80), 80, 314);
+    g.fillStyle = "#9A4518"; g.fillText("with SEA ESTATES", 80, 380);
+    g.fillStyle = "#FFFFFF";
+    const lic = pv.licence;
+    g.fillText(fit(lic ? "Licence checked by SEA ESTATES on " + (P ? P.day(lic.checked_on) : lic.checked_on) + " \u00b7 Licence no. " + lic.no : "SEA ESTATES", "600 30px Inter, Arial, sans-serif", 1060), 80, 592);
+    if (photo) {
+      const w = 340, h = 420, x = 800, y = 70;
+      const scale = Math.max(w / photo.naturalWidth, h / photo.naturalHeight);
+      const sw = w / scale, sh = h / scale;
+      g.save(); g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, 28); else g.rect(x, y, w, h); g.clip();
+      g.drawImage(photo, (photo.naturalWidth - sw) / 2, (photo.naturalHeight - sh) / 2, sw, sh, x, y, w, h);
+      g.restore();
+    }
+    return canvas;
+  }
+  function siteLoadImage(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image(); img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img); img.onerror = () => reject(new Error("photo did not load"));
+      img.src = url;
+    });
+  }
+  async function siteCardBlob(pv) {
+    try { if (document.fonts && document.fonts.load) await document.fonts.load('800 84px "Schibsted Grotesk"'); } catch (e) { /* Inter then */ }
+    let photo = null;
+    if (pv.photo) { try { photo = await siteLoadImage(pv.photo); } catch (e) { photo = null; } }
+    const toBlob = c => new Promise((res, rej) => { try { c.toBlob(b => (b ? res(b) : rej(new Error("no image"))), "image/png"); } catch (e) { rej(e); } });
+    try { return await toBlob(siteCardCanvas(pv, photo)); }
+    catch (e) { return toBlob(siteCardCanvas(pv, null)); } // a photo the browser may not read back
+  }
+  async function siteCardUpload(pv) {
+    const blob = await siteCardBlob(pv);
+    const path = currentUser.id + "/agent-card-" + Date.now() + ".png";
+    const { error } = await storageUpload("listing-photos", path, blob, { contentType: "image/png", upsert: false, cacheControl: "31536000" });
+    if (error) throw error;
+    const { data } = SB.storage.from("listing-photos").getPublicUrl(path);
+    return data && data.publicUrl ? data.publicUrl : "";
+  }
+
   async function sitePhoto(file) {
     const status = document.querySelector("[data-site-photo-status]");
     if (!file) return;

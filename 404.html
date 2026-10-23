@@ -5,7 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Page not found — SEA ESTATES</title>
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
-<meta http-equiv="refresh" content="0;url=./">
+<script>
+  /* Sends a missing address back into the app. An agent or listing address (/agents/<slug>,
+     /listing/<id>) opens that page through its #/ route; anything else opens the home page.
+     The site may sit at the domain root or under one folder (GitHub Pages: /esrealty/). The old
+     relative refresh ("./") looped on /agents/<slug>, because /agents/ is missing too. */
+  (function () {
+    var p = location.pathname;
+    var root = /\.github\.io$/.test(location.hostname) && p.split("/")[1] ? "/" + p.split("/")[1] + "/" : "/";
+    var m = p.slice(root.length - 1).match(/^\/(agents|listing)\/([^\/?#]+)\/?$/);
+    location.replace(root + (m ? "#/" + m[1] + "/" + m[2] : ""));
+  })();
+</script>
+<noscript><meta http-equiv="refresh" content="0;url=/"></noscript>
 <style>
   body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
          background: #0A0E14; color: #E6EBF2; font-family: system-ui, sans-serif; text-align: center; }
@@ -15,7 +27,7 @@
 <body>
   <div>
     <h1>404 — Page not found</h1>
-    <p>Redirecting you to the app… <a href="./">Go to SEA ESTATES</a></p>
+    <p>Redirecting you to the app… <a href="/">Go to SEA ESTATES</a></p>
   </div>
 </body>
 </html>

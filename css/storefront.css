@@ -3657,3 +3657,5 @@ textarea.ag-input { min-height: 96px; resize: vertical; }
 .sf-site .sf-review-form small { font-size: 14px !important; }
 .ag-reviews-head { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
 @media (max-width: 760px) { .sf-site.ag .ag-head-cta { display: none; } }
+.agd-acts { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
+@media (max-width: 760px) { .agd-acts { flex: 1 1 100%; flex-direction: row; } .sf-site .agd .agd-acts .agd-go { flex: 1 1 0; } }
