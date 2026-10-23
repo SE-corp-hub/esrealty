@@ -3499,3 +3499,161 @@ textarea.ag-input { min-height: 96px; resize: vertical; }
 /* In the editor's preview the page is a picture: nothing in it can be used or focused. */
 .ag-preview .ag-phonebar { position: static; display: none; }
 .sf-site.ag .ag-field > .ag-hint { font-size: 14px !important; font-weight: 400; }
+
+/* ==== Agent pages, Phases 2 and 3: seller box, Verified, track record, reviews ============== */
+.ag .ag-chip-verified { background: var(--ag-teal); border-color: var(--ag-teal); color: #fff; font-weight: 600; }
+.ag-card-verified { margin: 0; padding: 10px 18px; display: flex; gap: 8px; align-items: flex-start; background: var(--ag-teal-soft); color: var(--ag-teal-ink); font-size: 14px; font-weight: 600; line-height: 1.45; }
+.ag-card-verified svg { flex: none; margin-top: 2px; }
+.ag-sell-box { background: var(--ag-teal); color: #E3F1EF; border-radius: 28px; padding: 36px 40px; display: flex; flex-wrap: wrap; gap: 24px 40px; align-items: center; justify-content: space-between; }
+.ag-sell-box > div { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+/* styles.css colours every heading with !important; these two sit on teal. */
+.sf-site.ag .ag-sell-box h2 { color: #fff !important; }
+.ag-sell-box p { margin: 0; font-size: 17px; line-height: 1.6; color: #CFE6E3; max-width: 52ch; }
+.ag .ag-sell-box :focus-visible { outline-color: #fff; }
+.ag a.ag-btn-light { background: #fff; border-color: #fff; color: var(--sf-ink); min-height: 52px; font-size: 16px; }
+.ag a.ag-btn-light:hover { background: #F7F3EE; border-color: #F7F3EE; color: var(--sf-ink); }
+.ag-record { display: flex; flex-wrap: wrap; gap: 40px; }
+.ag-record-text { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.ag-record-text p { margin: 0; color: var(--sf-ink-soft); font-size: 16px; line-height: 1.6; }
+.ag-record-rows { flex: 2 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.ag-table-wrap { border: 1px solid var(--sf-line); border-radius: 20px; overflow-x: auto; background: #fff; }
+.ag-table { width: 100%; border-collapse: collapse; font-size: 15px; min-width: 520px; }
+.ag-table caption { text-align: left; padding: 16px 18px 6px; font-weight: 600; }
+.ag-table th { text-align: left; padding: 10px 18px; border-bottom: 1px solid var(--sf-line); font-size: 13px; font-weight: 600; color: var(--sf-ink-mute); }
+.ag-table td { padding: 13px 18px; border-bottom: 1px solid #F0EAE2; vertical-align: top; }
+.ag-table tr:last-child td { border-bottom: 0; }
+.ag-reviews { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; align-items: start; }
+@media (max-width: 760px) { .ag-reviews { grid-template-columns: minmax(0, 1fr); } }
+.ag-review-lead { margin: 0; background: #F7F3EE; border-radius: 24px; padding: 36px; display: flex; flex-direction: column; gap: 24px; }
+.ag-review-lead blockquote { margin: 0; font-family: var(--ag-display); font-size: clamp(1.35rem, 1.1rem + 1vw, 1.75rem); line-height: 1.3; font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.ag-review-list { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.ag-review-list > div:first-child { display: flex; flex-direction: column; gap: 6px; }
+.ag-review { margin: 0; border: 1px solid var(--sf-line); border-radius: 20px; padding: 22px; display: flex; flex-direction: column; gap: 10px; background: #fff; }
+.ag-review blockquote { margin: 0; font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
+.ag-reviews figcaption { font-size: 15px; color: var(--sf-ink-soft); }
+.ag-reviews figcaption b { color: var(--sf-ink); }
+.ag-reply { margin: 0; padding: 10px 14px; border-radius: 12px; background: #fff; font-size: 15px; line-height: 1.5; color: var(--sf-ink-soft); overflow-wrap: anywhere; }
+.ag-review .ag-reply { background: #F7F3EE; }
+.ag-warn a { font-weight: 600; margin-left: 4px; }
+@media (max-width: 760px) {
+  .ag-sell-box { padding: 24px; border-radius: 22px; }
+  .ag-review-lead { padding: 24px; }
+}
+
+/* ==== Find an agent (#/agents) ============================================================== */
+.sf-site .agd { --agd-teal: #0E5F63; --agd-teal-ink: #0B4A4D; --agd-teal-soft: #E3F1EF; --agd-edge: #8C8279; --agd-rust: #B4521F; --agd-rust-hover: #97441A;
+  --agd-display: "Schibsted Grotesk", var(--sf-font); color: var(--sf-ink); font-family: var(--sf-font); }
+.agd h1, .agd h2, .agd-nums b { font-family: var(--agd-display); }
+.agd-in { max-width: 1200px; margin: 0 auto; padding-left: 24px; padding-right: 24px; }
+.agd-top { background: #F7F3EE; border-bottom: 1px solid var(--sf-line); }
+.agd-top .agd-in { padding-top: 44px; padding-bottom: 32px; display: flex; flex-direction: column; gap: 22px; }
+.sf-site .agd h1 { margin: 0; font-size: clamp(2.2rem, 1.5rem + 3vw, 3rem); line-height: 1.05; letter-spacing: -0.03em; font-weight: 800; }
+.agd-lede { margin: 0; font-size: 18px; line-height: 1.55; color: var(--sf-ink-soft); max-width: 60ch; }
+.agd-filters { background: #fff; border: 1px solid var(--sf-line); border-radius: 20px; padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 12px; align-items: end; }
+.sf-site .agd .agd-label { display: flex; flex-direction: column; gap: 6px; font-size: 14px !important; font-weight: 600; color: var(--sf-ink); }
+.sf-site .agd .agd-input { width: 100%; min-height: 50px; border: 1.5px solid var(--agd-edge); border-radius: 12px; padding: 10px 14px; font: 16px var(--sf-font); background: #fff; color: var(--sf-ink); }
+.sf-site .agd .agd-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 20px; border-radius: 999px;
+  font: 600 15px/1.2 var(--sf-font); text-decoration: none; cursor: pointer; border: 1.5px solid var(--agd-edge); background: #fff; color: var(--sf-ink); text-align: center; }
+.sf-site .agd .agd-btn:hover { border-color: var(--sf-ink); color: var(--sf-ink); }
+.sf-site .agd .agd-btn-primary { background: var(--agd-rust); border-color: var(--agd-rust); color: #fff; }
+.sf-site .agd .agd-btn-primary:hover { background: var(--agd-rust-hover); border-color: var(--agd-rust-hover); color: #fff; }
+.sf-site .agd .agd-btn-trust { background: var(--agd-teal); border-color: var(--agd-teal); color: #fff; }
+.sf-site .agd .agd-btn-trust:hover { background: var(--agd-teal-ink); border-color: var(--agd-teal-ink); color: #fff; }
+.sf-site .agd .agd-btn:disabled { opacity: .7; cursor: progress; }
+.agd :focus-visible { outline: 3px solid var(--agd-teal); outline-offset: 2px; }
+.agd-status { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.agd-status > span { font-size: 16px; font-weight: 600; }
+.sf-site .agd .agd-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px 0 14px; border-radius: 999px; background: #fff; border: 1.5px solid var(--agd-edge);
+  font: 500 14px var(--sf-font); color: var(--sf-ink); cursor: pointer; }
+.agd-x { width: 26px; height: 26px; border-radius: 50%; background: #F7F3EE; display: inline-flex; align-items: center; justify-content: center; }
+.agd-body { padding-top: 32px; padding-bottom: 64px; display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; }
+.agd-list { flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.agd-card { border: 1px solid var(--sf-line); border-radius: 20px; padding: 18px; display: flex; flex-wrap: wrap; gap: 16px 20px; align-items: center; background: #fff; }
+.agd-photo { width: 104px; height: 104px; flex: none; border-radius: 18px; object-fit: cover; background: #EAD8CA; }
+.agd-initials { display: flex; align-items: center; justify-content: center; font-family: var(--agd-display); font-size: 30px; font-weight: 800; color: rgba(28, 25, 23, .45); }
+.agd-who { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sf-site .agd .agd-who h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.agd-who h2 a { color: var(--sf-ink); text-decoration: none; }
+.agd-who h2 a:hover { text-decoration: underline; }
+.agd-sub, .agd-line { margin: 0; font-size: 14px; line-height: 1.5; color: var(--sf-ink-soft); }
+.agd-sub { color: var(--sf-ink-mute); }
+.agd-marks { margin: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; font-weight: 600; }
+.agd-ok { display: inline-flex; align-items: center; gap: 5px; color: var(--agd-teal-ink); }
+.agd-ver { display: inline-flex; align-items: center; gap: 5px; background: var(--agd-teal); color: #fff; padding: 2px 9px 2px 7px; border-radius: 999px; }
+.agd-marks svg { width: 14px; height: 14px; }
+.agd-nums { display: flex; gap: 24px; flex: 0 0 auto; }
+.agd-nums div { display: flex; flex-direction: column; gap: 2px; }
+.agd-nums b { font-size: 24px; line-height: 1.1; }
+.agd-nums span { font-size: 13px; color: var(--sf-ink-mute); }
+.sf-site .agd .agd-go { flex: 0 0 auto; }
+.sf-site .agd .agd-more { align-self: center; }
+.agd-empty { margin: 0; padding: 24px; border-radius: 20px; background: #F7F3EE; font-size: 16px; color: var(--sf-ink-soft); }
+.sf-site .agd .agd-link { background: none; border: 0; padding: 0; font: inherit; color: #9A4518; text-decoration: underline; cursor: pointer; }
+.agd-fallback { border: 1.5px dashed #BFB4A8; border-radius: 20px; padding: 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.agd-fallback p { margin: 0; font-size: 15px; color: var(--sf-ink-soft); max-width: 60ch; }
+.agd-aside { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.agd-check { background: var(--agd-teal-soft); border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 12px; scroll-margin-top: 90px; }
+.sf-site .agd .agd-check h2 { margin: 0; font-size: 22px; font-weight: 800; color: var(--agd-teal-ink) !important; }
+.agd-check > p, .agd-help { margin: 0; font-size: 15px; line-height: 1.55; color: #1F4D4F; }
+.agd-help { font-size: 14px; }
+.agd-check-form { display: flex; flex-direction: column; gap: 8px; }
+.sf-site .agd .agd-check .agd-label { color: var(--agd-teal-ink); }
+.agd-check-result:empty { display: none; }
+.agd-result { margin: 0; background: #fff; border-radius: 14px; padding: 12px 14px; font-size: 14px; line-height: 1.5; color: var(--sf-ink); }
+.agd-result p { margin: 0 0 6px; }
+.agd-result p:last-child { margin: 0; }
+.agd-result + .agd-result { margin-top: 8px; }
+.agd-result-hit { box-shadow: inset 0 0 0 2px var(--agd-teal); }
+.agd-result a { color: var(--agd-teal-ink); font-weight: 600; }
+.agd-warn { margin: 0; font-size: 14px; font-weight: 600; color: var(--agd-teal-ink); }
+.agd-box { border: 1px solid var(--sf-line); border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 12px; background: #fff; }
+.sf-site .agd .agd-box h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.agd-box ol { margin: 0; padding: 0 0 0 20px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 1.5; color: var(--sf-ink-soft); }
+.agd-box b { color: var(--sf-ink); }
+.agd-box p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--sf-ink-mute); }
+.agd-join { border: 1.5px solid var(--sf-ink); }
+.agd-join p { font-size: 15px; color: var(--sf-ink-soft); }
+.sf-site .agd .agd-join .agd-btn { align-self: flex-start; }
+@media (max-width: 760px) {
+  .agd-in { padding-left: 16px; padding-right: 16px; }
+  .agd-top .agd-in { padding-top: 28px; padding-bottom: 24px; }
+  .agd-photo { width: 72px; height: 72px; border-radius: 14px; }
+  .agd-initials { font-size: 22px; }
+  .sf-site .agd .agd-go { flex: 1 1 100%; }
+  .agd-filters { padding: 12px; }
+  .sf-site .agd .agd-filters .agd-btn { grid-column: 1 / -1; }
+  .agd-who { flex-basis: 180px; }
+  .agd-card { align-items: flex-start; }
+}
+
+/* ==== The Value Guide started from an agent's page, and a client's review =================== */
+.sf-site .sf-vg-agent { max-width: 1200px; margin: 24px auto 0; padding: 0 24px; }
+.sf-vg-agent p { margin: 0; padding: 14px 18px; border-radius: 16px; background: #E3F1EF; color: #0B4A4D; font-size: 15px; line-height: 1.5; }
+.sf-vg-agent a { color: #0B4A4D; font-weight: 600; margin-left: 4px; }
+.sf-site .sf-review { max-width: 680px; }
+.sf-review h1 { margin: 0 0 12px; font-size: clamp(1.9rem, 1.4rem + 2vw, 2.5rem); line-height: 1.1; letter-spacing: -0.02em; }
+.sf-review > p, .sf-review-lede { font-size: 17px; line-height: 1.6; color: var(--sf-ink-soft); max-width: 60ch; }
+.sf-review-form { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; background: #F7F3EE; border-radius: 24px; padding: 24px; }
+.sf-review-form label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+.sf-site .sf-review-form label, .sf-site .sf-review-form label > span { font-size: 15px !important; }
+.sf-review-form input:not([type=checkbox]), .sf-review-form textarea { min-height: 50px; border: 1.5px solid #8C8279; border-radius: 12px; padding: 10px 14px; font: 16px var(--sf-font); background: #fff; color: var(--sf-ink); }
+.sf-review-form small { font-size: 14px; font-weight: 400; color: var(--sf-ink-mute); }
+.sf-review-form .sf-consent { flex-direction: row; align-items: flex-start; gap: 10px; font-weight: 400; color: var(--sf-ink-soft); line-height: 1.5; flex-wrap: wrap; }
+.sf-review-form .sf-consent input { width: 22px; height: 22px; flex: none; margin-top: 1px; }
+.sf-review-form .sf-consent > span { flex: 1 1 0; min-width: 0; }
+.sf-review-done { background: #E3F1EF; color: #0B4A4D; border-radius: 24px; padding: 24px; }
+.sf-review-done p { margin: 0; font-size: 17px; }
+@media (max-width: 760px) { .sf-site .sf-vg-agent { padding: 0 16px; } .sf-review-form { padding: 18px; } }
+
+/* The site sets every paragraph to the body size (.sf-site p); these keep their own sizes. */
+.sf-site p.agd-lede { font-size: 18px; }
+.sf-site p.agd-sub, .sf-site p.agd-line, .sf-site p.agd-help, .sf-site .agd-result, .sf-site .agd-result p, .sf-site p.agd-warn { font-size: 14px; }
+.sf-site p.agd-marks { font-size: 13px; }
+.sf-site p.agd-empty { font-size: 16px; }
+.sf-site p.agd-check-jump { font-size: 15px; margin: 0; }
+.agd-check-jump a { color: var(--agd-teal-ink); font-weight: 600; }
+.sf-site.ag p.ag-card-verified { font-size: 13px; }
+.sf-site.ag p.ag-reply { font-size: 15px; }
+.sf-site .sf-review-form small { font-size: 14px !important; }
+.ag-reviews-head { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 760px) { .sf-site.ag .ag-head-cta { display: none; } }

@@ -179,7 +179,8 @@ insert into public.crm_leads (id, ref, name, payload, created_by, assigned_to_id
   select 'as-u' || g, 'U' || g, 'Ignored ' || g, '{"status":"new"}', '77777777-7777-7777-7777-777777777777',
          '11111111-1111-1111-1111-111111111111', now() - interval '3 days'
     from generate_series(1, 6) g;
-insert into results select 'leads left in New for over a day count against the reply time', public.agent_reply_bucket('11111111-1111-1111-1111-111111111111') is null, coalesce(public.agent_reply_bucket('11111111-1111-1111-1111-111111111111'), 'null');
+-- 0016 says this plainly ("in more than a day"); 0015 alone left it out.
+insert into results select 'leads left in New for over a day count against the reply time', coalesce(public.agent_reply_bucket('11111111-1111-1111-1111-111111111111'), 'in more than a day') = 'in more than a day', coalesce(public.agent_reply_bucket('11111111-1111-1111-1111-111111111111'), 'null');
 
 set local role authenticated;
 insert into x select public.agent_site_open();

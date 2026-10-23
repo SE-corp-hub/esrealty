@@ -2620,3 +2620,16 @@ body.has-office-bar { padding-top: 56px; }
 .site-month div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--stroke); }
 .site-month div:last-child { border-bottom: 0; }
 .site-month dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Agent websites, Phases 2 and 3: Verified checks, deal consent, town rules, reviews */
+.chip.chip-trust { background: #E3F1EF; border-color: #E3F1EF; color: #0B4A4D; font-weight: 600; }
+.lc-verify, .tx-consent, .rt-town-people { border: 0; padding: 0; margin: 12px 0 0; min-width: 0; }
+.lc-verify legend, .tx-consent legend, .rt-towns legend, .rt-town-people legend { font-weight: 600; font-size: 14px; margin-bottom: 4px; padding: 0; }
+.rt-towns { border: 1px solid var(--stroke); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+.rt-town-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rt-town-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--stroke); }
+.rt-town-list li span { flex: 1 1 200px; min-width: 0; color: var(--text-dim); }
+.rt-town-add { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.review-row { padding: 12px 0; border-bottom: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 6px; }
+.review-row:last-child { border-bottom: 0; }
+.review-body { margin: 0; line-height: 1.55; overflow-wrap: anywhere; }
+.reviews-card h4 { margin-bottom: 4px; }

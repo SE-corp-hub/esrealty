@@ -55,6 +55,12 @@
     contact: function (inquiry) { return request("/contacts", { method: "POST", body: inquiry }); },
     agent: function (slug) { return request("/agents/" + encodeURIComponent(slug)); },
     agentTap: function (slug, kind) { return request("/agents/" + encodeURIComponent(slug) + "/taps", { method: "POST", body: { kind: kind } }); },
-    agentInquire: function (slug, inquiry, key) { return request("/agents/" + encodeURIComponent(slug) + "/inquiries", { method: "POST", body: inquiry, key: key }); }
+    agentInquire: function (slug, inquiry, key) { return request("/agents/" + encodeURIComponent(slug) + "/inquiries", { method: "POST", body: inquiry, key: key }); },
+    agents: function (filters) { return request("/agents" + queryString(filters)); },
+    agentCheck: function (q) { return request("/agent-check" + queryString({ q: q })); },
+    agentCount: function () { return request("/agents?count=1"); },
+    // The link's secret goes in the body, never in the address.
+    review: function (token) { return request("/reviews/lookup", { method: "POST", body: { token: token } }); },
+    sendReview: function (token, review) { return request("/reviews", { method: "POST", body: Object.assign({ token: token }, review) }); }
   };
 })();

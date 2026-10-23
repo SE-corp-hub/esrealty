@@ -379,6 +379,14 @@ jobs:
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test agent_site_editor_e2e -WindowSize "820,1000" || pwsh -NoProfile -File tests/run_all.ps1 -Test agent_site_editor_e2e -WindowSize "820,1000"
       - name: e2e agent_site_editor_e2e (mobile)
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test agent_site_editor_e2e -Mobile || pwsh -NoProfile -File tests/run_all.ps1 -Test agent_site_editor_e2e -Mobile
+      - name: e2e agent_directory_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test agent_directory_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test agent_directory_e2e
+      - name: e2e agent_directory_e2e (mobile)
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test agent_directory_e2e -Mobile || pwsh -NoProfile -File tests/run_all.ps1 -Test agent_directory_e2e -Mobile
+      - name: e2e agent_proof_app_e2e
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test agent_proof_app_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test agent_proof_app_e2e
+      - name: e2e agent_proof_app_e2e (mobile)
+        run: pwsh -NoProfile -File tests/run_all.ps1 -Test agent_proof_app_e2e -Mobile || pwsh -NoProfile -File tests/run_all.ps1 -Test agent_proof_app_e2e -Mobile
       - name: e2e market_filters_mobile_e2e
         run: pwsh -NoProfile -File tests/run_all.ps1 -Test market_filters_mobile_e2e || pwsh -NoProfile -File tests/run_all.ps1 -Test market_filters_mobile_e2e
       - name: e2e market_index_e2e

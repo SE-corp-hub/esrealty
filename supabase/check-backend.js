@@ -161,6 +161,7 @@ const REST_TABLES = [
   { table: "push_subscriptions", note: "phone alerts (migrations/0003)", anonDenied: true, pending: "0003" },
   { table: "push_config", note: "phone alert key (migrations/0003)", anonDenied: true, pending: "0003" },
   { table: "site_settings", note: "website settings (migrations/0005)", pending: "0005" },
+  { table: "agent_reviews", note: "client reviews (migrations/0016)", anonDenied: true, pending: "0016" },
 ];
 
 // Columns other code depends on. A missing column answers 400 (42703).
@@ -204,6 +205,11 @@ const REST_RPCS = [
   { fn: "admin_person_find", note: "find a person, Super Admin only (migrations/0013)", pending: "0013", body: { p_query: "0917 000 0000" } },
   { fn: "public_agent", note: "agent pages, listing function only (migrations/0015)", pending: "0015", body: { p_slug: "x" } },
   { fn: "agent_site_open", note: "My website, brokers and agents (migrations/0015)", pending: "0015" },
+  { fn: "public_agents", note: "agent directory, listing function only (migrations/0016)", pending: "0016" },
+  { fn: "public_agent_count", note: "menu count for the directory, listing function only (migrations/0016)", pending: "0016" },
+  { fn: "agent_check", note: "check an agent, listing function only (migrations/0016)", pending: "0016", body: { p_q: "0012345" } },
+  { fn: "review_submit", note: "client reviews, listing function only (migrations/0016)", pending: "0016", body: { p_hash: "x", p_first: "x", p_initial: "", p_body: "x" } },
+  { fn: "review_invite", note: "review links, Super Admin only (migrations/0016)", pending: "0016", body: { p_deal: "x", p_agent: "00000000-0000-0000-0000-000000000000" } },
 ];
 async function probeRpc(entry) {
   try {

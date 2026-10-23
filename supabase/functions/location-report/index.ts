@@ -7,7 +7,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
 
 // The privacy notice the visitor agreed to (js/storefront.js, "Last updated"). Stored with each
 // consent so it is known later which wording a person accepted (B1). Change both together.
-const PRIVACY_NOTICE_VERSION = "2026-10-01";
+const PRIVACY_NOTICE_VERSION = "2026-10-23";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "content-type, authorization, apikey, idempotency-key",
@@ -331,14 +331,28 @@ Deno.serve(async (req) => {
     return json({ error: "Could not save your request. Please try again" }, 500);
   }
 
+  // Started from an agent's page (agent websites, Phase 2): the request goes to that agent. The
+  // server finds the agent from the published page address, never from the browser.
+  let agentId: string | null = null;
+  let agentName = "";
+  const agentSlug = str(body.agent_slug, 70).toLowerCase();
+  if (/^[a-z0-9]+(-[a-z0-9]+)*$/.test(agentSlug)) {
+    const { data: found } = await admin.rpc("agent_page_lookup", { p_slug: agentSlug });
+    if (typeof found === "string" && found) {
+      const { data: prof } = await admin.from("profiles").select("full_name").eq("id", found).maybeSingle();
+      agentId = found;
+      agentName = String(prof?.full_name || "").trim() || "Agent";
+    }
+  }
+
   const leadId = "lead-" + crypto.randomUUID();
   const ref = "LOC-" + leadId.slice(-8).toUpperCase();
   const lead = {
     id: leadId,
     ref,
     name: fullName || email || "Website lead",
-    assigned_to: "",
-    assigned_to_id: null,
+    assigned_to: agentName,
+    assigned_to_id: agentId,
     created_by: adminId,
     updated_at: now,
     payload: {
@@ -360,12 +374,16 @@ Deno.serve(async (req) => {
       serviceTransacted: null,
       propertyInterest: report.property?.typeLabel || "Location analysis report",
       notes: summary,
-      assignedTo: "",
-      assignedToId: null,
+      assignedTo: agentName,
+      assignedToId: agentId,
+      ...(agentId ? { agentSlug, section: "value-guide" } : {}),
       createdBy: adminId,
       createdAt: now,
       updatedAt: now,
-      activity: [{ date: now, text: inquiryType === "professional-appraisal-request" ? "Professional appraisal consultation requested from the website." : inquiryType === "broker-consultation" ? "Broker consultation requested from the website." : "Full location analysis report requested from the website." }],
+      activity: [
+        { date: now, text: inquiryType === "professional-appraisal-request" ? "Professional appraisal consultation requested from the website." : inquiryType === "broker-consultation" ? "Broker consultation requested from the website." : "Full location analysis report requested from the website." },
+        ...(agentId ? [{ date: now, text: "Started from " + agentName + "'s page; assigned to " + agentName + ". The office prepares the report." }] : []),
+      ],
       fullReport: report,
       // The team's workflow for this request: call to confirm the details,
       // prepare the report in the Value Guide tool, then email it.
@@ -383,6 +401,12 @@ Deno.serve(async (req) => {
     }
     console.error("location-report lead insert", leadError.message);
     return json({ error: "Could not save your request. Please try again" }, 500);
+  }
+
+  // Counted with the agent page's messages, so the agent's month shows it. Best-effort.
+  if (agentId) {
+    const { error: countError } = await admin.rpc("agent_page_count", { p_agent: agentId, p_kind: "message" });
+    if (countError) console.error("location-report agent count", countError.message);
   }
 
   // Archive copy for super-admins. Best-effort: the lead is already saved.
@@ -403,7 +427,8 @@ Deno.serve(async (req) => {
     console.error(e);
   }
 
-  return json({ ok: true, id: leadId, ref, message: "Request saved" }, 201);
+  // agent: the name of the agent it went to, so the page thanks the visitor accurately.
+  return json({ ok: true, id: leadId, ref, message: "Request saved", ...(agentId ? { agent: agentName } : {}) }, 201);
 });
 
 async function requireAdmin(admin: any) {

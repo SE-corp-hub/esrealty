@@ -69,12 +69,17 @@
     return out;
   }
   function safeImage(url) { return /^https:\/\//.test(url || "") ? url : ""; }
+  var TYPES = { "house-and-lot": "House and lot", condominium: "Condominium", "lot-only": "Lot", townhouse: "Townhouse", shophouse: "Shophouse",
+    commercial: "Commercial property", industrial: "Industrial property", agricultural: "Farm lot", foreclosed: "Foreclosed property" };
+  function typeText(t) { return TYPES[t] || (t ? String(t).replace(/-/g, " ").replace(/^./, function (c) { return c.toUpperCase(); }) : "Property"); }
+  function plural(n, word) { return Number(n) + " " + word + (Number(n) === 1 ? "" : "s"); }
 
   var ICON = {
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
     phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
     chat: '<path d="M4 5h16v11H8l-4 4z"/>',
-    save: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>'
+    save: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+    shield: '<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"/>'
   };
   function icon(name) {
     return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + "</svg>";
@@ -101,7 +106,10 @@
     var broker = p.role === "salesperson" && p.broker
       ? '<div class="ag-card-broker"><span>Supervising broker</span><b>' + esc(p.broker.name || "Not recorded yet") + (p.broker.licence_no ? ", licence no. " + esc(p.broker.licence_no) : "") + "</b></div>"
       : "";
-    return '<article class="ag-card" aria-label="Licence card">' + head +
+    var verified = p.verified_on
+      ? '<p class="ag-card-verified">' + icon("shield") + "<span>Verified on " + esc(day(p.verified_on)) + ": government ID seen and phone confirmed by our office.</span></p>"
+      : "";
+    return '<article class="ag-card" aria-label="Licence card">' + head + verified +
       '<div class="ag-card-body">' +
       (photo ? '<img class="ag-card-photo" src="' + esc(photo) + '" alt="Photo of ' + esc(p.name) + '" width="96" height="120" loading="lazy">'
              : '<div class="ag-card-photo ag-card-initials" aria-hidden="true">' + esc(initials(p.name)) + "</div>") +
@@ -143,6 +151,55 @@
       }).join("") + "</div>" : "") + "</div>" +
       '<div class="ag-listing-grid">' + list.map(function (l) { return listingCard(l, preview); }).join("") + "</div>" +
       '<p class="ag-muted" data-ag-none hidden>No listings of this kind right now.</p></section>';
+  }
+
+  // Phase 2: sellers start the Value Guide from here, and the request goes to this agent.
+  function sellSection(p, preview) {
+    var needs = p.needs || [];
+    if (needs.length && needs.indexOf("sell") < 0) return "";
+    var first = firstName(p.name);
+    return '<section class="ag-section ag-sell" aria-labelledby="ag-sell-h"><div class="ag-sell-box"><div>' +
+      '<h2 id="ag-sell-h">Thinking of selling?</h2><p>Get a starting price from the Value Guide, and ' + esc(first) + " will follow up.</p></div>" +
+      '<a class="ag-btn ag-btn-light" data-ag-sell href="#/home?section=estimator&amp;agent=' + encodeURIComponent(p.slug || "") + '"' + (preview ? ' tabindex="-1"' : "") + ">Start the Value Guide with " + esc(first) + "</a></div></section>";
+  }
+
+  // Phase 3: counts from SEA ESTATES' closed deals, by side; rows only where the client agreed.
+  function recordSection(p) {
+    var rec = p.record || {};
+    if (!(Number(rec.deals) > 0)) return "";
+    var first = firstName(p.name);
+    var sides = [];
+    if (Number(rec.buyer) > 0) sides.push("<div><b>" + Number(rec.buyer) + "</b><span>as buyer\u2019s agent</span></div>");
+    if (Number(rec.seller) > 0) sides.push("<div><b>" + Number(rec.seller) + "</b><span>as seller\u2019s agent</span></div>");
+    var rows = rec.rows || [];
+    var sideText = { buyer: "Buyer", seller: "Seller", both: "Buyer and seller" };
+    var table = rows.length ? '<div class="ag-table-wrap" role="region" aria-labelledby="ag-record-cap" tabindex="0"><table class="ag-table"><caption id="ag-record-cap">Deals shown with the client\u2019s agreement</caption>' +
+      '<thead><tr><th scope="col">Closed</th><th scope="col">Property</th><th scope="col">Town</th><th scope="col">' + esc(first) + " acted for the</th><th scope=\"col\">Price</th></tr></thead><tbody>" +
+      rows.map(function (r) {
+        var size = Number(r.lot_sqm) > 0 ? ", " + Number(r.lot_sqm).toLocaleString("en-PH") + " sqm" : (Number(r.floor_sqm) > 0 ? ", " + Number(r.floor_sqm).toLocaleString("en-PH") + " sqm floor area" : "");
+        return "<tr><td>" + esc(month(r.month)) + "</td><td>" + esc(typeText(r.type) + size) + "</td><td>" + esc(r.town || "") + "</td><td>" + esc(sideText[r.side] || "") + "</td><td>" +
+          (Number(r.price) > 0 ? '<span class="ag-num">' + esc(money(r.price)) + "</span>" : '<span class="ag-muted">Not shown</span>') + "</td></tr>";
+      }).join("") + "</tbody></table></div>" : "";
+    return '<section class="ag-section ag-record" id="ag-record" aria-labelledby="ag-record-h"><div class="ag-record-text">' +
+      '<h2 id="ag-record-h">Track record</h2><p>' + plural(rec.deals, "deal") + " closed through SEA ESTATES since " + esc(month(rec.since)) + ", counted from our deal records.</p>" +
+      (sides.length ? '<div class="ag-stats ag-record-sides">' + sides.join("") + "</div>" : "") + "</div>" +
+      '<div class="ag-record-rows">' + table + '<p class="ag-muted">' + (rows.length ? "Other deals are counted but not listed." : "Deals are listed only when the client agrees, so these are counted but not listed.") + "</p></div></section>";
+  }
+
+  // Phase 3: approved reviews from clients with a closed deal. No stars.
+  function reviewsSection(p) {
+    var list = p.reviews || [];
+    if (!list.length) return "";
+    var first = firstName(p.name);
+    function caption(r) { return "<b>" + esc(r.label || "Client") + "</b>" + [r.town, month(r.month)].filter(Boolean).map(function (x) { return ", " + esc(x); }).join("") + ". Linked to a closed deal."; }
+    function reply(r) { return r.reply ? '<p class="ag-reply"><b>' + esc(first) + " replied:</b> " + esc(r.reply) + "</p>" : ""; }
+    var lead = list[0];
+    return '<section class="ag-section ag-reviews" id="ag-reviews" aria-labelledby="ag-reviews-h">' +
+      '<div class="ag-reviews-head"><h2 id="ag-reviews-h">What clients say</h2><p class="ag-muted">' + plural(list.length, "review") + ", each from a client with a closed deal.</p></div>" +
+      '<figure class="ag-review-lead"><blockquote>\u201c' + esc(lead.body) + '\u201d</blockquote><figcaption>' + caption(lead) + "</figcaption>" + reply(lead) + "</figure>" +
+      '<div class="ag-review-list">' +
+      list.slice(1).map(function (r) { return '<figure class="ag-review"><blockquote>\u201c' + esc(r.body) + "\u201d</blockquote><figcaption>" + caption(r) + "</figcaption>" + reply(r) + "</figure>"; }).join("") +
+      '<p class="ag-muted">Reviews come only from clients with a closed deal, through a link from our office. Agents can reply once but cannot remove them.</p></div></section>';
   }
 
   function aboutSection(p) {
@@ -191,7 +248,7 @@
     var parts = [esc(p.name) + (lic ? ", licence no. " + esc(lic.no) + ", valid until " + esc(month(lic.valid_until)) : "")];
     if (p.role === "salesperson" && p.broker && p.broker.name) parts.push("supervised by " + esc(p.broker.name) + (p.broker.licence_no ? ", licence no. " + esc(p.broker.licence_no) : ""));
     return '<footer class="ag-footer"><p>' + parts.join(", ") + ". Pre-selling listings show their DHSUD licence to sell.</p>" +
-      '<p class="ag-warn">SEA ESTATES never asks you to pay into a personal account.</p>' +
+      '<p class="ag-warn">SEA ESTATES never asks you to pay into a personal account. <a href="#/agents?check=1">Check an agent\u2019s licence</a></p>' +
       '<p class="ag-footer-links"><a href="#/privacy">Privacy notice</a><a href="#/home">SEA ESTATES</a><a href="#/search">All properties</a></p></footer>';
   }
 
@@ -203,10 +260,15 @@
     var langs = labels(LANGUAGES, p.languages);
     var chips = [];
     if (p.licence) chips.push('<span class="ag-chip ag-chip-trust">' + icon("check") + "Licence checked " + esc(day(p.licence.checked_on)) + "</span>");
+    // Phase 3: only while the office's ID and phone checks are on record and the licence holds.
+    if (p.verified_on) chips.push('<span class="ag-chip ag-chip-verified">' + icon("shield") + "Verified " + esc(day(p.verified_on)) + "</span>");
     if (langs.length) chips.push('<span class="ag-chip">Speaks ' + esc(joinWords(langs)) + "</span>");
     if ((p.sections || []).indexOf("video") >= 0) chips.push('<span class="ag-chip">Video viewings for buyers abroad</span>');
     var stats = [];
     if (Number(p.listing_count) > 0) stats.push('<div><b>' + Number(p.listing_count) + "</b><span>active listing" + (Number(p.listing_count) === 1 ? "" : "s") + "</span></div>");
+    var rec = p.record || {};
+    if (Number(rec.deals) > 0) stats.push("<div><b>" + Number(rec.deals) + "</b><span>deal" + (Number(rec.deals) === 1 ? "" : "s") + " recorded since " + esc(month(rec.since)) + "</span></div>");
+    if ((p.reviews || []).length) stats.push("<div><b>" + p.reviews.length + "</b><span>client review" + (p.reviews.length === 1 ? "" : "s") + "</span></div>");
     if (p.reply) stats.push('<div class="ag-stat-words"><b>Replies ' + esc(p.reply) + "</b><span>typical first reply, last 90 days</span></div>");
     var c = p.contacts || {};
     var bar = [];
@@ -225,7 +287,8 @@
       '<div class="ag-actions">' + contactLinks(p, true) + "</div>" +
       (stats.length ? '<div class="ag-stats">' + stats.join("") + "</div>" : "") +
       '</div><div class="ag-hero-card">' + licenceCard(p) + "</div></div></section>" +
-      listingsSection(p, opts.preview) + aboutSection(p) + contactSection(p, opts.preview) + "</main>" +
+      listingsSection(p, opts.preview) + sellSection(p, opts.preview) + recordSection(p) + reviewsSection(p) +
+      aboutSection(p) + contactSection(p, opts.preview) + "</main>" +
       footerLine(p) +
       '<div class="ag-phonebar">' + bar.join("") + "</div></div>";
   }
@@ -249,8 +312,14 @@
     if (!root || !p) return;
     var preview = !api;
     root.addEventListener("click", function (e) {
-      var t = e.target.closest ? e.target.closest("[data-ag-jump],[data-ag-filter],[data-ag-ask],[data-ag-save],[data-ag-tap]") : null;
+      var t = e.target.closest ? e.target.closest("[data-ag-jump],[data-ag-filter],[data-ag-ask],[data-ag-save],[data-ag-tap],[data-ag-sell]") : null;
       if (!t || !root.contains(t)) return;
+      if (t.hasAttribute("data-ag-sell")) {
+        if (preview) { e.preventDefault(); return; }
+        // The Value Guide names the agent while the visitor stays in it (storefront reads this).
+        try { sessionStorage.setItem("esrealty_vg_agent_v1", JSON.stringify({ slug: p.slug, name: p.name })); } catch (err) {}
+        return;
+      }
       if (t.hasAttribute("data-ag-jump")) {
         var spot = root.querySelector("#" + t.getAttribute("data-ag-jump"));
         if (spot) { spot.scrollIntoView({ behavior: "smooth", block: "start" }); var f = spot.querySelector("input[name=full_name]"); if (f && !preview) f.focus({ preventScroll: true }); }
@@ -321,7 +390,7 @@
         section: form.listing_id.value ? "listing" : "contact"
       }, sendKey).then(function () {
         form.outerHTML = '<div class="ag-sent" role="status" tabindex="-1"><h3>Sent to ' + esc(firstName(p.name)) + "</h3><p>" +
-          esc(firstName(p.name)) + " will reply by Viber, text or a call" + (p.reply ? ", usually " + esc(p.reply) : "") + ".</p></div>";
+          esc(firstName(p.name)) + " will reply by Viber, text or a call" + (p.reply && !/more than a day/.test(p.reply) ? ", usually " + esc(p.reply) : "") + ".</p></div>";
         var sent = root.querySelector(".ag-sent"); if (sent) sent.focus();
       }).catch(function (err) {
         button.disabled = false; button.textContent = label;
@@ -332,5 +401,6 @@
     });
   }
 
-  window.SEA_AGENT_PAGE = { html: html, bind: bind, TOWNS: TOWNS, NEEDS: NEEDS, LANGUAGES: LANGUAGES, ACCENTS: ACCENTS, phoneText: phoneText };
+  window.SEA_AGENT_PAGE = { html: html, bind: bind, TOWNS: TOWNS, NEEDS: NEEDS, LANGUAGES: LANGUAGES, ACCENTS: ACCENTS, phoneText: phoneText,
+    labels: labels, day: day, month: month, initials: initials, firstName: firstName, icon: icon, joinWords: joinWords };
 })();

@@ -21,9 +21,9 @@ const c = (name, ok, detail) => checks.push({ name, ok: !!ok, detail: detail || 
   // B1
   ["supabase/functions/listing-api/index.ts", "supabase/functions/location-report/index.ts"].forEach(f => {
     const src = read(f);
-    c(f.split("/")[2] + ": consent is stored with the notice version and channel", /const PRIVACY_NOTICE_VERSION = "2026-10-01";/.test(src) && /consentRecord: \{ at: [^,]+, notice: PRIVACY_NOTICE_VERSION, channel: /.test(src));
+    c(f.split("/")[2] + ": consent is stored with the notice version and channel", /const PRIVACY_NOTICE_VERSION = "2026-10-23";/.test(src) && /consentRecord: \{ at: [^,]+, notice: PRIVACY_NOTICE_VERSION, channel: /.test(src));
   });
-  c("the notice version matches the privacy notice date", /Last updated: 1 October 2026/.test(read("js/storefront.js")));
+  c("the notice version matches the privacy notice date", /Last updated: 23 October 2026/.test(read("js/storefront.js")));
   // B3
   let sql = "", lines = [];
   await R.main([], async q => { sql = q; return [{ what: "read notifications older than 180 days", rows_found: 4, deleted: false }]; }, l => lines.push(l));
