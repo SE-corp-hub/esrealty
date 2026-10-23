@@ -37,6 +37,7 @@ function setup(mode) {
     }
     if (mode === "down") throw new Error("unreachable");
     const u = new URL(url);
+    if (/\/agents$/.test(u.pathname)) return new Response(JSON.stringify({ data: [{ slug: "maria-santos" }, { slug: "Bad Slug" }], total: 2 }), { status: 200 });
     if (/\/agents\/maria-santos$/.test(u.pathname)) return new Response(JSON.stringify({ data: AGENT }), { status: 200 });
     if (/\/agents\/[^/]+$/.test(u.pathname)) return new Response(JSON.stringify({ error: "Agent not found" }), { status: 404 });
     if (/\/listings\/L-77$/.test(u.pathname)) return new Response(JSON.stringify({ data: LISTING }), { status: 200 });
@@ -132,6 +133,13 @@ function setup(mode) {
     && body.includes("<loc>https://sea.example/</loc>") && body.includes("<loc>https://sea.example/listing/L-77</loc><lastmod>2026-10-20</lastmod>")
     && body.includes("<loc>https://sea.example/listing/B%202</loc>") && body.includes("<loc>https://sea.example/listing/C3</loc>"), body);
   c("sitemap pages through the listings and asks only for available ones", s.calls.filter((u) => /status=available&per_page=50&page=/.test(u)).length === 2);
+  c("agent pages stay out of the sitemap until they may be indexed", !body.includes("/agents/") && !s.calls.some((u) => /\/agents$/.test(new URL(u).pathname)));
+  s = setup("ok");
+  s.env.AGENT_PAGES_INDEX = "on";
+  res = await worker.fetch(new Request("https://sea.example/sitemap.xml"), s.env);
+  body = await res.text();
+  c("once indexing is on, every published agent page is in the sitemap (well-formed addresses only)",
+    body.includes("<loc>https://sea.example/agents/maria-santos</loc>") && !body.includes("Bad Slug") && !body.includes("Bad%20Slug"), body);
 
   // Headers parity with _headers, and the files the Worker must never serve.
   const block = (read("_headers").split(/\r?\n\/\*\r?\n/)[1] || "").split(/\r?\n\r?\n/)[0];

@@ -9,7 +9,8 @@
  *   /agents/<slug>  an agent's page, the same way: name, licence, pitch and photo in the HTML. While
  *                   AGENT_PAGES_INDEX is not "on" (until the lawyer's OK), it carries noindex. A page
  *                   that is not public (unpublished, licence expired, access revoked) answers 410.
- *   /sitemap.xml    every available listing, on the site's own address.
+ *   /sitemap.xml    every available listing, on the site's own address, and every published agent
+ *                   page once AGENT_PAGES_INDEX is "on" (the directory's list, GET /agents).
  *
  * The listing comes from the listing function with ?count=0, so these reads are not counted as
  * views. If the function is slow (over 1.5 s) or down, the plain site page is served instead and
@@ -204,8 +205,15 @@ async function sitemapRoute(env) {
     rows.push(...data);
     if (!r.body || page >= Number(r.body.total_pages || 0)) break;
   }
+  // Agent pages join the sitemap only once they may be indexed (after the lawyer's OK).
+  const agents = [];
+  if (env.AGENT_PAGES_INDEX === "on") {
+    const r = await getJson(api + "/agents");
+    agents.push(...((r.body && r.body.data) || []).filter((a) => a && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(String(a.slug || ""))));
+  }
   const urls = [
     "  <url><loc>" + esc(siteUrl + "/") + "</loc><changefreq>daily</changefreq></url>",
+    ...agents.map((a) => "  <url><loc>" + esc(siteUrl + "/agents/" + a.slug) + "</loc></url>"),
     ...rows.filter((x) => x && x.id).map((x) => "  <url><loc>" + esc(siteUrl + "/listing/" + encodeURIComponent(x.id)) + "</loc>"
       + (x.updated_at ? "<lastmod>" + esc(String(x.updated_at).slice(0, 10)) + "</lastmod>" : "") + "</url>"),
   ].join("\n");
