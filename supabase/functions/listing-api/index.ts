@@ -395,6 +395,9 @@ const getListing = async (req: Request, id: string, admin: SupabaseClient, peppe
   if (error) throw new Error(error.message);
   if (!data) throw new HttpError(404, "Listing not found");
   const details = await publicDetails(admin, id, (data as JsonRecord).agent_id as string | null);
+  // The site's Worker reads a listing to put its title and photo in the page for Facebook and
+  // Google (?count=0). That read is not a visitor, so it does not count a view.
+  if (new URL(req.url).searchParams.get("count") === "0") return json({ data: { ...(data as JsonRecord), details } });
   // One view per visitor per listing per day: the limiter remembers who already counted.
   const viewKey = await sha256(`${pepper}:view:${id}:${callerAddress(req)}`);
   const { data: firstToday, error: seenError } = await admin.rpc("consume_listing_inquiry_rate_limit", {

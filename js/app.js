@@ -20694,7 +20694,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       ? '<span class="badge ' + (currentUser.registrationStatus === "approved" ? "green" : currentUser.registrationStatus === "rejected" ? "red" : "gold") + '">' + esc(currentUser.registrationStatus) + '</span>' : "";
     const fields =
       '<div class="grid grid-2">' +
-      '<div class="field"><label>Full name</label><input class="input" id="st-name" type="text" value="' + esc(d.name) + '"></div>' +
+      '<div class="field"><label>Full name</label><input class="input" id="st-name" type="text" value="' + esc(d.name) + '"' + (settingsNameLocked() ? ' readonly aria-describedby="st-name-hint"' : "") + '>' + (settingsNameLocked() ? '<div class="field-hint" id="st-name-hint">Matches your verified licence. Ask a super-admin to change it.</div>' : "") + '</div>' +
       '<div class="field"><label>Email</label><input class="input" id="st-email" type="email" autocomplete="email" value="' + esc(d.email) + '"' + (cloud ? " disabled" : "") + '><div class="field-hint">' + (cloud ? "Your login email is managed by Supabase and cannot be changed here." : "Demo mode: you can edit your email.") + "</div></div>" +
       '<div class="field"><label>Phone</label><input class="input" id="st-phone" type="tel" autocomplete="tel" value="' + esc(d.phone) + '" placeholder="+63 ..."></div>' +
       (userRole() === "owner" ? "" :
@@ -20871,6 +20871,10 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   function settingsLicenceLocked() {
     return !!(SB && currentUser && currentUser.id && !currentUser.demo && currentUser.registrationStatus === "approved" && userRole() !== "super-admin");
   }
+  // An approved broker's or agent's name is locked too (migration 0014): agent pages show it.
+  function settingsNameLocked() {
+    return settingsLicenceLocked() && (userRole() === "broker" || userRole() === "agent");
+  }
   function settingsSaveForm() {
     const $v = id => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
     const name = $v("st-name"), email = $v("st-email");
@@ -20883,6 +20887,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       const updateProfile = async () => {
         const payload = { full_name: data.name, agency: data.agency, prc: data.prc, resa: data.resa, phone: data.phone };
         if (settingsLicenceLocked()) { delete payload.prc; delete payload.resa; data.prc = currentUser.prc || ""; data.resa = currentUser.resa || ""; }
+        if (settingsNameLocked()) { delete payload.full_name; data.name = currentUser.name || data.name; }
         const res = await SB.from("profiles").update(payload).eq("id", currentUser.id);
         if (res.error) {
           const low = String(res.error.message || "").toLowerCase();

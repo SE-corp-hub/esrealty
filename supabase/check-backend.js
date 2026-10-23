@@ -441,5 +441,13 @@ async function probe(base, p, fnName, optional) {
   console.log("  - Tables answering 200 with no rows are fine: row security hides them from an anonymous check.");
   console.log("  - 'ERR' (no HTTP status) usually means the function is NOT deployed at BASE.");
   if (deployStale) console.log("\nA function in the repository has waited more than 3 days for its deployment: run Actions > Deploy edge functions.");
+  if (process.env.GITHUB_ACTIONS) {
+    // One annotation per reason, so the failure shows on the run's summary page without opening the log.
+    const note = (msg) => console.log("::error title=Backend check::" + String(msg).replace(/\r?\n/g, " "));
+    failed.filter(r => !r.optional).forEach(r => note(r.name + ": " + r.method + " " + r.path + " got " + r.got));
+    missingTables.forEach(r => note("missing table " + r.table + " (" + (r.note || "") + ") got " + r.got));
+    vercelOpen.forEach(p => note("market-scan " + p.path + " answers without a secret or sign-in"));
+    if (deployStale) note("a function in the repository has waited more than 3 days for its deployment: run Actions > Deploy edge functions");
+  }
   if (failed.some(r => !r.optional) || missingTables.length || vercelOpen.length || deployStale) { process.exit(1); }
 })();

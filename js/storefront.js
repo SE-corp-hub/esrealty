@@ -55,6 +55,10 @@
 
   function route() {
     var raw = location.hash.replace(/^#\/?/, "");
+    /* Share addresses like /listing/<id> (served by the site's Worker, so Facebook and Google
+     * can read them) open the same page as #/listing/<id>. A #/ route wins when there is one. */
+    var shared = !raw && location.pathname.match(/^\/listing\/([^/?#]+)\/?$/);
+    if (shared) raw = "listing/" + shared[1];
     var split = raw.split("?");
     var path = split[0] || "home";
     return { path: path, params: new URLSearchParams(split.slice(1).join("?")) };
@@ -1921,7 +1925,7 @@
         notifyButton.disabled = true;
         if (notifyStatus) { notifyStatus.textContent = "Sending…"; notifyStatus.className = "sf-form-status"; }
         API.contact({
-          inquiry_type: "project-bt-notify",
+          inquiry_type: "project-bt",
           email: notifyData.get("email"),
           consent: notifyData.get("consent") === "on"
         }).then(function () {

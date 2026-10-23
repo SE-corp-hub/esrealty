@@ -41,7 +41,8 @@ update public.profiles set prc = '1234', resa = 'R-1' where id = 'aaaaaaaa-aaaa-
 set local role authenticated;
 select pg_temp.as_user('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');  -- approved broker
 insert into results select 'approved broker: cannot change their verified PRC', pg_temp.fails($q$update public.profiles set prc = '9999' where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'$q$) like 'refused%verified%', '';
-insert into results select 'approved broker: can still change their name and phone', pg_temp.fails($q$update public.profiles set full_name = 'Broker Alpha Jr', phone = '0917' where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'$q$) = 'ran', '';
+insert into results select 'approved broker: can still change their phone', pg_temp.fails($q$update public.profiles set phone = '0917' where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'$q$) = 'ran', '';
+insert into results select 'approved broker: cannot change their verified name (0014)', pg_temp.fails($q$update public.profiles set full_name = 'Broker Alpha Jr' where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'$q$) like 'refused%', '';
 insert into results select 'approved broker: can schedule compliance renewals', pg_temp.fails($q$select public.compliance_schedule_renewals(60)$q$) = 'ran', '';
 select pg_temp.as_user('77777777-7777-7777-7777-777777777777');  -- super-admin
 insert into results select 'super-admin: can upload a listing photo', pg_temp.fails($q$insert into storage.objects (bucket_id, name) values ('listing-photos', '77777777-7777-7777-7777-777777777777/s.jpg')$q$) = 'ran', '';
