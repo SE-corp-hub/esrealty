@@ -9,6 +9,9 @@
 --                            insert, change or delete licence check rows directly.
 --   routing_people(...)      lead routing's town rule and the brokers' rotation share one
 --                            "next in turn" instead of two copies of it.
+--   agents_fixed             0018 fixes a closed deal's agents, "even after moving it back a
+--                            stage", but reopening cleared closed_on, so a second save could still
+--                            change them. The deal now remembers that it closed.
 
 -- 1. Reviews for the Super Admin ---------------------------------------------------------------------
 create or replace function public.agent_reviews_admin() returns jsonb
@@ -93,7 +96,57 @@ end;
 $function$;
 
 
--- 4. Rights -----------------------------------------------------------------------------------------
+-- 4. A closed deal's agents stay fixed after it is reopened ---------------------------------------
+do $$ begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'broker_transactions' and column_name = 'agents_fixed') then
+    create temp table broker_transactions_fix_once as select 1 as yes;
+  end if;
+end $$;
+alter table public.broker_transactions add column if not exists agents_fixed boolean not null default false;
+
+-- 0018's trigger, with "has this deal ever closed" kept in agents_fixed instead of read from
+-- closed_on (which is cleared when a deal moves back a stage).
+create or replace function public.broker_transactions_typed()
+returns trigger language plpgsql security definer set search_path to 'public' as $function$
+declare
+  closed boolean := coalesce(new.payload ->> 'stage', '') in ('doas', 'done');
+begin
+  new.buyer_agent_id := public.deal_agent(new.payload ->> 'buyerAgentId');
+  new.seller_agent_id := public.deal_agent(new.payload ->> 'sellerAgentId');
+  -- Credit is fixed at closing: once a deal has closed, only a Super Admin changes its agents, even
+  -- if the deal is moved back to an earlier stage. Compared as accounts, so "" and a missing key
+  -- (deals saved before the agent fields existed) are the same "nobody".
+  if tg_op = 'UPDATE' and (old.agents_fixed or old.closed_on is not null)
+     and (new.buyer_agent_id, new.seller_agent_id) is distinct from (old.buyer_agent_id, old.seller_agent_id)
+     and auth.uid() is not null and not public.is_super_admin() then
+    raise exception 'The agents on a closed deal are fixed. Ask a Super Admin to correct them.' using errcode = '42501';
+  end if;
+  new.agents_fixed := closed or (tg_op = 'UPDATE' and (old.agents_fixed or old.closed_on is not null));
+  new.show_deal := coalesce(new.payload ->> 'showDeal', '') = 'true';
+  new.show_price := new.show_deal and coalesce(new.payload ->> 'showPrice', '') = 'true';
+  new.deal_kind := case when new.payload ->> 'dealKind' = 'rental' then 'rental' else 'sale' end;
+  new.closed_on := case when not closed then null
+                        else coalesce(public.deal_date(new.payload ->> 'doasDate'),
+                                      case when tg_op = 'UPDATE' then old.closed_on end,
+                                      (new.updated_at at time zone 'Asia/Manila')::date) end;
+  return new;
+end $function$;
+
+-- Deals closed now are marked, once, without touching their saved time or the audit log. (A deal
+-- reopened before this migration has no record of having closed and starts again from here.)
+do $$ begin
+  if to_regclass('pg_temp.broker_transactions_fix_once') is null then return; end if;
+  alter table public.broker_transactions disable trigger broker_transactions_set_updated_at;
+  alter table public.broker_transactions disable trigger broker_transactions_audit;
+  alter table public.broker_transactions disable trigger broker_transactions_typed;
+  update public.broker_transactions set agents_fixed = true where closed_on is not null;
+  alter table public.broker_transactions enable trigger broker_transactions_set_updated_at;
+  alter table public.broker_transactions enable trigger broker_transactions_audit;
+  alter table public.broker_transactions enable trigger broker_transactions_typed;
+  drop table pg_temp.broker_transactions_fix_once;
+end $$;
+
+-- 5. Rights -----------------------------------------------------------------------------------------
 revoke all on function public.agent_reviews_admin() from public, anon;
 grant execute on function public.agent_reviews_admin() to authenticated;
 revoke all on function public.routing_people(jsonb, boolean) from public, anon, authenticated;

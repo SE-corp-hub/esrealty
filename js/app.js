@@ -20143,7 +20143,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   function dealAgentSelect(id, chosenId, chosenName, label, locked) {
     const list = dealAgentChoices();
     if (chosenId && !list.some(x => x.id === String(chosenId))) list.unshift({ id: String(chosenId), name: chosenName || "Someone no longer on the team" });
-    // Credit is fixed at closing (migration 0018): only a Super Admin changes the agents on a closed deal.
+    // Credit is fixed at closing (migrations 0018, 0019): only a Super Admin changes the agents on a deal that has closed.
     return '<div class="field"><label for="' + id + '">' + label + '</label><select class="input" id="' + id + '"' + (locked ? ' disabled title="Fixed at closing. A Super Admin can correct it."' : "") + '><option value="">None, or not one of ours</option>' +
       list.map(x => '<option value="' + esc(x.id) + '"' + (String(chosenId || "") === x.id ? " selected" : "") + ">" + esc(x.name) + "</option>").join("") + "</select></div>";
   }
@@ -20183,7 +20183,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (!txCanManage()) { toast("You don't have permission to manage transactions", "err"); return; }
     closeTxModal();
     const t = id ? transactionScope().find(x => x.id === id) || {} : {};
-    const agentsLocked = (t.stage === "doas" || t.stage === "done") && !roleIs("super-admin");
+    // Fixed once the deal has closed, even if it was moved back a stage since (migration 0019).
+    const agentsLocked = (t.stage === "doas" || t.stage === "done" || t.agentsFixed === true) && !roleIs("super-admin");
     const listOpts = '<option value="">No linked listing</option>' + (state.listings || []).map(x => '<option value="' + esc(x.id) + '"' + (t.listingId === x.id ? " selected" : "") + ">" + esc(x.title) + "</option>").join("");
     const body =
       '<div class="grid grid-2">' +
@@ -20272,6 +20273,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     rec.years = $n("tx-years") || 15;
     rec.ctsDate = $v("tx-ctsdate");
     rec.doasDate = $v("tx-doasdate");
+    if (rec.stage === "doas" || rec.stage === "done") rec.agentsFixed = true;
     rec.transferPct = $n("tx-transferpct") || 0.5;
     rec.notarialFee = $n("tx-notarial") || 5000;
     rec.listingId = $v("tx-listing");
@@ -20302,6 +20304,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     t.updatedAt = new Date().toISOString();
     if (next === "cts" && !t.ctsDate) t.ctsDate = new Date().toISOString().slice(0, 10);
     if (next === "doas" && !t.doasDate) t.doasDate = new Date().toISOString().slice(0, 10);
+    if (next === "doas" || next === "done") t.agentsFixed = true;
     save(); render();
     persistTransactionToCloud(t);
     toastHtml("Transaction → <b>" + esc(txStageCfg(next).label) + "</b> (" + esc(prevLabel) + " completed)");

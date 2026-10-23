@@ -82,6 +82,27 @@ insert into public.crm_leads (id, ref, name, payload, created_by) values
   ('fu-r5', 'R5', 'Bad settings', '{"status":"new","phone":"0911 100 0005"}', '77777777-7777-7777-7777-777777777777');
 insert into results select 'broken routing settings never stop a lead from saving', (select assigned_to_id is null from public.crm_leads where id = 'fu-r5'), '';
 
+-- A closed deal's agents stay fixed after it is reopened ----------------------------------------------
+select pg_temp.as_user('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+set local role authenticated;
+insert into public.broker_transactions (id, ref, title, payload, broker_id, created_by) values
+  ('fu-ro', 'TX-R', 'Reopened deal', '{"stage":"done","buyerAgentId":"11111111-1111-1111-1111-111111111111"}', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+insert into results select 'a broker may move a closed deal back a stage',
+  pg_temp.fails($q$update public.broker_transactions set payload = payload || '{"stage":"cts"}' where id = 'fu-ro'$q$) = 'ran', '';
+insert into results select 'but its agents stay fixed, in a later save too',
+  pg_temp.fails($q$update public.broker_transactions set payload = payload || '{"buyerAgentId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}' where id = 'fu-ro'$q$) = 'refused'
+  and pg_temp.fails($q$update public.broker_transactions set payload = payload || '{"buyerAgentId":""}' where id = 'fu-ro'$q$) = 'refused', '';
+insert into results select 'the rest of the deal can still be edited, and an open deal''s agents still change freely',
+  pg_temp.fails($q$update public.broker_transactions set payload = payload || '{"notes":"reopened for a correction"}' where id = 'fu-ro'$q$) = 'ran'
+  and pg_temp.fails($q$insert into public.broker_transactions (id, ref, title, payload, broker_id, created_by) values ('fu-open', 'TX-O', 'Open deal', '{"stage":"cts"}', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')$q$) = 'ran'
+  and pg_temp.fails($q$update public.broker_transactions set payload = payload || '{"buyerAgentId":"11111111-1111-1111-1111-111111111111"}' where id = 'fu-open'$q$) = 'ran', '';
+reset role;
+insert into results select 'the deal remembers that it closed', (select agents_fixed and closed_on is null and buyer_agent_id = '11111111-1111-1111-1111-111111111111' from public.broker_transactions where id = 'fu-ro'), '';
+select pg_temp.as_user('77777777-7777-7777-7777-777777777777');
+update public.broker_transactions set payload = payload || '{"buyerAgentId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}' where id = 'fu-ro';
+insert into results select 'a Super Admin can still correct them', (select buyer_agent_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' from public.broker_transactions where id = 'fu-ro'), '';
+select pg_temp.as_service();
+
 select case when ok then 'PASS ' else 'FAIL ' end || name || case when ok then '' else ' :: ' || coalesce(detail, '') end from results;
 select count(*) filter (where ok) || '/' || count(*) || ' passed' from results;
 rollback;
