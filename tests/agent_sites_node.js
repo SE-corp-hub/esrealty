@@ -6,6 +6,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { stripTs, importTs } = require("./ts_module");
 const ROOT = path.join(__dirname, "..");
 const read = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
 
@@ -36,13 +37,12 @@ c("migrations README lists 0015", /0015_agent_sites\.sql/.test(read("supabase/mi
 c("migrations README lists 0016", /0016_agent_sites_proof\.sql/.test(read("supabase/migrations/README.md")));
 const mig16 = read("supabase/migrations/0016_agent_sites_proof.sql");
 const api = read("supabase/functions/listing-api/index.ts");
+const agentsTs = read("supabase/functions/listing-api/agents.ts");
 c("0016 says to apply it after 0015", /AFTER 0015/.test(mig16));
 c("the directory, lookup and review functions are for the server only",
   ["public_agents(text, text, text)", "agent_check(text)", "review_lookup(text)", "review_submit(text, text, text, text)", "agent_public_slug(uuid)", "agent_page_lookup(text)"].every((f) =>
     new RegExp("revoke all on function public\\." + f.replace(/[()]/g, "\\$&") + " from public, anon, authenticated;").test(mig16)
     && new RegExp("grant execute on function public\\." + f.replace(/[()]/g, "\\$&") + " to service_role;").test(mig16)));
-c("the directory, check and review routes are wired", /parts\[0\] === "agents" && req\.method === "GET"\) \{\n\s*return await listAgents/.test(api)
-  && /parts\[0\] === "agent-check" && req\.method === "GET"/.test(api) && /parts\.length === 1 && parts\[0\] === "reviews" && req\.method === "POST"/.test(api));
 c("the Value Guide names the agent only when the server says it went to them", /var agentName = res && res\.agent \? String\(res\.agent\) : "";/.test(read("js/estimator.js")) && /\.\.\.\(agentId \? \{ agent: agentName \} : \{\}\)/.test(read("supabase/functions/location-report/index.ts")));
 c("a listing's details carry its agent's page address", /admin\.rpc\("agent_public_slug", \{ p_agent: agentId \}\)/.test(api) && /out\.agent_slug = slug/.test(api));
 const sf = read("js/storefront.js");
@@ -52,17 +52,17 @@ const lr = read("supabase/functions/location-report/index.ts");
 c("a Value Guide request from an agent's page goes to that agent, found by the server", /admin\.rpc\("agent_page_lookup", \{ p_slug: agentSlug \}\)/.test(lr) && /assigned_to_id: agentId,/.test(lr));
 c("the Value Guide sends the agent's page address", /agent_slug: vgAgent\(\)\.slug,/.test(read("js/estimator.js")));
 
-// The endpoints, run in Node.
-c("the agent routes are wired", /parts\[0\] === "agents" && req\.method === "GET"/.test(api)
-  && /parts\[0\] === "agents" && parts\[2\] === "inquiries" && req\.method === "POST"/.test(api)
-  && /parts\[0\] === "agents" && parts\[2\] === "taps" && req\.method === "POST"/.test(api));
+// The endpoints, run in Node: agents.ts with Node's own type stripping, and the real limiter from index.ts.
+c("index.ts hands every agent address to agents.ts", /import \{ agentEndpoints \} from "\.\/agents\.ts";/.test(api)
+  && /const agentResponse = agents\.route\(parts, req, admin, pepper\);\n\s*if \(agentResponse\) return await agentResponse;/.test(api));
+c("agents.ts imports nothing but types, so it runs anywhere", !/^import (?!type )/m.test(agentsTs));
 c("instant phone alerts load web-push only when needed, so a failure cannot stop the function",
   /const loadWebPush = async \(\) => \(await import\("npm:web-push@3\.6\.7"\)\)\.default;/.test(api) && !/^import .*web-push/m.test(api)
-  && /await pushNow\(admin, agentId\);/.test(api) && /await pushNow\(admin, listing\.agent_id as string \| null\);/.test(api));
+  && /await pushNow\(admin, agentId\);/.test(agentsTs) && /await pushNow\(admin, listing\.agent_id as string \| null\);/.test(api));
 c("browsers may send an Idempotency-Key", /"Access-Control-Allow-Headers": "[^"]*idempotency-key"/.test(api));
-const block = api.slice(api.indexOf("// Agent pages (agent websites plan, Phase 1)"), api.indexOf("Deno.serve(async (req) => {"))
-  .replace(/: Record<string, string>/g, "").replace(/: SupabaseClient/g, "").replace(/: Request/g, "").replace(/: URL/g, "").replace(/: unknown/g, "").replace(/: string/g, "")
-  .replace(/ as JsonRecord\[\]/g, "").replace(/ as JsonRecord/g, "").replace(/\(l\)/g, "(l)");
+c("every form and counter uses the one limiter", (api.match(/consume_listing_inquiry_rate_limit/g) || []).length === 1 && !/consume_listing_inquiry_rate_limit/.test(agentsTs));
+const limiterSrc = stripTs(api.slice(api.indexOf("const withinLimit"), api.indexOf("// Rental application details")));
+const sha256 = async (v) => crypto.createHash("sha256").update(v).digest("hex");
 
 const OPEN_TOKEN = "a".repeat(64);
 const OPEN_HASH = crypto.createHash("sha256").update(OPEN_TOKEN).digest("hex");
@@ -103,22 +103,23 @@ function harness() {
   };
   const phoneValue = (v, required) => { const t = stringValue(v, 50, "phone", required); if (t && t.replace(/\D/g, "").length < 7) throw new HttpError(400, "phone is invalid"); return t; };
   const enumValue = (value, allowed, fallback, field) => { const r = String(value ?? fallback).trim().toLowerCase(); if (!allowed.has(r)) throw new HttpError(400, field + " is invalid"); return r; };
-  const deps = {
+  const { withinLimit, enforceLimit } = new Function("sha256", "HttpError", limiterSrc + "\nreturn { withinLimit, enforceLimit };")(sha256, HttpError);
+  const fns = agentEndpoints({
     HttpError, json, stringValue, phoneValue, enumValue, MAX_FORM_BODY: 32000, PRIVACY_NOTICE_VERSION: "2026-10-01", PUBLIC_CACHE: { "Cache-Control": "public, max-age=60" },
     parseBody: async (req) => JSON.parse(req.body || "{}"),
-    sha256: async (v) => crypto.createHash("sha256").update(v).digest("hex"),
+    sha256, withinLimit, enforceLimit,
     callerAddress: () => "1.2.3.4",
-    crypto: { randomUUID: () => crypto.randomUUID() },
     pushNow: async (admin, userId) => { pushed.push(userId); return 1; },
-  };
-  const fns = new Function(...Object.keys(deps), block + "\nreturn { getAgent, recordAgentTap, submitAgentInquiry, listAgents, checkAgent, getReview, submitReview };")(...Object.values(deps));
-  const req = (url, body, headers) => ({ url: "https://x/api" + url, body: body && JSON.stringify(body), headers: { get: (k) => (headers || {})[k.toLowerCase()] || null } });
+  });
+  const req = (url, body, headers, method) => ({ url: "https://x/api" + url, method: method || (body ? "POST" : "GET"), body: body && JSON.stringify(body), headers: { get: (k) => (headers || {})[k.toLowerCase()] || null } });
   const run = async (fn, ...args) => { try { return await fn(...args); } catch (e) { return { status: e.status || 500, body: { error: e.message } }; } };
   return { fns, req, run, calls, leads, pushed, admin, setFirst: (v) => { firstToday = v; } };
 }
 
+let agentEndpoints;
 (async () => {
   try {
+    ({ agentEndpoints } = await importTs("supabase/functions/listing-api/agents.ts"));
     let h = harness();
     let r = await h.run(h.fns.getAgent, h.req("/agents/maria-santos"), "maria-santos", h.admin, "pepper");
     c("a published agent's page is returned without their account id", r.status === 200 && r.body.data.name === "Maria Santos" && !("agent_id" in r.body.data), JSON.stringify(r));
@@ -187,7 +188,8 @@ function harness() {
     c("a malformed link answers 404", r.status === 404);
     r = await h.run(h.fns.getReview, h.req("/reviews/lookup", { token: "b".repeat(64) }), h.admin);
     c("an unknown link answers 404", r.status === 404);
-    c("the link travels in the request body, never in the address", /parts\[0\] === "reviews" && parts\[1\] === "lookup" && req\.method === "POST"/.test(api) && !/parts\[0\] === "reviews" && req\.method === "GET"/.test(api));
+    const routes = (path, method) => h.fns.route(path.split("/"), h.req("/" + path, null, null, method), h.admin, "pepper");
+    c("the link travels in the request body, never in the address", routes("reviews/lookup", "POST") !== null && routes("reviews/lookup", "GET") === null && routes("reviews", "GET") === null && routes("reviews/" + OPEN_TOKEN, "GET") === null);
     const words = { token: OPEN_TOKEN, first_name: "Rhea", last_name: "Dizon", review: "Maria did the viewing on video and sent the title first.", consent: true };
     r = await h.run(h.fns.submitReview, h.req("/reviews", { ...words, consent: false }), h.admin, "pepper");
     c("no agreement, no review", r.status === 400);
@@ -196,6 +198,22 @@ function harness() {
     c("the review goes to the database with first name and last name for the initial", h.calls.some((x) => x.startsWith("review_submit") && x.includes('"p_first":"Rhea"') && x.includes('"p_initial":"Dizon"')));
     r = await h.run(h.fns.submitReview, h.req("/reviews", words), h.admin, "pepper");
     c("the same link cannot send a second review", r.status === 410);
+
+    // The router: agent addresses only, each to its endpoint.
+    h = harness();
+    r = await routes("agents", "GET");
+    c("GET /agents is the directory", r && r.status === 200 && Array.isArray(r.body.data));
+    r = await h.run(() => h.fns.route(["agents", "maria-santos"], h.req("/agents/maria-santos"), h.admin, "pepper"));
+    c("GET /agents/<address> is the agent's page", r && r.status === 200 && r.body.data.name === "Maria Santos");
+    r = await h.run(() => h.fns.route(["agents", "maria-santos", "taps"], h.req("/agents/maria-santos/taps", { kind: "call" }), h.admin, "pepper"));
+    c("POST /agents/<address>/taps counts a tap", r && r.status === 202);
+    c("other addresses and methods are left to index.ts",
+      routes("listings", "GET") === null && routes("agents", "POST") === null && routes("agents/maria-santos", "DELETE") === null && routes("agents/maria-santos/inquiries", "GET") === null && routes("agent-check", "POST") === null);
+    // Same keys as before the limiter moved, so allowances already used still count after a deploy.
+    h.calls.length = 0;
+    await h.run(h.fns.submitAgentInquiry, h.req("/agents/maria-santos/inquiries", msg), "maria-santos", h.admin, "pepper");
+    const want = await sha256("pepper:agent-inquiry:agent-1:1.2.3.4");
+    c("the limiter keeps each form's key and allowance", h.calls.some((x) => x === 'consume_listing_inquiry_rate_limit:{"p_request_key_hash":"' + want + '","p_limit":5,"p_window_seconds":3600}'), h.calls.join(" | "));
   } catch (e) {
     c("the agent endpoints run in Node", false, e && e.stack);
   }

@@ -46,16 +46,18 @@ c("router: other paths still open the home page", routeAt("/", "") === "home" &&
 
 // The listing API: the Worker's read (?count=0) does not count a view; a visitor's read does.
 const api = read("supabase/functions/listing-api/index.ts");
-const getSrc = api.slice(api.indexOf("const getListing"), api.indexOf("// Trust details for a listing page"))
-  .replace(/: Request/g, "").replace(/: SupabaseClient/g, "").replace(/: string \| null/g, "").replace(/: string/g, "")
-  .replace(/ as JsonRecord/g, "").replace(/\(data as JsonRecord\)/g, "data").replace(/ as string \| null/g, "");
+const { stripTs } = require("./ts_module");
+const getSrc = stripTs(api.slice(api.indexOf("const getListing"), api.indexOf("// Trust details for a listing page")));
+const limiterSrc = stripTs(api.slice(api.indexOf("const withinLimit"), api.indexOf("// Rental application details")));
 const runGet = async (query) => {
   const rpcs = [];
   const admin = {
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "L1", agent_id: null }, error: null }) }) }) }),
     rpc: async (name) => { rpcs.push(name); return { data: true, error: null }; },
   };
-  const deps = { json: (body) => body, publicDetails: async () => ({}), sha256: async () => "h", callerAddress: () => "1.2.3.4", HttpError: Error, PUBLIC_LISTING_COLUMNS: "*" };
+  const sha256 = async () => "h";
+  const { withinLimit } = new Function("sha256", "HttpError", limiterSrc + "\nreturn { withinLimit };")(sha256, Error);
+  const deps = { json: (body) => body, publicDetails: async () => ({}), withinLimit, callerAddress: () => "1.2.3.4", HttpError: Error, PUBLIC_LISTING_COLUMNS: "*" };
   const getListing = new Function(...Object.keys(deps), getSrc + "\nreturn getListing;")(...Object.values(deps));
   const body = await getListing({ url: "https://x/functions/v1/listing-api/api/listings/L1" + query }, "L1", admin, "pepper");
   return { body, rpcs };

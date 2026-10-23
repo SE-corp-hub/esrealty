@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
+import { agentEndpoints } from "./agents.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -414,13 +415,8 @@ const getListing = async (req: Request, id: string, admin: SupabaseClient, peppe
   // Google (?count=0). That read is not a visitor, so it does not count a view.
   if (new URL(req.url).searchParams.get("count") === "0") return json({ data: { ...(data as JsonRecord), details } });
   // One view per visitor per listing per day: the limiter remembers who already counted.
-  const viewKey = await sha256(`${pepper}:view:${id}:${callerAddress(req)}`);
-  const { data: firstToday, error: seenError } = await admin.rpc("consume_listing_inquiry_rate_limit", {
-    p_request_key_hash: viewKey,
-    p_limit: 1,
-    p_window_seconds: 86400,
-  });
-  if (seenError) console.error(seenError);
+  const firstToday = await withinLimit(admin, pepper, `view:${id}:${callerAddress(req)}`, 1, 86400)
+    .catch((error) => { console.error(error); return false; });
   if (firstToday) {
     const { error: viewError } = await admin.rpc("increment_public_listing_view", { p_listing_id: id });
     if (viewError) console.error(viewError);
@@ -678,6 +674,22 @@ const callerAddress = (req: Request) => req.headers.get("cf-connecting-ip")
   || (req.headers.get("x-forwarded-for") || "").split(",")[0].trim()
   || "unknown";
 
+// The shared limiter: true while `key` has used fewer than `limit` in the last `windowSeconds`.
+// Each form or counter has its own key, hashed with the pepper so no address is ever stored.
+// With a limit of 1 a day it means "the first time today" (views and taps are counted once).
+const withinLimit = async (admin: SupabaseClient, pepper: string, key: string, limit: number, windowSeconds: number) => {
+  const { data, error } = await admin.rpc("consume_listing_inquiry_rate_limit", {
+    p_request_key_hash: await sha256(`${pepper}:${key}`),
+    p_limit: limit,
+    p_window_seconds: windowSeconds,
+  });
+  if (error) throw new Error(error.message);
+  return data === true;
+};
+const enforceLimit = async (admin: SupabaseClient, pepper: string, key: string, limit: number, windowSeconds: number, message: string) => {
+  if (!(await withinLimit(admin, pepper, key, limit, windowSeconds))) throw new HttpError(429, message);
+};
+
 // Rental application details sent with an inquiry on a listing for rent (roadmap I10). All optional;
 // anything unexpected is dropped, and wrong values are refused with the field's name.
 const INCOME_BANDS = ["Below 20,000", "20,000 to 39,999", "40,000 to 79,999", "80,000 to 149,999", "150,000 or more"];
@@ -733,14 +745,7 @@ const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pe
 
   const optionalUser = await authenticate(req, admin, false);
   // Each form has its own allowance, so a contact form doesn't use up listing inquiries.
-  const keyHash = await sha256(`${pepper}:inquiry:${callerAddress(req)}:${optionalUser?.id || "public"}`);
-  const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", {
-    p_request_key_hash: keyHash,
-    p_limit: 5,
-    p_window_seconds: 3600,
-  });
-  if (rateError) throw new Error(rateError.message);
-  if (!permitted) throw new HttpError(429, "Too many inquiries. Please try again later");
+  await enforceLimit(admin, pepper, `inquiry:${callerAddress(req)}:${optionalUser?.id || "public"}`, 5, 3600, "Too many inquiries. Please try again later");
 
   const inquiry = {
     listing_id: id,
@@ -834,14 +839,7 @@ const submitContact = async (req: Request, admin: SupabaseClient, pepper: string
   const interest = isProjectBt ? stringValue(body.interest, 200, "interest") : "";
 
   const optionalUser = await authenticate(req, admin, false);
-  const keyHash = await sha256(`${pepper}:contact:${inquiryType}:${callerAddress(req)}:${optionalUser?.id || "public"}`);
-  const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", {
-    p_request_key_hash: keyHash,
-    p_limit: 10,
-    p_window_seconds: 3600,
-  });
-  if (rateError) throw new Error(rateError.message);
-  if (!permitted) throw new HttpError(429, "Too many requests. Please try again later");
+  await enforceLimit(admin, pepper, `contact:${inquiryType}:${callerAddress(req)}:${optionalUser?.id || "public"}`, 10, 3600, "Too many requests. Please try again later");
 
   const now = new Date().toISOString();
   const userAgent = stringValue(req.headers.get("user-agent"), 500, "user-agent");
@@ -969,195 +967,10 @@ const pushNow = async (admin: SupabaseClient, userId: string | null) => {
   return sent;
 };
 
-// Agent pages (agent websites plan, Phase 1). The database decides who is public: public_agent()
-// returns a page only for an approved broker or agent with a current licence check (and, for a
-// salesperson, an accepted, licensed supervising broker), and only the fields meant for visitors.
-const AGENT_TAP_KINDS = new Set(["call", "viber", "whatsapp", "messenger", "save"]);
-const AGENT_WANTS: Record<string, string> = { viewing: "Wants a viewing", call: "Wants a call back", question: "Has a question" };
-
-const agentSlug = (value: string) => {
-  const slug = String(value || "").trim().toLowerCase();
-  if (slug.length > 70 || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) throw new HttpError(404, "Agent not found");
-  return slug;
-};
-
-const findAgent = async (admin: SupabaseClient, slug: string) => {
-  const { data, error } = await admin.rpc("public_agent", { p_slug: agentSlug(slug) });
-  if (error) throw new Error(error.message);
-  if (!data || !(data as JsonRecord).agent_id) throw new HttpError(404, "Agent not found");
-  return data as JsonRecord;
-};
-
-// Once per visitor per agent per day (and per button for taps): the limiter remembers who counted.
-const countAgentOnce = async (req: Request, admin: SupabaseClient, pepper: string, agentId: string, kind: string) => {
-  const key = await sha256(`${pepper}:agent-${kind}:${agentId}:${callerAddress(req)}`);
-  const { data: first, error } = await admin.rpc("consume_listing_inquiry_rate_limit", { p_request_key_hash: key, p_limit: 1, p_window_seconds: 86400 });
-  if (error) { console.error(error); return; }
-  if (!first) return;
-  const { error: countError } = await admin.rpc("agent_page_count", { p_agent: agentId, p_kind: kind });
-  if (countError) console.error(countError);
-};
-
-const getAgent = async (req: Request, slug: string, admin: SupabaseClient, pepper: string) => {
-  const { agent_id, ...page } = await findAgent(admin, slug);
-  // The site's Worker reads the page to write its title into the HTML (?count=0); that is not a visit.
-  if (new URL(req.url).searchParams.get("count") !== "0") await countAgentOnce(req, admin, pepper, String(agent_id), "view");
-  return json({ data: page });
-};
-
-const recordAgentTap = async (req: Request, slug: string, admin: SupabaseClient, pepper: string) => {
-  const body = await parseBody(req, 2_000);
-  const kind = String(body.kind || "");
-  if (!AGENT_TAP_KINDS.has(kind)) throw new HttpError(400, "kind is invalid");
-  const agent = await findAgent(admin, slug);
-  await countAgentOnce(req, admin, pepper, String(agent.agent_id), kind);
-  return json({ ok: true }, 202);
-};
-
-const submitAgentInquiry = async (req: Request, slug: string, admin: SupabaseClient, pepper: string) => {
-  const body = await parseBody(req, MAX_FORM_BODY);
-  // A hidden field people never see; a bot that fills it is told "sent" and nothing is saved.
-  if (String(body.website || "").trim()) return json({ id: null, message: "Sent" }, 201);
-  if (body.consent !== true) throw new HttpError(400, "consent is required");
-  const fullName = stringValue(body.full_name, 160, "full_name", true);
-  const phone = phoneValue(body.phone, true);
-  const email = stringValue(body.email, 254, "email");
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new HttpError(400, "email is invalid");
-  const message = stringValue(body.message, 2000, "message");
-  const want = enumValue(body.want, new Set(Object.keys(AGENT_WANTS)), "question", "want");
-  const section = enumValue(body.section, new Set(["contact", "listing", "header"]), "contact", "section");
-  const listingId = stringValue(body.listing_id, 80, "listing_id");
-  const idemKey = stringValue(req.headers.get("idempotency-key"), 100, "Idempotency-Key");
-
-  const agent = await findAgent(admin, slug);
-  const agentId = String(agent.agent_id);
-  if (idemKey) {
-    // A resend after a weak signal: the first message already arrived.
-    const { data: earlier } = await admin.from("crm_leads").select("id").eq("payload->>idempotencyKey", idemKey).maybeSingle();
-    if (earlier) return json({ id: earlier.id, message: "Sent" }, 201);
-  }
-  const keyHash = await sha256(`${pepper}:agent-inquiry:${agentId}:${callerAddress(req)}`);
-  const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", {
-    p_request_key_hash: keyHash, p_limit: 5, p_window_seconds: 3600,
-  });
-  if (rateError) throw new Error(rateError.message);
-  if (!permitted) throw new HttpError(429, "Too many messages. Please try again later");
-
-  const { data: adminAccount, error: adminError } = await admin.from("profiles").select("id")
-    .eq("role", "super-admin").order("created_at", { ascending: true }).limit(1).maybeSingle();
-  if (adminError || !adminAccount) throw new HttpError(500, "No super-admin account is configured");
-
-  const listings = Array.isArray(agent.listings) ? agent.listings as JsonRecord[] : [];
-  const listing = listingId ? listings.find((l) => l.id === listingId) : undefined;
-  const now = new Date().toISOString();
-  const leadId = `lead-${crypto.randomUUID()}`;
-  const ref = `AG-${leadId.slice(-8).toUpperCase()}`;
-  const agentName = String(agent.name || "");
-  const interest = listing ? `${AGENT_WANTS[want]}: ${listing.title}` : AGENT_WANTS[want];
-  const lead = {
-    id: leadId,
-    ref,
-    name: fullName,
-    // Assigned to the agent whose page it came from: the routing and duplicate rules leave an
-    // assigned lead alone, and the agent gets the usual "New lead for you" alert.
-    assigned_to: agentName,
-    assigned_to_id: agentId,
-    created_by: adminAccount.id,
-    updated_at: now,
-    payload: {
-      id: leadId, ref, name: fullName, phone, email,
-      type: "buyer",
-      source: "agent page",
-      status: "new",
-      consent: true,
-      consentRecord: { at: now, notice: PRIVACY_NOTICE_VERSION, channel: "agent-page" },
-      origin: "storefront",
-      channel: "agent-page",
-      agentSlug: String(agent.slug || ""),
-      section,
-      listingId: listing ? listing.id : "",
-      propertyInterest: interest,
-      notes: message,
-      idempotencyKey: idemKey || undefined,
-      assignedTo: agentName,
-      assignedToId: agentId,
-      createdBy: adminAccount.id,
-      createdAt: now,
-      updatedAt: now,
-      activity: [{ date: now, text: `Message from ${agentName}'s page: ${interest}.` }],
-    },
-  };
-  const { error: leadError } = await admin.from("crm_leads").insert(lead);
-  if (leadError) throw new Error(leadError.message);
-  const { error: countError } = await admin.rpc("agent_page_count", { p_agent: agentId, p_kind: "message" });
-  if (countError) console.error(countError);
-  await pushNow(admin, agentId);
-  return json({ id: leadId, message: "Sent" }, 201);
-};
-
-// The agent directory (Phase 2): published agents that pass every check, filtered by the fixed
-// lists, measured reply time first.
-const listAgents = async (url: URL, admin: SupabaseClient) => {
-  // ?count=1: just how many, for the site's menu link (no per-agent work).
-  if (url.searchParams.get("count") === "1") {
-    const { data, error } = await admin.rpc("public_agent_count");
-    if (error) throw new Error(error.message);
-    return json({ total: Number(data || 0) }, 200, PUBLIC_CACHE);
-  }
-  const pick = (name: string) => {
-    const v = String(url.searchParams.get(name) || "").trim().toLowerCase();
-    if (v && !/^[a-z-]{2,40}$/.test(v)) throw new HttpError(400, `${name} is invalid`);
-    return v || null;
-  };
-  const { data, error } = await admin.rpc("public_agents", { p_town: pick("town"), p_need: pick("need"), p_language: pick("language") });
-  if (error) throw new Error(error.message);
-  const result = (data || {}) as JsonRecord;
-  return json({ data: Array.isArray(result.agents) ? result.agents : [], total: Number(result.total || 0) }, 200, PUBLIC_CACHE);
-};
-
-// Check an agent (Phase 3): a licence number, or a number that contacted you. Matches public pages
-// only; a miss gets a neutral answer from the page, never a list of people.
-const checkAgent = async (req: Request, url: URL, admin: SupabaseClient, pepper: string) => {
-  const q = stringValue(url.searchParams.get("q"), 40, "q", true);
-  const keyHash = await sha256(`${pepper}:agent-check:${callerAddress(req)}`);
-  const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", { p_request_key_hash: keyHash, p_limit: 20, p_window_seconds: 3600 });
-  if (rateError) throw new Error(rateError.message);
-  if (!permitted) throw new HttpError(429, "Too many checks. Please try again later");
-  const { data, error } = await admin.rpc("agent_check", { p_q: q });
-  if (error) throw new Error(error.message);
-  return json({ data: Array.isArray(data) ? data.slice(0, 3) : [] });
-};
-
-// Client reviews (Phase 3). The link's secret is never stored: the database keeps its hash. It is
-// sent in the request body, never in the address, so it stays out of request logs.
-const reviewHash = async (token: unknown) => {
-  const t = String(token ?? "");
-  if (!/^[0-9a-f]{64}$/.test(t)) throw new HttpError(404, "Review link not found");
-  return await sha256(t);
-};
-const getReview = async (req: Request, admin: SupabaseClient) => {
-  const body = await parseBody(req, MAX_FORM_BODY);
-  const { data, error } = await admin.rpc("review_lookup", { p_hash: await reviewHash(body.token) });
-  if (error) throw new Error(error.message);
-  if (!data) throw new HttpError(404, "Review link not found");
-  return json({ data });
-};
-const submitReview = async (req: Request, admin: SupabaseClient, pepper: string) => {
-  const body = await parseBody(req, MAX_FORM_BODY);
-  if (body.consent !== true) throw new HttpError(400, "consent is required");
-  const firstName = stringValue(body.first_name, 40, "first_name", true);
-  const lastName = stringValue(body.last_name, 60, "last_name");
-  const words = stringValue(body.review, 1200, "review", true);
-  const hash = await reviewHash(body.token);
-  const keyHash = await sha256(`${pepper}:review:${callerAddress(req)}`);
-  const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", { p_request_key_hash: keyHash, p_limit: 10, p_window_seconds: 3600 });
-  if (rateError) throw new Error(rateError.message);
-  if (!permitted) throw new HttpError(429, "Too many requests. Please try again later");
-  const { data, error } = await admin.rpc("review_submit", { p_hash: hash, p_first: firstName, p_initial: lastName, p_body: words });
-  if (error) throw new HttpError(400, error.message);
-  if (data !== true) throw new HttpError(410, "This review link has been used or has expired");
-  return json({ message: "Thank you. Your review was sent and will appear after a quick check." }, 201);
-};
+const agents = agentEndpoints({
+  HttpError, json, parseBody, stringValue, phoneValue, enumValue, sha256, callerAddress,
+  withinLimit, enforceLimit, pushNow, MAX_FORM_BODY, PRIVACY_NOTICE_VERSION, PUBLIC_CACHE,
+});
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -1205,27 +1018,8 @@ Deno.serve(async (req) => {
     if (parts.length === 1 && parts[0] === "contacts" && req.method === "POST") {
       return await submitContact(req, admin, pepper);
     }
-    if (parts.length === 1 && parts[0] === "agents" && req.method === "GET") {
-      return await listAgents(new URL(req.url), admin);
-    }
-    if (parts.length === 1 && parts[0] === "agent-check" && req.method === "GET") {
-      return await checkAgent(req, new URL(req.url), admin, pepper);
-    }
-    if (parts.length === 2 && parts[0] === "reviews" && parts[1] === "lookup" && req.method === "POST") {
-      return await getReview(req, admin);
-    }
-    if (parts.length === 1 && parts[0] === "reviews" && req.method === "POST") {
-      return await submitReview(req, admin, pepper);
-    }
-    if (parts.length === 2 && parts[0] === "agents" && req.method === "GET") {
-      return await getAgent(req, parts[1], admin, pepper);
-    }
-    if (parts.length === 3 && parts[0] === "agents" && parts[2] === "inquiries" && req.method === "POST") {
-      return await submitAgentInquiry(req, parts[1], admin, pepper);
-    }
-    if (parts.length === 3 && parts[0] === "agents" && parts[2] === "taps" && req.method === "POST") {
-      return await recordAgentTap(req, parts[1], admin, pepper);
-    }
+    const agentResponse = agents.route(parts, req, admin, pepper);
+    if (agentResponse) return await agentResponse;
     throw new HttpError(404, "Endpoint not found");
   } catch (error) {
     if (error instanceof HttpError) {

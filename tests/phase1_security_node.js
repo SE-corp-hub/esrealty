@@ -28,8 +28,9 @@ ok("listing photos: uploads by approved publishers and super-admins only", /crea
 // 8
 ok("compliance renewals: approved brokers and super-admins only", /create or replace function public\.compliance_schedule_renewals[\s\S]*if not public\.compliance_can_schedule\(\)/.test(sql) && /revoke all on function public\.compliance_schedule_renewals\(integer\) from public, anon/.test(sql));
 const api = read("supabase/functions/listing-api/index.ts");
-ok("rate limits: inquiries, contacts and views have separate keys", /:inquiry:\$\{callerAddress\(req\)\}/.test(api) && /:contact:\$\{inquiryType\}:/.test(api) && /:view:\$\{id\}:/.test(api));
-ok("views: counted once per visitor per listing per day", /p_limit: 1,\s*p_window_seconds: 86400/.test(api) && /if \(firstToday\)/.test(api));
+ok("rate limits: inquiries, contacts and views have separate keys", /`inquiry:\$\{callerAddress\(req\)\}/.test(api) && /`contact:\$\{inquiryType\}:/.test(api) && /`view:\$\{id\}:/.test(api)
+  && /p_request_key_hash: await sha256\(`\$\{pepper\}:\$\{key\}`\)/.test(api));
+ok("views: counted once per visitor per listing per day", /withinLimit\(admin, pepper, `view:\$\{id\}:\$\{callerAddress\(req\)\}`, 1, 86400\)/.test(api) && /if \(firstToday\)/.test(api));
 ok("report form: its own rate-limit key", /":location-report:"/.test(read("supabase/functions/location-report/index.ts")));
 const notify = read("supabase/functions/notify-dispatch/index.ts");
 ok("self-send email: approved accounts only, 20 an hour", /registration_status !== "approved"/.test(notify) && /p_limit: 20/.test(notify));
