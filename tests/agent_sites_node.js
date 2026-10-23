@@ -25,7 +25,7 @@ const pageTowns = [...read("js/agent_page.js").matchAll(/\["([a-z-]+)", "[^"]+"\
 c("the agent page's town names cover exactly the Value Guide's towns", JSON.stringify(pageTowns.filter((t) => vgTowns.includes(t))) === JSON.stringify(vgTowns));
 const app = read("js/app.js");
 c("brokers and agents (not buyers) can open My website", /"website\.manage", "settings\.view"\],\n\s*agent: \[[^\]]*"website\.manage"/.test(app) && !/buyer: \[[^\]]*website\.manage/.test(app) && /website: "website\.manage"/.test(app));
-c("signed-in people opening an agent or listing link see the public page", /function publicLinkOpen\(\)/.test(app) && /if \(!currentUser \|\| publicLinkOpen\(\)\) \{/.test(app));
+c("signed-in people opening an agent or listing link see the public page", /function publicLinkOpen\(\)/.test(app) && /if \(!currentUser \|\| showPublicLink\(\)\) \{/.test(app));
 c("index.html loads the agent page drawing before the storefront", read("index.html").indexOf("js/agent_page.js") > 0 && read("index.html").indexOf("js/agent_page.js") < read("index.html").indexOf("js/storefront.js"));
 c("the service worker keeps the agent page drawing for offline use", /"\.\/js\/agent_page\.js"/.test(read("sw.js")));
 c("public_agent and the counter are for the server only",

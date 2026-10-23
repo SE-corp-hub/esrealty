@@ -2828,6 +2828,10 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
   function publicLinkOpen() {
     return /^\/(agents|listing)\/[^/]+\/?$/.test(location.pathname) || /^#\/(agents|listing)\//.test(location.hash);
   }
+  // Only a link opened while signed in (or opened to load the app) shows the public page; someone
+  // who browses the public site and then signs in lands in the office as before.
+  let publicLinkByUser = publicLinkOpen();
+  function showPublicLink() { return !!currentUser && publicLinkByUser && publicLinkOpen(); }
   function syncOfficeBar(show) {
     let bar = document.getElementById("office-bar");
     if (!show) { if (bar) bar.remove(); document.body.classList.remove("has-office-bar"); return; }
@@ -2838,21 +2842,26 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
     bar.innerHTML = '<span>You are signed in. This is the public page visitors see.</span><button type="button" class="btn btn-sm btn-primary" data-office-back>Back to the office</button>';
     bar.querySelector("[data-office-back]").addEventListener("click", () => {
       const base = location.pathname.replace(/(agents|listing)\/[^/]+\/?$/, "");
+      publicLinkByUser = false;
       try { history.pushState(null, "", base); } catch (e) { location.hash = ""; }
       render();
     });
     document.body.appendChild(bar);
     document.body.classList.add("has-office-bar");
   }
-  window.addEventListener("hashchange", () => { if (currentUser && !!document.getElementById("office-bar") !== publicLinkOpen()) render(); });
+  window.addEventListener("hashchange", () => {
+    const was = showPublicLink();
+    publicLinkByUser = !!currentUser && publicLinkOpen();
+    if (currentUser && was !== showPublicLink()) render();
+  });
 
   function render(opts) {
     opts = opts || {};
     if (currentUser && state && !navAllowed(state.view)) state.view = firstAllowedView();
     const playbookModal = document.getElementById("pb-modal");
     if (playbookModal && (!currentUser || !state || state.view !== "playbook" || !playbookAllowed())) playbookModal.remove();
-    syncOfficeBar(!!currentUser && publicLinkOpen());
-    if (!currentUser || publicLinkOpen()) {
+    syncOfficeBar(showPublicLink());
+    if (!currentUser || showPublicLink()) {
       document.documentElement.setAttribute("data-theme", "light");
       const auth = $("#auth-screen");
       if (auth) auth.classList.add("hidden");
@@ -3310,7 +3319,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
   function renderTabbar() {
     const bar = $("#tabbar");
     if (!bar) return;
-    const items = currentUser && !publicLinkOpen() ? (TABBAR[userRole()] || []).filter(t => navAllowed(t[0])) : [];
+    const items = currentUser && !showPublicLink() ? (TABBAR[userRole()] || []).filter(t => navAllowed(t[0])) : [];
     const show = items.length >= 2;
     document.body.classList.toggle("has-tabbar", show);
     bar.classList.toggle("hidden", !show);
