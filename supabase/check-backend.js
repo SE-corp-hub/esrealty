@@ -255,6 +255,8 @@ const AUTO_VARS = new Set(["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]);
 // only the function name, which is how the descriptions went missing.)
 const KNOWN_VARS = new Map(Object.entries({
   INQUIRY_RATE_LIMIT_SALT: "listing-api, location-report: private salt for inquiry rate limiting",
+  VAPID_PRIVATE_KEY: "listing-api: sends a phone alert as soon as a website lead is saved (same value as the repository secret); optional",
+  VAPID_SUBJECT: "listing-api: contact address for the push services; optional",
   META_VERIFY_TOKEN: "fb-leads: Meta webhook verify token",
   META_PAGE_TOKEN: "fb-leads: Meta page access token (Graph API)",
   META_APP_SECRET: "fb-leads: Meta app secret (signature verification)",

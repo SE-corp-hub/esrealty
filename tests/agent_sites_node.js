@@ -39,6 +39,9 @@ const api = read("supabase/functions/listing-api/index.ts");
 c("the agent routes are wired", /parts\[0\] === "agents" && req\.method === "GET"/.test(api)
   && /parts\[0\] === "agents" && parts\[2\] === "inquiries" && req\.method === "POST"/.test(api)
   && /parts\[0\] === "agents" && parts\[2\] === "taps" && req\.method === "POST"/.test(api));
+c("instant phone alerts load web-push only when needed, so a failure cannot stop the function",
+  /const loadWebPush = async \(\) => \(await import\("npm:web-push@3\.6\.7"\)\)\.default;/.test(api) && !/^import .*web-push/m.test(api)
+  && /await pushNow\(admin, agentId\);/.test(api) && /await pushNow\(admin, listing\.agent_id as string \| null\);/.test(api));
 c("browsers may send an Idempotency-Key", /"Access-Control-Allow-Headers": "[^"]*idempotency-key"/.test(api));
 const block = api.slice(api.indexOf("// Agent pages (agent websites plan, Phase 1)"), api.indexOf("Deno.serve(async (req) => {"))
   .replace(/: Record<string, string>/g, "").replace(/: SupabaseClient/g, "").replace(/: Request/g, "").replace(/: string/g, "")
@@ -47,7 +50,7 @@ const block = api.slice(api.indexOf("// Agent pages (agent websites plan, Phase 
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const PAGE = { agent_id: "agent-1", slug: "maria-santos", name: "Maria Santos", listings: [{ id: "L1", title: "Corner lot" }] };
 function harness() {
-  const calls = [], leads = [];
+  const calls = [], leads = [], pushed = [];
   let firstToday = true;
   const admin = {
     rpc: async (name, args) => {
@@ -82,11 +85,12 @@ function harness() {
     sha256: async (v) => crypto.createHash("sha256").update(v).digest("hex"),
     callerAddress: () => "1.2.3.4",
     crypto: { randomUUID: () => crypto.randomUUID() },
+    pushNow: async (admin, userId) => { pushed.push(userId); return 1; },
   };
   const fns = new Function(...Object.keys(deps), block + "\nreturn { getAgent, recordAgentTap, submitAgentInquiry };")(...Object.values(deps));
   const req = (url, body, headers) => ({ url: "https://x/api" + url, body: body && JSON.stringify(body), headers: { get: (k) => (headers || {})[k.toLowerCase()] || null } });
   const run = async (fn, ...args) => { try { return await fn(...args); } catch (e) { return { status: e.status || 500, body: { error: e.message } }; } };
-  return { fns, req, run, calls, leads, admin, setFirst: (v) => { firstToday = v; } };
+  return { fns, req, run, calls, leads, pushed, admin, setFirst: (v) => { firstToday = v; } };
 }
 
 (async () => {
@@ -119,6 +123,7 @@ function harness() {
     c("a message becomes a lead assigned to that agent", r.status === 201 && lead.assigned_to_id === "agent-1" && lead.created_by === "admin-1", JSON.stringify(lead));
     c("the lead records the page, the listing and the consent",
       lead.payload && lead.payload.channel === "agent-page" && lead.payload.listingId === "L1" && lead.payload.propertyInterest === "Wants a viewing: Corner lot" && lead.payload.consentRecord.notice === "2026-10-01");
+    c("the agent's phone is alerted right away", h.pushed.length === 1 && h.pushed[0] === "agent-1");
     r = await h.run(h.fns.submitAgentInquiry, h.req("/agents/maria-santos/inquiries", msg, { "idempotency-key": "k1" }), "maria-santos", h.admin, "pepper");
     c("a resend with the same key makes no second lead", r.status === 201 && h.leads.length === 1);
     h.setFirst(false);

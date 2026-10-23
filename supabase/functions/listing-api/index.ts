@@ -781,6 +781,7 @@ const submitInquiry = async (req: Request, id: string, admin: SupabaseClient, pe
     const { error: linkError } = await admin.from("listing_inquiries").update({ crm_lead_id: leadId }).eq("id", created.id);
     if (linkError) console.error("listing inquiry not linked to its lead", created.id, linkError.message);
   }
+  await pushNow(admin, listing.agent_id as string | null);
 
   return json({ id: created.id, message: "Inquiry submitted" }, 201);
 };
@@ -902,6 +903,47 @@ const routeParts = (url: URL) => {
   const route = functionIndex >= 0 ? parts.slice(functionIndex + 1) : parts;
   if (route[0] === "api") route.shift();
   return route;
+};
+
+// Phone alerts right away. GitHub runs the scheduled alert job only every few hours, so a new lead
+// from a website form is pushed from here to the agent's phones as soon as it is saved. Needs the
+// function secret VAPID_PRIVATE_KEY (the same value as the repository secret of that name);
+// without it, or if anything fails, the scheduled job still sends it later. Never fails the request.
+const SITE_URL = "https://esrealty.tradersgag6.workers.dev";
+const loadWebPush = async () => (await import("npm:web-push@3.6.7")).default;
+const pushNow = async (admin: SupabaseClient, userId: string | null) => {
+  const priv = (Deno.env.get("VAPID_PRIVATE_KEY") || "").replace(/\s+/g, "");
+  if (!priv || !userId) return 0;
+  let sent = 0;
+  try {
+    const { data: cfg } = await admin.from("push_config").select("public_key").eq("id", 1).maybeSingle();
+    if (!cfg || !cfg.public_key) return 0;
+    const since = new Date(Date.now() - 10 * 60_000).toISOString();
+    const { data: notes } = await admin.from("notifications").select("id,title,body,link_view")
+      .eq("user_id", userId).is("pushed_at", null).is("read_at", null).gte("created_at", since).limit(5);
+    const { data: subs } = await admin.from("push_subscriptions").select("endpoint,p256dh,auth").eq("user_id", userId);
+    if (!notes || !notes.length || !subs || !subs.length) return 0;
+    const webpush = await loadWebPush();
+    webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") || SITE_URL, cfg.public_key, priv);
+    for (const n of notes) {
+      const view = /^[a-z-]{2,30}$/.test(String(n.link_view || "")) ? n.link_view : "";
+      const payload = JSON.stringify({ title: String(n.title || "SEA ESTATES").slice(0, 120), body: String(n.body || "").slice(0, 300), tag: String(n.id), url: "./index.html" + (view ? "?open=" + view : "") });
+      let reached = false;
+      for (const sub of subs) {
+        try {
+          await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { TTL: 3600 });
+          reached = true;
+        } catch (e) {
+          const code = (e as { statusCode?: number }).statusCode;
+          if (code === 404 || code === 410) await admin.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+        }
+      }
+      if (reached) { sent++; await admin.from("notifications").update({ pushed_at: new Date().toISOString() }).eq("id", n.id); }
+    }
+  } catch (e) {
+    console.error("phone alert not sent now; the scheduled job will retry", (e as Error).message);
+  }
+  return sent;
 };
 
 // Agent pages (agent websites plan, Phase 1). The database decides who is public: public_agent()
@@ -1026,6 +1068,7 @@ const submitAgentInquiry = async (req: Request, slug: string, admin: SupabaseCli
   if (leadError) throw new Error(leadError.message);
   const { error: countError } = await admin.rpc("agent_page_count", { p_agent: agentId, p_kind: "message" });
   if (countError) console.error(countError);
+  await pushNow(admin, agentId);
   return json({ id: leadId, message: "Sent" }, 201);
 };
 
