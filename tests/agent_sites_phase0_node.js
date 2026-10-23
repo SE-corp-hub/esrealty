@@ -35,5 +35,41 @@ c("settings: only approved brokers and agents are locked",
 const check = read("supabase/check-backend.js");
 c("backend check prints each failure as a GitHub annotation", /::error title=Backend check::/.test(check) && /process\.env\.GITHUB_ACTIONS/.test(check));
 
-console.log(fail ? fail + "/" + (pass + fail) + " FAILED" : "ALL GREEN (" + pass + " checks)");
-process.exit(fail ? 1 : 0);
+// The storefront router: /listing/<id> opens the same page as #/listing/<id>; a #/ route wins.
+const sf = read("js/storefront.js");
+const routeSrc = sf.slice(sf.indexOf("  function route() {"), sf.indexOf("  /* A new page starts at the top."));
+const routeAt = (pathname, hash) => new Function("location", "URLSearchParams", routeSrc + "\nreturn route();")({ pathname, hash }, URLSearchParams).path;
+c("router: /listing/<id> opens that listing", routeAt("/listing/abc-123", "") === "listing/abc-123", routeAt("/listing/abc-123", ""));
+c("router: a trailing slash works too", routeAt("/listing/abc-123/", "") === "listing/abc-123");
+c("router: a #/ route wins over the path", routeAt("/listing/abc-123", "#/search") === "search");
+c("router: other paths still open the home page", routeAt("/", "") === "home" && routeAt("/listing/", "") === "home");
+
+// The listing API: the Worker's read (?count=0) does not count a view; a visitor's read does.
+const api = read("supabase/functions/listing-api/index.ts");
+const getSrc = api.slice(api.indexOf("const getListing"), api.indexOf("// Trust details for a listing page"))
+  .replace(/: Request/g, "").replace(/: SupabaseClient/g, "").replace(/: string \| null/g, "").replace(/: string/g, "")
+  .replace(/ as JsonRecord/g, "").replace(/\(data as JsonRecord\)/g, "data").replace(/ as string \| null/g, "");
+const runGet = async (query) => {
+  const rpcs = [];
+  const admin = {
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "L1", agent_id: null }, error: null }) }) }) }),
+    rpc: async (name) => { rpcs.push(name); return { data: true, error: null }; },
+  };
+  const deps = { json: (body) => body, publicDetails: async () => ({}), sha256: async () => "h", callerAddress: () => "1.2.3.4", HttpError: Error, PUBLIC_LISTING_COLUMNS: "*" };
+  const getListing = new Function(...Object.keys(deps), getSrc + "\nreturn getListing;")(...Object.values(deps));
+  const body = await getListing({ url: "https://x/functions/v1/listing-api/api/listings/L1" + query }, "L1", admin, "pepper");
+  return { body, rpcs };
+};
+
+(async () => {
+  try {
+    const worker = await runGet("?count=0");
+    c("listing API: the Worker's read (?count=0) counts no view", worker.rpcs.length === 0 && worker.body.data.id === "L1", JSON.stringify(worker.rpcs));
+    const visitor = await runGet("");
+    c("listing API: a visitor's read still counts a view", visitor.rpcs.includes("increment_public_listing_view"), JSON.stringify(visitor.rpcs));
+  } catch (e) {
+    c("listing API reader runs in Node", false, e && e.message);
+  }
+  console.log(fail ? fail + "/" + (pass + fail) + " FAILED" : "ALL GREEN (" + pass + " checks)");
+  process.exit(fail ? 1 : 0);
+})();
