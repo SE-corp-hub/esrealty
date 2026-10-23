@@ -26,15 +26,14 @@ insert into public.shared_listings (id, owner_id, title, status, is_published, p
 select pg_temp.as_user('11111111-1111-1111-1111-111111111111');
 set local role authenticated;
 insert into results select 'an agent cannot record their own licence check',
-  pg_temp.fails($q$insert into public.agent_verifications (agent_id, licence_type, licence_no, prc_name, valid_until, broker_accepted) values ('11111111-1111-1111-1111-111111111111', 'salesperson', '0012345', 'Maria Santos', '2030-01-01', true)$q$) = 'refused', '';
+  pg_temp.fails($q$select public.licence_check_save('11111111-1111-1111-1111-111111111111', '0012345', 'Maria Santos', '2030-01-01', true, true, true)$q$) = 'refused'
+  and pg_temp.fails($q$insert into public.agent_verifications (agent_id, licence_type, licence_no, prc_name, valid_until, broker_accepted) values ('11111111-1111-1111-1111-111111111111', 'salesperson', '0012345', 'Maria Santos', '2030-01-01', true)$q$) = 'refused', '';
 reset role;
 
 select pg_temp.as_user('77777777-7777-7777-7777-777777777777');
 set local role authenticated;
-insert into public.agent_verifications (agent_id, licence_type, licence_no, prc_name, valid_until) values
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'broker', ' 0004321 ', 'Alfredo B. Reyes', current_date + 300);
-insert into public.agent_verifications (agent_id, licence_type, licence_no, prc_name, valid_until, broker_accepted) values
-  ('11111111-1111-1111-1111-111111111111', 'salesperson', '0012345', 'Maria Santos Dela Cruz', current_date + 200, true);
+select public.licence_check_save('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', ' 0004321 ', 'Alfredo B. Reyes', current_date + 300, false, false, false);
+select public.licence_check_save('11111111-1111-1111-1111-111111111111', '0012345', 'Maria Santos Dela Cruz', current_date + 200, true, false, false);
 reset role;
 insert into results select 'a Super Admin records a check; who and when are stamped',
   (select checked_by = '77777777-7777-7777-7777-777777777777' and licence_no = '0004321' from public.agent_verifications where agent_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), '';
@@ -45,7 +44,7 @@ insert into results select 'an agent reads only their own licence check',
   (select count(*) = 1 and bool_and(agent_id = '11111111-1111-1111-1111-111111111111') from public.agent_verifications), '';
 insert into results select 'an agent cannot change their licence check',
   (select count(*) from (select 1 from public.agent_verifications) q) = 1
-  and pg_temp.fails($q$update public.agent_verifications set valid_until = '2040-01-01' where agent_id = '11111111-1111-1111-1111-111111111111'$q$) = 'ran'
+  and pg_temp.fails($q$update public.agent_verifications set valid_until = '2040-01-01' where agent_id = '11111111-1111-1111-1111-111111111111'$q$) = 'refused'
   and (select valid_until < '2040-01-01' from public.agent_verifications), '';
 insert into results select 'visitors and signed-in users cannot call public_agent', pg_temp.fails($q$select public.public_agent('x')$q$) = 'refused', '';
 insert into results select 'nor count page views', pg_temp.fails($q$select public.agent_page_count('11111111-1111-1111-1111-111111111111', 'view')$q$) = 'refused', '';

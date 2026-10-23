@@ -96,32 +96,46 @@ insert into results select 'a page address finds its agent', public.agent_page_l
 reset role;
 
 -- Verified --------------------------------------------------------------------------------------
+-- Every save goes through licence_check_save (migration 0018). now() is fixed inside this
+-- transaction, so dates are first moved into the past to see which ones a save refreshes.
+create or replace function pg_temp.maria(p_id boolean, p_phone boolean, p_recheck boolean default false, p_name text default 'Maria Santos Dela Cruz')
+returns void language sql as $$
+  select public.licence_check_save('11111111-1111-1111-1111-111111111111', '00-12345', p_name, current_date + 200, true, p_id, p_phone, p_recheck); $$;
+update public.agent_verifications set checked_at = now() - interval '10 days', checked_by = null where agent_id = '11111111-1111-1111-1111-111111111111';
 create temp table before_check as select checked_at from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111';
 select pg_temp.as_user('77777777-7777-7777-7777-777777777777');
-update public.agent_verifications set id_seen = true where agent_id = '11111111-1111-1111-1111-111111111111';
+select pg_temp.maria(true, false);
 insert into results select 'one check is not enough for Verified', public.agent_verified_on('11111111-1111-1111-1111-111111111111') is null, '';
 insert into results select 'ticking the ID check stamps its own date and leaves the licence check date alone',
   (select v.id_seen_at is not null and v.id_seen_by = '77777777-7777-7777-7777-777777777777' and v.checked_at = b.checked_at from public.agent_verifications v, before_check b where v.agent_id = '11111111-1111-1111-1111-111111111111'), '';
-update public.agent_verifications set phone_confirmed = true where agent_id = '11111111-1111-1111-1111-111111111111';
+select pg_temp.maria(true, true);
 set local role service_role;
 insert into results select 'ID seen and phone confirmed: Verified shows on the page', public.public_agent('maria-santos-dela-cruz') ->> 'verified_on' = to_char(now() at time zone 'Asia/Manila', 'YYYY-MM-DD'), '';
 reset role;
 update public.agent_verifications set valid_until = current_date - 1 where agent_id = '11111111-1111-1111-1111-111111111111';
 insert into results select 'an expired licence drops Verified', public.agent_verified_on('11111111-1111-1111-1111-111111111111') is null, '';
 update public.agent_verifications set valid_until = current_date + 200 where agent_id = '11111111-1111-1111-1111-111111111111';
-update public.agent_verifications set id_seen = false where agent_id = '11111111-1111-1111-1111-111111111111';
+select pg_temp.maria(false, true);
 insert into results select 'unticking a check clears its date and the badge',
   public.agent_verified_on('11111111-1111-1111-1111-111111111111') is null and (select id_seen_at is null from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111'), '';
-update public.agent_verifications set id_seen = true where agent_id = '11111111-1111-1111-1111-111111111111';
-update public.agent_verifications set checked_at = null where agent_id = '11111111-1111-1111-1111-111111111111';
-insert into results select 'saving a re-check refreshes the licence check date and who checked',
-  (select checked_at is not null and checked_by = '77777777-7777-7777-7777-777777777777' from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111'), '';
-update public.agent_verifications set prc_name = 'Someone Else' where agent_id = '11111111-1111-1111-1111-111111111111';
+select pg_temp.maria(true, true);
+update public.agent_verifications set checked_at = now() - interval '10 days', checked_by = null,
+       id_seen_at = now() - interval '5 days', phone_confirmed_at = now() - interval '5 days' where agent_id = '11111111-1111-1111-1111-111111111111';
+select pg_temp.maria(true, true);
+insert into results select 'saving again with nothing changed keeps every date',
+  (select checked_at < now() - interval '9 days' and id_seen_at < now() - interval '4 days' and phone_confirmed_at < now() - interval '4 days' from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111'), '';
+select pg_temp.maria(true, true, true);
+insert into results select 'saving a re-check refreshes the licence check date and who checked, and keeps the other two',
+  (select checked_at = now() and checked_by = '77777777-7777-7777-7777-777777777777' and id_seen_at < now() - interval '4 days' from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111'), '';
+select pg_temp.maria(false, false, false, 'Someone Else');
 insert into results select 'a different PRC name or licence number restarts the ID and phone checks',
   public.agent_verified_on('11111111-1111-1111-1111-111111111111') is null
-  and (select not id_seen and not phone_confirmed from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111'), '';
-update public.agent_verifications set prc_name = 'Maria Santos Dela Cruz' where agent_id = '11111111-1111-1111-1111-111111111111';
-update public.agent_verifications set id_seen = true, phone_confirmed = true where agent_id = '11111111-1111-1111-1111-111111111111';
+  and (select not id_seen and not phone_confirmed and id_seen_at is null from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111'), '';
+update public.agent_verifications set id_seen = true, id_seen_at = now() - interval '5 days', phone_confirmed = true, phone_confirmed_at = now() - interval '5 days'
+ where agent_id = '11111111-1111-1111-1111-111111111111';
+select pg_temp.maria(true, true);
+insert into results select 'checks ticked with a new identity count as fresh checks, dated now',
+  (select prc_name = 'Maria Santos Dela Cruz' and id_seen_at = now() and phone_confirmed_at = now() and checked_at = now() from public.agent_verifications where agent_id = '11111111-1111-1111-1111-111111111111'), '';
 select pg_temp.as_service();
 
 -- Check an agent --------------------------------------------------------------------------------
@@ -190,11 +204,14 @@ insert into results select 'nothing shows until a Super Admin approves it', json
 reset role;
 insert into results select 'the review keeps first name and initial, and the town and month come from the deal',
   (select client_label = 'Rhea D.' and town = 'Lipa City' and month = '2025-03' and status = 'submitted' from public.agent_reviews where deal_id = 'pf-d1'), (select row_to_json(r)::text from public.agent_reviews r where deal_id = 'pf-d1');
+create temp table rid as select id from public.agent_reviews where deal_id = 'pf-d1';
+grant all on rid to authenticated;
 select pg_temp.as_user('11111111-1111-1111-1111-111111111111');
 set local role authenticated;
-insert into results select 'an agent cannot approve their own review', pg_temp.fails($q$select public.review_moderate((select id from public.agent_reviews limit 1), 'approved')$q$) = 'refused', '';
-insert into results select 'nor see it before it is published', (select count(*) from public.agent_reviews) = 0, '';
-insert into results select 'the link''s hash cannot be read from the app', pg_temp.fails($q$select token_hash from public.agent_reviews$q$) = 'refused', '';
+insert into results select 'an agent cannot approve their own review', pg_temp.fails(format($q$select public.review_moderate(%L, 'approved')$q$, (select id from rid))) = 'refused', '';
+insert into results select 'nor see it before it is published', jsonb_array_length(public.agent_site_reviews()) = 0, '';
+insert into results select 'the reviews table cannot be read from the app at all (so nor the link''s hash)',
+  pg_temp.fails($q$select token_hash from public.agent_reviews$q$) = 'refused' and pg_temp.fails($q$select id from public.agent_reviews$q$) = 'refused', '';
 reset role;
 select pg_temp.as_user('77777777-7777-7777-7777-777777777777');
 select public.review_moderate((select id from public.agent_reviews where deal_id = 'pf-d1'), 'approved');
