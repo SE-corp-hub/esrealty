@@ -115,7 +115,8 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3, h4, h5, h6 { color: var(--text) !important; }
+/* Agent pages and the agent directory colour their own headings (css/storefront.css). */
+:is(h1, h2, h3, h4, h5, h6):not(:where(.ag, .agd) *) { color: var(--text) !important; }
 
 .app-bg {
   position: fixed;
@@ -1876,7 +1877,7 @@ body .chip, body .sf-chip { font-size: 12px !important; }
   .sf-outline-btn { font-size: 14px !important; padding: 12px !important; }
   .sf-contact-card form label:not(.sf-consent) { font-size: 12px !important; }
   .sf-contact-card input, .sf-contact-card textarea { font-size: 16px !important; padding: 12px !important; }
-  .sf-consent { font-size: 11px !important; line-height: 1.5 !important; }
+  .sf-consent:not(:where(.sf-review) *) { font-size: 11px !important; line-height: 1.5 !important; }
   .sf-form-status { font-size: 12px !important; }
   .sf-detail-copy h1 { font-size: clamp(38px, 7vw, 58px) !important; }
   .sf-key-stats span { font-size: 12px !important; }
@@ -1983,7 +1984,7 @@ body .chip, body .sf-chip { font-size: 12px !important; }
    near-invisible on dark surfaces. Raise them to the readable app text color. Muted
    hierarchy (p/span/div with .dim/.tiny/etc.) is intentionally left as-is. */
 [data-theme="dark"] body { color: var(--text) !important; }
-[data-theme="dark"] body :is(h1,h2,h3,h4,h5) { color: var(--text) !important; }
+[data-theme="dark"] body :is(h1,h2,h3,h4,h5):not(:where(.ag, .agd) *) { color: var(--text) !important; }
 [data-theme="dark"] body :is(h1,h2,h3,h4,h5).dim,
 [data-theme="dark"] body :is(h1,h2,h3,h4,h5).tiny { color: var(--text-dim) !important; }
 [data-theme="dark"] .lead-card-name, [data-theme="dark"] .user-card .lead-card-name { color: var(--text) !important; }
@@ -2314,7 +2315,7 @@ html.modal-open, html.modal-open body { overflow: hidden; }
      13 px only for table headers, tile labels and badges */
   .main:not(.public-main) #content p, .main:not(.public-main) #content td, .main:not(.public-main) #content li { font-size: 15px; }
   .main:not(.public-main) #content .tiny, .main:not(.public-main) #content .field-hint, .main:not(.public-main) #content .k-sub,
-  .main:not(.public-main) #content .lead-card-sub, .main:not(.public-main) #content .sc-sub, .main:not(.public-main) #content label,
+  .main:not(.public-main) #content .lead-card-sub, .main:not(.public-main) #content .sc-sub, .main:not(.public-main) #content label:not(:where(.ag *)),
   .main:not(.public-main) #content .notice-banner span, .main:not(.public-main) #content .chat-sug, .main:not(.public-main) #content .module-card p,
   .modal-card label, .modal-card .field-hint { font-size: 14px; }
   .main:not(.public-main) #content th, .main:not(.public-main) #content .k-label, .main:not(.public-main) #content .ls-stat-l,
