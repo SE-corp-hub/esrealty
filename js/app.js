@@ -18231,37 +18231,22 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       if (e.target === ov || e.target.closest("[data-lc-cancel]")) { close(); return; }
       if (!e.target.closest("[data-lc-save]")) return;
       const err = ov.querySelector("[data-lc-error]");
-      const row = {
-        agent_id: u.id, licence_type: agent ? "salesperson" : "broker",
-        licence_no: ov.querySelector("#lc-no").value.trim(), prc_name: ov.querySelector("#lc-name").value.trim(),
-        valid_until: ov.querySelector("#lc-until").value, broker_accepted: !!(ov.querySelector("#lc-broker") || {}).checked
+      // One call (licence_check_save, migration 0018) decides every date: the licence check date moves
+      // when the details change or on a re-check; ticks saved with a new number or name count as fresh checks.
+      const args = {
+        p_agent: u.id, p_licence_no: ov.querySelector("#lc-no").value.trim(), p_prc_name: ov.querySelector("#lc-name").value.trim(),
+        p_valid_until: ov.querySelector("#lc-until").value, p_broker_accepted: !!(ov.querySelector("#lc-broker") || {}).checked,
+        p_id_seen: ov.querySelector("#lc-id").checked, p_phone_confirmed: ov.querySelector("#lc-phone").checked,
+        p_recheck: !!(ov.querySelector("#lc-recheck") || {}).checked
       };
-      // Sent only when ticked or already on record, so saving still works before migration 0016.
-      const idBox = ov.querySelector("#lc-id"), phoneBox = ov.querySelector("#lc-phone");
-      if (idBox.checked || v.id_seen) row.id_seen = idBox.checked;
-      if (phoneBox.checked || v.phone_confirmed) row.phone_confirmed = phoneBox.checked;
-      const recheck = !!(ov.querySelector("#lc-recheck") || {}).checked;
-      // A new number or name clears the ID and phone checks (migration 0016); ticks given with the change
-      // are saved in a second step, as a fresh check.
-      const newIdentity = !!v.agent_id && (row.licence_no !== String(v.licence_no || "").trim() || row.prc_name !== String(v.prc_name || "").trim());
-      const reTick = newIdentity && (row.id_seen || row.phone_confirmed) ? { agent_id: u.id, id_seen: !!row.id_seen, phone_confirmed: !!row.phone_confirmed } : null;
-      const problem = row.licence_no.length < 3 ? "Enter the licence or accreditation number." : row.prc_name.length < 3 ? "Enter the name as it appears on the PRC record." : !row.valid_until ? "Enter the date the licence is valid until." : "";
+      const problem = args.p_licence_no.length < 3 ? "Enter the licence or accreditation number." : args.p_prc_name.length < 3 ? "Enter the name as it appears on the PRC record." : !args.p_valid_until ? "Enter the date the licence is valid until." : "";
       if (problem) { err.textContent = problem; return; }
       try {
-        if (currentUser.demo) LICENCE_DEMO[u.id] = Object.assign({ checked_at: new Date().toISOString() }, row);
-        else {
-          let r = await SB.from("agent_verifications").upsert(reTick ? Object.assign({}, row, { id_seen: false, phone_confirmed: false }) : row, { onConflict: "agent_id" }).select().single();
-          if (r.error) throw r.error;
-          if (reTick) { r = await SB.from("agent_verifications").update(reTick).eq("agent_id", u.id).select().single(); if (r.error) throw r.error; }
-          // A plain update (not the upsert, whose insert step stamps a date first): empty means "today".
-          if (recheck) { r = await SB.from("agent_verifications").update({ checked_at: null }).eq("agent_id", u.id).select().single(); if (r.error) throw r.error; }
-          licenceChecks[u.id] = r.data;
-        }
+        licenceChecks[u.id] = await agentCall("licence_check_save", args);
         close(); toast("Licence check saved"); render({ keepScroll: true });
       } catch (x) {
         const msg = String((x && x.message) || x || "");
-        err.textContent = /id_seen|phone_confirmed/i.test(msg) ? "The Verified checks need database migration 0016 first."
-          : /agent_verifications|does not exist|schema cache/i.test(msg) ? "Licence checks need database migration 0015 first." : friendlyErr(msg);
+        err.textContent = /licence_check_save|does not exist|schema cache/i.test(msg) ? "Licence checks need database migration 0018 first." : friendlyErr(msg);
       }
     });
   }
@@ -18664,16 +18649,11 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     if (reviewsLoading) return;
     reviewsLoading = true; reviewsError = "";
     try {
-      if (currentUser.demo) reviewsRows = REVIEWS_DEMO;
-      else {
-        const r = await SB.from("agent_reviews").select("id,agent_id,deal_id,status,client_label,town,month,body,reply,submitted_at,expires_at,created_at").order("created_at", { ascending: false }).limit(200);
-        if (r.error) throw r.error;
-        reviewsRows = r.data || [];
-      }
+      reviewsRows = (await agentCall("agent_reviews_admin")) || [];
       reviewsLoaded = true;
     } catch (e) {
       const msg = String((e && e.message) || e || "");
-      reviewsError = /agent_reviews|does not exist|schema cache/i.test(msg) ? "Reviews need database migration 0016 first." : friendlyErr(msg);
+      reviewsError = /agent_reviews_admin|does not exist|schema cache/i.test(msg) ? "Reviews need database migration 0018 first." : friendlyErr(msg);
     }
     reviewsLoading = false;
     if (state.view === "users" && state.usersTab === "reviews") render({ keepScroll: true });
@@ -18702,8 +18682,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
   }
   async function moderateReview(id, status) {
     try {
-      if (currentUser.demo) { const r = REVIEWS_DEMO.find(x => x.id === id); if (r) r.status = status; }
-      else { const r = await SB.rpc("review_moderate", { p_id: id, p_status: status }); if (r.error) throw r.error; }
+      await agentCall("review_moderate", { p_id: id, p_status: status });
       toast(status === "approved" ? "Review published" : "Review declined");
       reviewsLoaded = false; render({ keepScroll: true });
     } catch (e) { toast("Could not save: " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
@@ -20177,12 +20156,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const name = agentId === t.buyerAgentId ? t.buyerAgentName : t.sellerAgentName;
     let token = "";
     try {
-      if (currentUser.demo) token = "0".repeat(48) + "demo00000000demo";
-      else {
-        const r = await SB.rpc("review_invite", { p_deal: dealId, p_agent: agentId });
-        if (r.error) throw r.error;
-        token = String(r.data || "");
-      }
+      token = String((await agentCall("review_invite", { p_deal: dealId, p_agent: agentId })) || "");
     } catch (x) {
       const msg = String((x && x.message) || x || "");
       toast(/review_invite|schema cache|does not exist/i.test(msg) ? "Review links need database migration 0016 first." : esc(friendlyErr(msg)), "err");
@@ -21083,18 +21057,40 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       })
     };
   }
-  async function siteCall(fn, args) {
-    if (currentUser.demo) {
-      if (fn === "agent_site_save") SITE_DEMO.draft = siteClean(args.p_draft);
-      if (fn === "agent_site_publish") {
-        const d = siteClean(SITE_DEMO.draft);
-        if (!Object.keys(d.contacts).length) throw new Error("Add at least one way to contact you.");
-        SITE_DEMO.data = d; SITE_DEMO.slug = SITE_DEMO.slug || String((currentUser && currentUser.name) || "agent").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-        SITE_DEMO.published_at = SITE_DEMO.published_at || new Date().toISOString();
-      }
-      if (fn === "agent_site_unpublish") SITE_DEMO.published_at = null;
+  /* Agent websites: every database call (licence checks, reviews, review links, My website) goes
+   * through agentCall. In demo mode AGENT_DEMO answers in memory instead, so the features themselves
+   * carry no demo branches. */
+  const AGENT_DEMO = {
+    licence_check_save: a => {
+      const old = LICENCE_DEMO[a.p_agent] || {}, now = new Date().toISOString();
+      const same = !!old.agent_id && old.licence_no === a.p_licence_no && old.prc_name === a.p_prc_name;
+      const changed = !same || a.p_recheck || old.valid_until !== a.p_valid_until || old.broker_accepted !== a.p_broker_accepted;
+      const stamp = (on, was, at) => !on ? null : same && was ? at : now;
+      return (LICENCE_DEMO[a.p_agent] = {
+        agent_id: a.p_agent, licence_no: a.p_licence_no, prc_name: a.p_prc_name, valid_until: a.p_valid_until, broker_accepted: a.p_broker_accepted,
+        checked_at: changed ? now : old.checked_at,
+        id_seen: a.p_id_seen, id_seen_at: stamp(a.p_id_seen, old.id_seen, old.id_seen_at),
+        phone_confirmed: a.p_phone_confirmed, phone_confirmed_at: stamp(a.p_phone_confirmed, old.phone_confirmed, old.phone_confirmed_at)
+      });
+    },
+    agent_reviews_admin: () => REVIEWS_DEMO,
+    review_moderate: a => { const r = REVIEWS_DEMO.find(x => x.id === a.p_id); if (r) r.status = a.p_status; return true; },
+    review_invite: () => "0".repeat(48) + "demo00000000demo",
+    agent_site_reviews: () => SITE_REVIEWS_DEMO,
+    review_reply: () => true,
+    agent_site_open: () => siteDemoOpen(),
+    agent_site_save: a => { SITE_DEMO.draft = siteClean(a.p_draft); return siteDemoOpen(); },
+    agent_site_publish: () => {
+      const d = siteClean(SITE_DEMO.draft);
+      if (!Object.keys(d.contacts).length) throw new Error("Add at least one way to contact you.");
+      SITE_DEMO.data = d; SITE_DEMO.slug = SITE_DEMO.slug || String((currentUser && currentUser.name) || "agent").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      SITE_DEMO.published_at = SITE_DEMO.published_at || new Date().toISOString();
       return siteDemoOpen();
-    }
+    },
+    agent_site_unpublish: () => { SITE_DEMO.published_at = null; return siteDemoOpen(); }
+  };
+  async function agentCall(fn, args) {
+    if (currentUser && currentUser.demo) return AGENT_DEMO[fn](args || {});
     const r = await SB.rpc(fn, args || {});
     if (r.error) throw r.error;
     return r.data;
@@ -21103,15 +21099,14 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   const SITE_REVIEWS_DEMO = [{ id: "demo-rv-2", label: "Jun M.", town: "Batangas City", month: "2026-07", body: "She told us honestly that our asking price was too high, then sold it in seven weeks at a price we were happy with.", reply: null }];
   async function loadSiteReviews() {
     try {
-      if (currentUser.demo) siteReviews = SITE_REVIEWS_DEMO;
-      else { const r = await SB.rpc("agent_site_reviews"); siteReviews = r.error ? null : (r.data || []); }
+      siteReviews = (await agentCall("agent_site_reviews")) || [];
     } catch (e) { siteReviews = null; } // before migration 0016 the card stays hidden
   }
   async function loadSite() {
     if (siteLoading) return;
     siteLoading = true; siteError = "";
     try {
-      siteData = await siteCall("agent_site_open");
+      siteData = await agentCall("agent_site_open");
       siteDraft = JSON.parse(JSON.stringify(siteData.draft || {}));
       await loadSiteReviews();
     } catch (e) {
@@ -21219,8 +21214,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       try { siteDraft = Object.assign({}, siteDraft, { og_image: await siteCardUpload(sitePreviewData()) }); } catch (e) { /* keep publishing */ }
     }
     try {
-      siteData = await siteCall("agent_site_save", { p_draft: siteClean(siteDraft || {}) });
-      if (publish) siteData = await siteCall("agent_site_publish");
+      siteData = await agentCall("agent_site_save", { p_draft: siteClean(siteDraft || {}) });
+      if (publish) siteData = await agentCall("agent_site_publish");
       siteDraft = JSON.parse(JSON.stringify(siteData.draft || {}));
       toast(publish ? "Published. Your page is live." : "Draft saved");
     } catch (e) {
@@ -21273,7 +21268,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       else if (e.target.closest("[data-site-publish]")) siteSave(true);
       else if (e.target.closest("[data-site-unpublish]")) {
         siteBusy = "save";
-        siteCall("agent_site_unpublish").then(r => { siteData = r; toast("Your page is down. Publish again any time."); })
+        agentCall("agent_site_unpublish").then(r => { siteData = r; toast("Your page is down. Publish again any time."); })
           .catch(err => toast("Could not take the page down: " + esc(friendlyErr(String((err && err.message) || err))), "err"))
           .then(() => { siteBusy = ""; render({ keepScroll: true }); });
       } else if (e.target.closest("[data-site-reply]")) {
@@ -21281,8 +21276,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
         const box = root.querySelector("#site-reply-" + CSS.escape(id));
         const text = box ? box.value.trim() : "";
         if (text.length < 2) { toast("Write your reply first", "err"); if (box) box.focus(); return; }
-        (currentUser.demo ? Promise.resolve({}) : SB.rpc("review_reply", { p_id: id, p_text: text })).then(r => {
-          if (r && r.error) throw r.error;
+        agentCall("review_reply", { p_id: id, p_text: text }).then(() => {
           const row = (siteReviews || []).find(x => String(x.id) === String(id)); if (row) row.reply = text;
           toast("Reply posted"); render({ keepScroll: true });
         }).catch(err => toast("Could not post the reply: " + esc(friendlyErr(String((err && err.message) || err))), "err"));
