@@ -66,6 +66,10 @@ by a Super Admin) follows `0013`.
 `0015_agent_sites.sql` (agent websites, Phase 1: licence checks recorded by a Super Admin, each
 agent's page as a draft and a published copy, daily counts of page views and contact-button taps;
 the listing function reads a page only through `public_agent`) follows `0014`.
+`0016_agent_sites_proof.sql` (agent websites, Phases 2 and 3: the agent directory, town rules for
+Value Guide leads, the Verified badge from the office's ID and phone checks, check-an-agent, the
+track record from closed deals with the client's say on what is listed, and client reviews from
+one-time links that a Super Admin approves) follows `0015`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses

@@ -2826,7 +2826,7 @@ development: { goal: "custom", devType: "Townhouse", constCostPerSqm: 38000, far
    * site even when they are signed in, with a bar back to the office. Agents open their own page
    * this way, and staff open links shared on Facebook. */
   function publicLinkOpen() {
-    return /^\/(agents|listing)\/[^/]+\/?$/.test(location.pathname) || /^#\/(agents|listing)\//.test(location.hash);
+    return /^\/(agents|listing)\/[^/]+\/?$/.test(location.pathname) || /^#\/(agents|listing|review)\//.test(location.hash) || /^#\/agents(\?|$)/.test(location.hash);
   }
   // Only a link opened while signed in (or opened to load the app) shows the public page; someone
   // who browses the public site and then signs in lands in the office as before.
@@ -18151,7 +18151,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     if (!roleIs("super-admin")) return;
     if (currentUser.demo) { licenceChecks = LICENCE_DEMO; return; }
     try {
-      const r = await SB.from("agent_verifications").select("agent_id,licence_type,licence_no,prc_name,valid_until,broker_accepted,checked_at");
+      // "*" so the list still loads before migration 0016 adds the ID and phone checks.
+      const r = await SB.from("agent_verifications").select("*");
       if (r.error) return; // migration 0015 not applied yet: the button explains when used
       licenceChecks = {};
       (r.data || []).forEach(v => { licenceChecks[v.agent_id] = v; });
@@ -18163,7 +18164,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
     const v = licenceChecks[u.id];
     if (!v) return '<span class="chip chip-warn" data-licence-chip>No licence check yet</span>';
     const expired = String(v.valid_until) < new Date().toISOString().slice(0, 10);
-    return '<span class="chip' + (expired ? " chip-warn" : "") + '" data-licence-chip>' + (expired ? "Licence expired " : "Licence checked, valid until ") + esc(String(v.valid_until)) + "</span>";
+    return '<span class="chip' + (expired ? " chip-warn" : "") + '" data-licence-chip>' + (expired ? "Licence expired " : "Licence checked, valid until ") + esc(String(v.valid_until)) + "</span>" +
+      (!expired && v.id_seen && v.phone_confirmed ? '<span class="chip chip-trust" data-verified-chip>Verified</span>' : "");
   }
   function openLicenceCheck(id) {
     const u = remoteProfiles.find(p => String(p.id) === String(id));
@@ -18182,6 +18184,11 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       '<div class="field"><label for="lc-until">Valid until</label><input class="input" id="lc-until" type="date" value="' + esc(v.valid_until || "") + '"></div>' +
       (agent ? (u.broker ? '<label class="site-check"><input type="checkbox" id="lc-broker"' + (v.broker_accepted ? " checked" : "") + "> Their supervising broker, " + esc(brokerName) + ", has accepted them</label>"
                          : '<div class="notice-banner">' + icon("alert", 14) + " <span>Set their supervising broker on the account first.</span></div>") : "") +
+      // Phase 3: the Verified badge shows while both checks are on record and the licence holds.
+      '<fieldset class="lc-verify"><legend>Verified badge (needs both)</legend>' +
+      '<label class="site-check"><input type="checkbox" id="lc-id"' + (v.id_seen ? " checked" : "") + "> I saw their government ID on a video call" + (v.id_seen_at ? ' <span class="dim tiny">(' + esc(String(v.id_seen_at).slice(0, 10)) + ")</span>" : "") + "</label>" +
+      '<label class="site-check"><input type="checkbox" id="lc-phone"' + (v.phone_confirmed ? " checked" : "") + "> I called their phone and they read back our code" + (v.phone_confirmed_at ? ' <span class="dim tiny">(' + esc(String(v.phone_confirmed_at).slice(0, 10)) + ")</span>" : "") + "</label>" +
+      '<p class="field-hint">Only that you checked, and when, is saved. Do not keep a copy of the ID.</p></fieldset>' +
       '<p class="lc-error" role="alert" data-lc-error></p></div>' +
       '<div class="modal-foot"><button class="btn btn-ghost" data-lc-cancel>Cancel</button><button class="btn btn-primary" data-lc-save>' + icon("check", 15) + " Save licence check</button></div></div>";
     document.body.appendChild(ov);
@@ -18195,6 +18202,10 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         licence_no: ov.querySelector("#lc-no").value.trim(), prc_name: ov.querySelector("#lc-name").value.trim(),
         valid_until: ov.querySelector("#lc-until").value, broker_accepted: !!(ov.querySelector("#lc-broker") || {}).checked
       };
+      // Sent only when ticked or already on record, so saving still works before migration 0016.
+      const idBox = ov.querySelector("#lc-id"), phoneBox = ov.querySelector("#lc-phone");
+      if (idBox.checked || v.id_seen) row.id_seen = idBox.checked;
+      if (phoneBox.checked || v.phone_confirmed) row.phone_confirmed = phoneBox.checked;
       const problem = row.licence_no.length < 3 ? "Enter the licence or accreditation number." : row.prc_name.length < 3 ? "Enter the name as it appears on the PRC record." : !row.valid_until ? "Enter the date the licence is valid until." : "";
       if (problem) { err.textContent = problem; return; }
       try {
@@ -18207,7 +18218,8 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         close(); toast("Licence check saved"); render({ keepScroll: true });
       } catch (x) {
         const msg = String((x && x.message) || x || "");
-        err.textContent = /agent_verifications|does not exist|schema cache/i.test(msg) ? "Licence checks need database migration 0015 first." : friendlyErr(msg);
+        err.textContent = /id_seen|phone_confirmed/i.test(msg) ? "The Verified checks need database migration 0016 first."
+          : /agent_verifications|does not exist|schema cache/i.test(msg) ? "Licence checks need database migration 0015 first." : friendlyErr(msg);
       }
     });
   }
@@ -18551,23 +18563,105 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         : '<p class="dim">No approved brokers yet. Approve a broker under Pending first.</p>') + "</fieldset>";
     const removed = chosen.filter(id => !brokers.some(b => String(b.id) === id)).length;
     if (removed) html += '<p class="dim tiny mt-8">' + removed + " broker" + (removed === 1 ? " in the list is" : "s in the list are") + " no longer approved and will be skipped. Save to remove " + (removed === 1 ? "them" : "them") + ".</p>";
-    return html + '<button class="btn btn-primary mt-8" data-routing-save>' + icon("check", 14) + " Save lead routing</button></div>";
+    return html + routingTownsHtml() + '<button class="btn btn-primary mt-8" data-routing-save>' + icon("check", 14) + " Save lead routing</button></div>";
+  }
+  /* Town rules (agent websites, Phase 2, migration 0016): a Value Guide request for a town goes to
+   * the people listed for it, in turn, before the brokers' turns. Edited here, saved with the card. */
+  let routingTowns = null;
+  function routingPeople() {
+    return remoteProfiles.filter(p => (p.role === "broker" || p.role === "agent") && p.registration_status === "approved")
+      .sort((a, b) => String(a.full_name || "").localeCompare(String(b.full_name || "")));
+  }
+  function routingTownsHtml() {
+    const P = window.SEA_AGENT_PAGE;
+    if (!P) return "";
+    if (!routingTowns) routingTowns = JSON.parse(JSON.stringify((routingCfg && routingCfg.towns) || {}));
+    const people = routingPeople();
+    const nameOf = id => { const p = people.find(x => String(x.id) === String(id)); return p ? (p.full_name || p.email) : "No longer approved, skipped"; };
+    const townName = slug => (P.TOWNS.find(t => t[0] === slug) || [slug, slug])[1];
+    const set = Object.keys(routingTowns).filter(t => (routingTowns[t] || []).length).sort((a, b) => townName(a).localeCompare(townName(b)));
+    return '<fieldset class="mt-16 rt-towns"><legend>Town rules for Value Guide requests</legend>' +
+      '<p class="dim tiny">A Value Guide request for a town goes to the people you set for that town, in turn, before the brokers above. A request started from an agent\'s page always goes to that agent, and a returning client stays with their earlier agent. Needs database update 0016.</p>' +
+      (set.length ? '<ul class="rt-town-list">' + set.map(t => '<li><b>' + esc(townName(t)) + "</b><span>" + routingTowns[t].map(id => esc(nameOf(id))).join(", ") + '</span><button class="btn btn-ghost btn-sm" data-rt-town-remove="' + esc(t) + '" aria-label="Remove the rule for ' + esc(townName(t)) + '">Remove</button></li>').join("") + "</ul>"
+        : '<p class="dim tiny">No town rules yet.</p>') +
+      '<div class="rt-town-add"><div class="field"><label for="rt-town">Town</label><select class="input" id="rt-town"><option value="">Choose a town</option>' + P.TOWNS.map(t => '<option value="' + esc(t[0]) + '">' + esc(t[1]) + "</option>").join("") + "</select></div>" +
+      '<fieldset class="rt-town-people"><legend>People for this town, in turn</legend>' + (people.length ? '<div class="row" style="gap:6px 16px;flex-wrap:wrap">' + people.map(p => '<label class="ms-chk"><input type="checkbox" data-rt-town-person value="' + esc(p.id) + '"> ' + esc(p.full_name || p.email) + ' <span class="dim tiny">' + (p.role === "broker" ? "broker" : "agent") + "</span></label>").join("") + "</div>" : '<p class="dim">No approved brokers or agents yet.</p>') + "</fieldset>" +
+      '<button class="btn btn-ghost btn-sm" data-rt-town-set>Set the rule for this town</button></div></fieldset>';
   }
   async function saveRouting(btn) {
     const enabled = !!($("#rt-enabled") || {}).checked;
     const brokers = $$("[data-rt-broker]").filter(c => c.checked).map(c => c.value);
-    if (enabled && !brokers.length) { toast("Tick at least one broker, or turn routing off", "err"); return; }
-    const value = { enabled, brokers, next: 0 };
-    if (currentUser && currentUser.demo) { routingCfg = value; toast("Demo: lead routing " + (enabled ? "on for " + brokers.length + " broker" + (brokers.length === 1 ? "" : "s") : "off")); render(); return; }
+    const towns = {};
+    Object.keys(routingTowns || (routingCfg && routingCfg.towns) || {}).forEach(t => { const ids = ((routingTowns || routingCfg.towns)[t] || []).filter(Boolean); if (ids.length) towns[t] = ids; });
+    if (enabled && !brokers.length && !Object.keys(towns).length) { toast("Tick at least one broker or set a town rule, or turn routing off", "err"); return; }
+    const value = { enabled, brokers, next: 0, towns, townNext: (routingCfg && routingCfg.townNext) || {} };
+    if (currentUser && currentUser.demo) { routingCfg = value; routingTowns = null; toast("Demo: lead routing " + (enabled ? "on for " + brokers.length + " broker" + (brokers.length === 1 ? "" : "s") : "off")); render(); return; }
     if (btn) btn.disabled = true;
     try {
       const r = await SB.from("site_settings").upsert({ key: "leadRouting", value, is_public: false }, { onConflict: "key" });
       if (r.error) throw r.error;
-      routingCfg = value;
-      toast(enabled ? "Lead routing on: " + brokers.length + " broker" + (brokers.length === 1 ? "" : "s") + " take turns" : "Lead routing off");
+      routingCfg = value; routingTowns = null;
+      toast(enabled ? "Lead routing on: " + brokers.length + " broker" + (brokers.length === 1 ? "" : "s") + " take turns" + (Object.keys(towns).length ? ", " + Object.keys(towns).length + " town rule" + (Object.keys(towns).length === 1 ? "" : "s") : "") : "Lead routing off");
       render();
     } catch (e) { toast("Could not save: " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
     finally { if (btn) btn.disabled = false; }
+  }
+
+  /* ---- Client reviews (agent websites, Phase 3, migration 0016) ----
+   * Links come from closed deals (Transactions). A Super Admin publishes or declines each review
+   * under the rule shown here. Agents may reply once and cannot remove a review. */
+  const REVIEW_RULE = "We publish a review when it is about the client's own deal with this agent and is in the client's words. We decline a review that names other people, includes a phone number, link or price the client did not agree to show, or insults someone. We never decline a review because it is critical, and we do not edit reviews.";
+  let reviewsRows = [], reviewsLoaded = false, reviewsLoading = false, reviewsError = "";
+  const REVIEWS_DEMO = [
+    { id: "demo-rv-1", agent_id: "demo-approved-1", status: "submitted", client_label: "Rhea D.", town: "Lipa City", month: "2026-09", body: "We were buying from Dubai. Ana did the viewing on video and sent the title and tax declaration before we paid anything.", submitted_at: new Date().toISOString() }
+  ];
+  async function loadReviews() {
+    if (reviewsLoading) return;
+    reviewsLoading = true; reviewsError = "";
+    try {
+      if (currentUser.demo) reviewsRows = REVIEWS_DEMO;
+      else {
+        const r = await SB.from("agent_reviews").select("id,agent_id,deal_id,status,client_label,town,month,body,reply,submitted_at,expires_at,created_at").order("created_at", { ascending: false }).limit(200);
+        if (r.error) throw r.error;
+        reviewsRows = r.data || [];
+      }
+      reviewsLoaded = true;
+    } catch (e) {
+      const msg = String((e && e.message) || e || "");
+      reviewsError = /agent_reviews|does not exist|schema cache/i.test(msg) ? "Reviews need database migration 0016 first." : friendlyErr(msg);
+    }
+    reviewsLoading = false;
+    if (state.view === "users" && state.usersTab === "reviews") render({ keepScroll: true });
+  }
+  function reviewsCard() {
+    if (!reviewsLoaded && !reviewsLoading && !reviewsError) loadReviews();
+    const who = id => { const p = remoteProfiles.find(x => String(x.id) === String(id)); return p ? (p.full_name || p.email) : "Agent"; };
+    let html = '<div class="card card-pad reviews-card"><h3>Client reviews</h3><p class="dim tiny">Clients write reviews from a one-time link you make on a closed deal (Transactions, open the deal). Nothing shows on an agent\'s page until you publish it.</p>' +
+      '<div class="notice-banner mt-8">' + icon("shield", 14) + ' <span><b>Our review rule.</b> ' + esc(REVIEW_RULE) + "</span></div>";
+    if (reviewsError) return html + '<p class="dim mt-8">' + esc(reviewsError) + '</p><button class="btn btn-ghost btn-sm mt-8" data-reviews-retry>Try again</button></div>';
+    if (!reviewsLoaded) return html + '<p class="dim mt-8">Loading…</p></div>';
+    const group = (status, title, empty, actions) => {
+      const rows = reviewsRows.filter(r => r.status === status);
+      return '<h4 class="mt-16">' + esc(title) + " (" + rows.length + ")</h4>" + (rows.length ? rows.map(r =>
+        '<div class="review-row" data-review-row="' + esc(r.id) + '"><p class="review-body">“' + esc(r.body || "") + '”</p><p class="dim tiny">' + esc(r.client_label || "Client") + (r.town ? ", " + esc(r.town) : "") + (r.month ? ", " + esc(r.month) : "") + " · about " + esc(who(r.agent_id)) + "</p>" +
+        (r.reply ? '<p class="dim tiny">Agent replied: ' + esc(r.reply) + "</p>" : "") +
+        '<div class="row" style="gap:8px;flex-wrap:wrap">' + actions.map(a => '<button class="btn btn-sm ' + (a[0] === "approved" ? "btn-primary" : "btn-ghost") + '" data-review-moderate="' + a[0] + '" data-review-id="' + esc(r.id) + '">' + esc(a[1]) + "</button>").join("") + "</div></div>").join("")
+        : '<p class="dim tiny">' + esc(empty) + "</p>");
+    };
+    const waiting = reviewsRows.filter(r => r.status === "invited" && String(r.expires_at || "") > new Date().toISOString()).length;
+    html += group("submitted", "Waiting for you", "No reviews waiting.", [["approved", "Publish"], ["rejected", "Decline"]]) +
+      group("approved", "Published", "No published reviews yet.", [["rejected", "Take down"]]) +
+      group("rejected", "Declined", "None declined.", [["approved", "Publish"]]) +
+      '<p class="dim tiny mt-16">' + waiting + " review link" + (waiting === 1 ? " is" : "s are") + " still open and not used yet.</p>";
+    return html + "</div>";
+  }
+  async function moderateReview(id, status) {
+    try {
+      if (currentUser.demo) { const r = REVIEWS_DEMO.find(x => x.id === id); if (r) r.status = status; }
+      else { const r = await SB.rpc("review_moderate", { p_id: id, p_status: status }); if (r.error) throw r.error; }
+      toast(status === "approved" ? "Review published" : "Review declined");
+      reviewsLoaded = false; render({ keepScroll: true });
+    } catch (e) { toast("Could not save: " + esc(friendlyErr(String((e && e.message) || e))), "err"); }
   }
 
   /* ---- Change log (K3) ---- */
@@ -18641,7 +18735,7 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       const pending = statusCount("pending");
       const approved = statusCount("approved");
       const rejected = statusCount("rejected");
-      const tab = (["pending", "approved", "rejected", "all", "log", "roles", "announce", "routing", "person"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
+      const tab = (["pending", "approved", "rejected", "all", "log", "roles", "announce", "routing", "person", "reviews"].indexOf(state.usersTab) >= 0) ? state.usersTab : "pending";
       const srcBadge = currentUser.demo ? '<span class="chip">Demo data</span>' : (roleIs("super-admin") ? '<span class="chip">Live Supabase</span>' : "");
       const shown = tab === "all" ? remoteProfiles : remoteProfiles.filter(u => u.registration_status === tab);
       const filteredShown = shown.filter(u => (!userFiltQ || [u.full_name, u.email, u.agency].join(" ").toLowerCase().indexOf(userFiltQ) >= 0) && (!userFiltRole || u.role === userFiltRole));
@@ -18654,14 +18748,15 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         '<button class="tab' + (tab === "roles" ? " active" : "") + '" data-users-tab="roles">Who can do what</button>' +
         '<button class="tab' + (tab === "announce" ? " active" : "") + '" data-users-tab="announce">Announcement</button>' +
         '<button class="tab' + (tab === "routing" ? " active" : "") + '" data-users-tab="routing">Lead routing</button>' +
-        (roleIs("super-admin") ? '<button class="tab' + (tab === "person" ? " active" : "") + '" data-users-tab="person">Find a person</button>' : "") + "</div>";
+        (roleIs("super-admin") ? '<button class="tab' + (tab === "person" ? " active" : "") + '" data-users-tab="person">Find a person</button>' : "") +
+        (roleIs("super-admin") ? '<button class="tab' + (tab === "reviews" ? " active" : "") + '" data-users-tab="reviews">Reviews</button>' : "") + "</div>";
       const roleFilterOpts = '<option value="">All roles</option>' + ROLES.map(r => '<option value="' + esc(r.value) + '">' + esc(r.label) + '</option>').join("");
       const toolsHtml = '<div class="users-tools"><div class="users-search">' + icon("search", 15) + '<input id="users-search" type="search" placeholder="Search name, email, agency..." autocomplete="off"></div><select class="input" id="users-role-filter">' + roleFilterOpts + '</select><span class="dim tiny" id="users-visible-count">' + shown.length + ' account' + (shown.length === 1 ? "" : "s") + '</span></div>';
       let cloudHtml = '<section class="users-access"><div class="hero"><div><h1>Users &amp; Access</h1><p>Approve registrations and assign server-enforced roles. ' + srcBadge + '</p></div>' +
         '<div class="actions"><button class="btn btn-primary" data-cloud-user-new>' + icon("plus", 15) + " Add Account</button></div></div>" +
         '<div class="ls-stat-row">' + lsStat("Registrations", remoteProfiles.length) + lsStat("Pending approval", pending) + lsStat("Approved", approved) + lsStat("Rejected", rejected) + '</div>' +
         '<div class="notice-banner mt-16">' + icon("shield", 14) + ' <span>New accounts cannot access SEA ESTATES until a Super Admin assigns a role and approves the registration.</span></div>';
-      cloudHtml += '<div class="users-directory card">' + tabsHtml + (["log", "roles", "announce", "routing", "person"].indexOf(tab) >= 0 ? "" : toolsHtml) + '</div>';
+      cloudHtml += '<div class="users-directory card">' + tabsHtml + (["log", "roles", "announce", "routing", "person", "reviews"].indexOf(tab) >= 0 ? "" : toolsHtml) + '</div>';
       let gridHtml;
       if (remoteProfilesError) {
         const low = String(remoteProfilesError).toLowerCase();
@@ -18684,9 +18779,10 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       else if (tab === "announce") cloudHtml += '<div class="mt-16" id="announce">' + announceCard() + "</div>";
       else if (tab === "routing") cloudHtml += '<div class="mt-16" id="routing">' + routingCard() + "</div>";
       else if (tab === "person") cloudHtml += '<div class="mt-16" id="person-find">' + personCard() + "</div>";
+      else if (tab === "reviews") cloudHtml += '<div class="mt-16" id="reviews">' + reviewsCard() + "</div>";
       else cloudHtml += '<div class="user-grid mt-16" id="users-grid">' + gridHtml + '</div><div class="card card-pad empty mt-16" id="users-filter-empty" style="display:none"><h3>No matching accounts</h3><p class="dim">Try a different name, email, or role.</p></div>';
       const pendingResets = passwordResetRequests.filter(r => r.user_id);
-      if (pendingResets.length && ["log", "roles", "announce", "routing"].indexOf(tab) < 0) {
+      if (pendingResets.length && ["log", "roles", "announce", "routing", "reviews"].indexOf(tab) < 0) {
         cloudHtml += '<div class="card card-pad mt-16"><h3>' + icon("key", 15) + ' Password reset requests</h3><p class="dim">These users requested a reset from the Forgot Password tab. Generate a temporary password and share it with them.</p>' +
           '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' + pendingResets.map(r =>
             '<div class="chip-row" style="display:flex;align-items:center;gap:8px;border:1px solid var(--stroke);border-radius:10px;padding:6px 10px"><div><div class="tiny" style="font-weight:600">' + esc(r.full_name || r.email) + '</div><div class="dim tiny">' + esc(r.email) + '</div></div>' +
@@ -19108,6 +19204,12 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       document.addEventListener("submit", e => {
         if (e.target && e.target.closest && e.target.closest("[data-person-form]")) { e.preventDefault(); personSearch(); }
       });
+      // Choosing a town ticks the people already set for it.
+      document.addEventListener("change", e => {
+        if (!e.target || e.target.id !== "rt-town") return;
+        const ids = (routingTowns && routingTowns[e.target.value]) || [];
+        $$("[data-rt-town-person]").forEach(c => { c.checked = ids.indexOf(c.value) >= 0; });
+      });
       document.addEventListener("click", e => {
         const nw = e.target.closest("[data-user-new]");
         if (nw) { openUserEditor(); return; }
@@ -19132,6 +19234,19 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
         if (anSend) { sendAnnouncement(anSend); return; }
         const rtSave = e.target.closest("[data-routing-save]");
         if (rtSave) { saveRouting(rtSave); return; }
+        const rtRemove = e.target.closest("[data-rt-town-remove]");
+        if (rtRemove) { delete routingTowns[rtRemove.getAttribute("data-rt-town-remove")]; render({ keepScroll: true }); return; }
+        if (e.target.closest("[data-rt-town-set]")) {
+          const town = ($("#rt-town") || {}).value || "";
+          if (!town) { toast("Choose a town first", "err"); return; }
+          const ids = $$("[data-rt-town-person]").filter(c => c.checked).map(c => c.value);
+          if (ids.length) routingTowns[town] = ids; else delete routingTowns[town];
+          render({ keepScroll: true }); toast(ids.length ? "Town rule set. Save lead routing to keep it." : "Town rule removed. Save lead routing to keep it.");
+          return;
+        }
+        const rvMod = e.target.closest("[data-review-moderate]");
+        if (rvMod) { moderateReview(rvMod.getAttribute("data-review-id"), rvMod.getAttribute("data-review-moderate")); return; }
+        if (e.target.closest("[data-reviews-retry]")) { reviewsError = ""; reviewsLoaded = false; render(); return; }
         if (e.target.closest("[data-routing-retry]")) { routingError = ""; routingLoaded = false; render(); return; }
         if (e.target.closest("[data-audit-retry]")) { auditError = ""; auditLoaded = false; render(); return; }
         if (e.target.closest("[data-audit-csv]")) {
@@ -19816,6 +19931,13 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     html += txResultsHTML();
     return html;
   }
+  // A Super Admin asks the client of a closed deal for a review of each agent on it.
+  function txReviewButtons(t) {
+    if (!roleIs("super-admin") || (t.stage !== "doas" && t.stage !== "done")) return "";
+    const ids = [[t.buyerAgentId, t.buyerAgentName], [t.sellerAgentId, t.sellerAgentName]].filter((x, i, a) => x[0] && a.findIndex(y => y[0] === x[0]) === i);
+    if (!ids.length) return "";
+    return '<div class="row mt-8" style="gap:8px;flex-wrap:wrap">' + ids.map(x => '<button class="btn btn-ghost btn-sm" data-tx-review="' + esc(x[0]) + '">' + icon("link", 14) + " Review link for " + esc(x[1] || "the agent") + "</button>").join("") + "</div>";
+  }
   function txRow(k, v) { return "<tr><td>" + k + "</td><td>" + (v === "" || v === null ? "—" : v) + "</td></tr>"; }
   function renderTransactionDetail(t) {
     const c = txCompute(t);
@@ -19842,11 +19964,13 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       txRow("Linked listing", lt ? (ltLink ? '<a class="link" data-tx-goto-listing="' + esc(ltLink.id) + '">' + esc(lt) + "</a>" : esc(lt)) : "") +
       txRow("Buyer / Client", t.buyerName) + txRow("Seller / Developer", t.sellerName) +
       txRow("Handling agent", t.agentName) + txRow("Referral (if any)", t.referralName) +
+      (t.buyerAgentId ? txRow("Buyer's agent", esc(t.buyerAgentName || "")) : "") + (t.sellerAgentId ? txRow("Seller's agent", esc(t.sellerAgentName || "")) : "") +
+      (t.buyerAgentId || t.sellerAgentId ? txRow("On the agents' pages", t.showDeal ? (t.showPrice ? "Listed with price (client agreed)" : "Listed without price (client agreed)") : "Counted, not listed") : "") +
       txRow("Price", C.money(c.price)) + txRow("Reservation fee", C.money(c.reservationFee)) +
       (t.reservationDate ? txRow("Reservation date", t.reservationDate) : "") +
       (t.ctsDate ? txRow("Contract to Sell date", t.ctsDate) : "") +
       (t.doasDate ? txRow("Deed of Absolute Sale date", t.doasDate) : "") +
-      "</tbody></table></div></div>";
+      "</tbody></table></div>" + txReviewButtons(t) + "</div>";
     html += '<div class="card card-pad"><h3>Milestones</h3><div class="mt-8">' + TX_STAGES.map(s => {
       const reached = TX_STAGE_ORDER.indexOf(s.value) <= TX_STAGE_ORDER.indexOf(t.stage);
       return '<div class="tx-milestone' + (reached ? " on" : "") + '"><div class="tx-milestone-dot"></div><div class="grow">' + esc(s.label) + (s.value === t.stage ? " <span class='dim tiny'>current</span>" : "") + "</div></div>";
@@ -19984,6 +20108,59 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       '<div class="print-foot">Estimates are for reference only. Verify taxes, transfer fees, financing terms, title records, and legal documents with the BIR, LGU, Registry of Deeds, financing institution, and licensed professionals.</div></div>';
     printHTML(html);
   }
+  /* Agent websites, Phase 3: each closed deal credits a buyer's agent and a seller's agent (either
+   * may be empty or the same person). Credit is fixed on the deal; handing a lead over does not move
+   * it. The client decides whether the deal, and separately its price, may be listed. */
+  function dealAgentChoices() {
+    const out = [];
+    const add = (id, name) => { if (id && name && !out.some(x => String(x.id) === String(id))) out.push({ id: String(id), name: String(name) }); };
+    if (roleIs("super-admin")) remoteProfiles.filter(p => (p.role === "broker" || p.role === "agent") && p.registration_status === "approved").forEach(p => add(p.id, p.full_name || p.email));
+    else if (currentUser) { add(currentUser.id, currentUser.name || currentUser.email); brokerTeamMembers().forEach(m => add(m.id, m.name)); }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  function dealAgentSelect(id, chosenId, chosenName, label) {
+    const list = dealAgentChoices();
+    if (chosenId && !list.some(x => x.id === String(chosenId))) list.unshift({ id: String(chosenId), name: chosenName || "Someone no longer on the team" });
+    return '<div class="field"><label for="' + id + '">' + label + '</label><select class="input" id="' + id + '"><option value="">None, or not one of ours</option>' +
+      list.map(x => '<option value="' + esc(x.id) + '"' + (String(chosenId || "") === x.id ? " selected" : "") + ">" + esc(x.name) + "</option>").join("") + "</select></div>";
+  }
+  async function openReviewLink(dealId, agentId) {
+    const t = transactionScope().find(x => x.id === dealId);
+    if (!t || !roleIs("super-admin")) return;
+    const name = agentId === t.buyerAgentId ? t.buyerAgentName : t.sellerAgentName;
+    let token = "";
+    try {
+      if (currentUser.demo) token = "0".repeat(48) + "demo00000000demo";
+      else {
+        const r = await SB.rpc("review_invite", { p_deal: dealId, p_agent: agentId });
+        if (r.error) throw r.error;
+        token = String(r.data || "");
+      }
+    } catch (x) {
+      const msg = String((x && x.message) || x || "");
+      toast(/review_invite|schema cache|does not exist/i.test(msg) ? "Review links need database migration 0016 first." : esc(friendlyErr(msg)), "err");
+      return;
+    }
+    const link = location.origin + location.pathname + "#/review/" + token;
+    const old = $("#rv-modal"); if (old) old.remove();
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay"; ov.id = "rv-modal";
+    ov.innerHTML = '<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rv-title"><div class="modal-head"><h3 id="rv-title">Review link for ' + esc(name || "the agent") + '</h3><button class="icon-btn" data-rv-close aria-label="Close">&times;</button></div>' +
+      '<div class="modal-body"><p>Send this link to the client of <b>' + esc(t.title || "this deal") + '</b>. It works once, for 30 days. Making a new link stops this one.</p>' +
+      '<div class="field"><label for="rv-link">Review link</label><input class="input" id="rv-link" readonly value="' + esc(link) + '"></div>' +
+      '<p class="dim tiny">You approve each review in Users &amp; Access, Reviews, before it shows on the agent\'s page.</p></div>' +
+      '<div class="modal-foot"><button class="btn btn-ghost" data-rv-close>Close</button><button class="btn btn-primary" data-rv-copy>' + icon("copy", 14) + " Copy link</button></div></div>";
+    document.body.appendChild(ov);
+    ov.addEventListener("click", e => {
+      if (e.target === ov || e.target.closest("[data-rv-close]")) { ov.remove(); return; }
+      if (e.target.closest("[data-rv-copy]")) {
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(() => toast("Link copied")).catch(() => toast(link, "info"));
+        else toast(link, "info");
+      }
+    });
+    const input = ov.querySelector("#rv-link"); if (input) { input.focus(); input.select(); }
+  }
+
   function openTxEditor(id) {
     if (!txCanManage()) { toast("You don't have permission to manage transactions", "err"); return; }
     closeTxModal();
@@ -19998,6 +20175,12 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       '<div class="field"><label>Seller / developer</label><input class="input" id="tx-seller" type="text" value="' + esc(t.sellerName || "") + '"></div>' +
       '<div class="field"><label>Handling agent</label><input class="input" id="tx-agent" type="text" value="' + esc(t.agentName || "") + '"></div>' +
       '<div class="field"><label>Referral (if any)</label><input class="input" id="tx-referral" type="text" value="' + esc(t.referralName || "") + '"></div>' +
+      dealAgentSelect("tx-buyer-agent", t.buyerAgentId, t.buyerAgentName, "Buyer's agent") +
+      dealAgentSelect("tx-seller-agent", t.sellerAgentId, t.sellerAgentName, "Seller's agent") +
+      '<fieldset class="field tx-consent" style="grid-column:span 2"><legend>Agent websites</legend>' +
+      '<p class="field-hint">Closed deals are counted on the agents\' pages. Tick these only if the client agreed.</p>' +
+      '<label class="site-check"><input type="checkbox" id="tx-show-deal"' + (t.showDeal ? " checked" : "") + "> The client agreed to list this deal (month, property type and town, no names)</label>" +
+      '<label class="site-check"><input type="checkbox" id="tx-show-price"' + (t.showPrice ? " checked" : "") + "> The client also agreed to show the price</label></fieldset>" +
       '<div class="field"><label>Reservation fee (₱)</label><input class="input input-num" id="tx-resfee" type="text" inputmode="decimal" value="' + (C.num(t.reservationFee, 0) > 0 ? C.fmtNum(t.reservationFee) : "") + '" placeholder="auto ~5% up to ₱50k"></div>' +
       '<div class="field"><label>Reservation date</label><input class="input" id="tx-resdate" type="date" value="' + esc(t.reservationDate || "") + '"></div>' +
       '<div class="field"><label>Down payment (%)</label><input class="input input-num" id="tx-dppct" type="text" inputmode="decimal" value="' + (t.dpPct || 20) + '"></div>' +
@@ -20052,6 +20235,13 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     rec.sellerName = $v("tx-seller");
     rec.agentName = $v("tx-agent");
     rec.referralName = $v("tx-referral");
+    const agentPick = sel => { const el = document.getElementById(sel); const opt = el && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null; return el && el.value ? [el.value, opt ? opt.textContent : ""] : ["", ""]; };
+    if (document.getElementById("tx-buyer-agent")) {
+      [rec.buyerAgentId, rec.buyerAgentName] = agentPick("tx-buyer-agent");
+      [rec.sellerAgentId, rec.sellerAgentName] = agentPick("tx-seller-agent");
+      rec.showDeal = !!(document.getElementById("tx-show-deal") || {}).checked;
+      rec.showPrice = rec.showDeal && !!(document.getElementById("tx-show-price") || {}).checked;
+    }
     rec.reservationFee = $n("tx-resfee");
     rec.reservationDate = $v("tx-resdate");
     rec.dpPct = $n("tx-dppct") || 20;
@@ -20138,6 +20328,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
         if (nw) { openTxEditor(); return; }
         const ed = e.target.closest("[data-tx-edit]");
         if (ed) { openTxEditor(ed.getAttribute("data-tx-edit")); return; }
+        const rvl = e.target.closest("[data-tx-review]");
+        if (rvl) { openReviewLink(state.txDetail, rvl.getAttribute("data-tx-review")); return; }
         const adv = e.target.closest("[data-tx-advance]");
         if (adv) { txAdvance(adv.getAttribute("data-tx-advance")); return; }
         const del = e.target.closest("[data-tx-del]");
@@ -20856,12 +21048,21 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (r.error) throw r.error;
     return r.data;
   }
+  let siteReviews = null;
+  const SITE_REVIEWS_DEMO = [{ id: "demo-rv-2", label: "Jun M.", town: "Batangas City", month: "2026-07", body: "She told us honestly that our asking price was too high, then sold it in seven weeks at a price we were happy with.", reply: null }];
+  async function loadSiteReviews() {
+    try {
+      if (currentUser.demo) siteReviews = SITE_REVIEWS_DEMO;
+      else { const r = await SB.rpc("agent_site_reviews"); siteReviews = r.error ? null : (r.data || []); }
+    } catch (e) { siteReviews = null; } // before migration 0016 the card stays hidden
+  }
   async function loadSite() {
     if (siteLoading) return;
     siteLoading = true; siteError = "";
     try {
       siteData = await siteCall("agent_site_open");
       siteDraft = JSON.parse(JSON.stringify(siteData.draft || {}));
+      await loadSiteReviews();
     } catch (e) {
       const msg = String((e && e.message) || e || "");
       siteError = /agent_site_open|schema cache|does not exist/i.test(msg) ? "My website needs database migration 0015 first. Ask a Super Admin to apply it." : friendlyErr(msg);
@@ -20928,9 +21129,13 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     html += '<div class="card card-pad"><h3>What your page shows</h3>' +
       [["listings", "My listings"], ["about", "About me"], ["video", "I offer video viewings for buyers abroad"]].map(x =>
         '<label class="site-check"><input type="checkbox" data-site-section="' + x[0] + '"' + (sections.indexOf(x[0]) >= 0 ? " checked" : "") + "> " + esc(x[1]) + "</label>").join("") +
-      '<p class="dim tiny">Your licence card always shows. Your track record and client reviews will too, once there are records.</p>' +
+      '<p class="dim tiny">Your licence card always shows. Your track record and client reviews do too, once there are records: closed deals that name you, and reviews our office published.</p>' +
       '<fieldset class="site-checks"><legend>Colour</legend><div class="site-check-grid">' + [["rust", "Rust"], ["sea", "Sea"], ["forest", "Forest"], ["ink", "Ink"]].map(x =>
         '<label class="site-check"><input type="radio" name="site-accent" data-site-accent value="' + x[0] + '"' + ((d.accent || "rust") === x[0] ? " checked" : "") + '> <span class="site-swatch" style="background:' + P.ACCENTS[x[0]][0] + '" aria-hidden="true"></span>' + x[1] + "</label>").join("") + "</div></fieldset></div>";
+    if (siteReviews && siteReviews.length) html += '<div class="card card-pad site-reviews"><h3>Client reviews</h3><p class="dim tiny">Reviews our office published on your page. You can reply once to each; your reply shows under the review and cannot be changed.</p>' +
+      siteReviews.map(r => '<div class="review-row"><p class="review-body">“' + esc(r.body || "") + '”</p><p class="dim tiny">' + esc(r.label || "Client") + (r.town ? ", " + esc(r.town) : "") + (r.month ? ", " + esc(r.month) : "") + "</p>" +
+        (r.reply ? '<p class="tiny"><b>Your reply:</b> ' + esc(r.reply) + "</p>"
+          : '<div class="field"><label for="site-reply-' + esc(r.id) + '">Your reply</label><textarea class="input" id="site-reply-' + esc(r.id) + '" rows="2" maxlength="600"></textarea></div><button class="btn btn-ghost btn-sm" data-site-reply="' + esc(r.id) + '">Post reply</button>') + "</div>").join("") + "</div>";
     if (live) html += '<div class="card card-pad"><h3>Take my page down</h3><p class="dim">Your page stops showing to visitors. Your draft stays here.</p><button class="btn btn-ghost danger" data-site-unpublish>Take my page down</button></div>';
     html += '</div><aside class="site-aside">';
     html += '<div class="card card-pad"><h3>Ready for visitors</h3><p class="dim tiny" data-site-ready-count>' + done + " of " + ready.length + " done</p><ul class=\"site-ready\" data-site-ready>" + ready.map(r => '<li class="' + (r[1] ? "is-done" : "") + '">' + icon(r[1] ? "check" : "circle", 14) + " " + esc(r[0]) + "</li>").join("") + "</ul></div>";
@@ -21010,6 +21215,16 @@ const ccBtn = e.target.closest("[data-cc-calc]");
         siteCall("agent_site_unpublish").then(r => { siteData = r; toast("Your page is down. Publish again any time."); })
           .catch(err => toast("Could not take the page down: " + esc(friendlyErr(String((err && err.message) || err))), "err"))
           .then(() => { siteBusy = ""; render({ keepScroll: true }); });
+      } else if (e.target.closest("[data-site-reply]")) {
+        const id = e.target.closest("[data-site-reply]").getAttribute("data-site-reply");
+        const box = root.querySelector("#site-reply-" + CSS.escape(id));
+        const text = box ? box.value.trim() : "";
+        if (text.length < 2) { toast("Write your reply first", "err"); if (box) box.focus(); return; }
+        (currentUser.demo ? Promise.resolve({}) : SB.rpc("review_reply", { p_id: id, p_text: text })).then(r => {
+          if (r && r.error) throw r.error;
+          const row = (siteReviews || []).find(x => String(x.id) === String(id)); if (row) row.reply = text;
+          toast("Reply posted"); render({ keepScroll: true });
+        }).catch(err => toast("Could not post the reply: " + esc(friendlyErr(String((err && err.message) || err))), "err"));
       } else if (e.target.closest("[data-site-copy]")) {
         const text = (root.querySelector("[data-site-address]") || {}).textContent || "";
         if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => toast("Link copied")).catch(() => toast(text, "info"));

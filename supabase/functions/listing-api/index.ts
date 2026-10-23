@@ -76,7 +76,7 @@ const stringValue = (value: unknown, max: number, field: string, required = fals
 // and * (which the API treats as %) is dropped. Place names contain none of these.
 // The privacy notice the visitor agreed to (js/storefront.js, "Last updated"). Stored with each
 // consent so it is known later which wording a person accepted (B1). Change both together.
-const PRIVACY_NOTICE_VERSION = "2026-10-01";
+const PRIVACY_NOTICE_VERSION = "2026-10-23";
 const likeLiteral = (value: string) => value.replace(/[\\%_]/g, "\\$&").replace(/\*/g, "");
 
 // Free-text search (H2): up to 4 words, each must appear in the title, description, address,
@@ -429,6 +429,9 @@ const publicDetails = async (admin: SupabaseClient, id: string, agentId: string 
       const { data: prof } = await admin.from("profiles").select("prc").eq("id", agentId).maybeSingle();
       const prc = String(prof?.prc || "").trim();
       if (prc) out.agent_prc = prc.slice(0, 40);
+      // "Listed by" links to the agent's page while it is public (agent websites, Phase 2).
+      const { data: slug } = await admin.rpc("agent_public_slug", { p_agent: agentId });
+      if (typeof slug === "string" && slug) out.agent_slug = slug;
     }
   } catch (e) {
     console.error("listing details", id, (e as Error).message);
@@ -1072,6 +1075,61 @@ const submitAgentInquiry = async (req: Request, slug: string, admin: SupabaseCli
   return json({ id: leadId, message: "Sent" }, 201);
 };
 
+// The agent directory (Phase 2): published agents that pass every check, filtered by the fixed
+// lists, measured reply time first.
+const listAgents = async (url: URL, admin: SupabaseClient) => {
+  const pick = (name: string) => {
+    const v = String(url.searchParams.get(name) || "").trim().toLowerCase();
+    if (v && !/^[a-z-]{2,40}$/.test(v)) throw new HttpError(400, `${name} is invalid`);
+    return v || null;
+  };
+  const { data, error } = await admin.rpc("public_agents", { p_town: pick("town"), p_need: pick("need"), p_language: pick("language") });
+  if (error) throw new Error(error.message);
+  const result = (data || {}) as JsonRecord;
+  return json({ data: Array.isArray(result.agents) ? result.agents : [], total: Number(result.total || 0) }, 200, PUBLIC_CACHE);
+};
+
+// Check an agent (Phase 3): a licence number, or a number that contacted you. Matches public pages
+// only; a miss gets a neutral answer from the page, never a list of people.
+const checkAgent = async (req: Request, url: URL, admin: SupabaseClient, pepper: string) => {
+  const q = stringValue(url.searchParams.get("q"), 40, "q", true);
+  const keyHash = await sha256(`${pepper}:agent-check:${callerAddress(req)}`);
+  const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", { p_request_key_hash: keyHash, p_limit: 20, p_window_seconds: 3600 });
+  if (rateError) throw new Error(rateError.message);
+  if (!permitted) throw new HttpError(429, "Too many checks. Please try again later");
+  const { data, error } = await admin.rpc("agent_check", { p_q: q });
+  if (error) throw new Error(error.message);
+  return json({ data: Array.isArray(data) ? data.slice(0, 3) : [] });
+};
+
+// Client reviews (Phase 3). The link's secret is never stored: the database keeps its hash.
+const reviewHash = async (token: string) => {
+  if (!/^[0-9a-f]{64}$/.test(token)) throw new HttpError(404, "Review link not found");
+  return await sha256(token);
+};
+const getReview = async (token: string, admin: SupabaseClient) => {
+  const { data, error } = await admin.rpc("review_lookup", { p_hash: await reviewHash(token) });
+  if (error) throw new Error(error.message);
+  if (!data) throw new HttpError(404, "Review link not found");
+  return json({ data });
+};
+const submitReview = async (req: Request, token: string, admin: SupabaseClient, pepper: string) => {
+  const body = await parseBody(req, MAX_FORM_BODY);
+  if (body.consent !== true) throw new HttpError(400, "consent is required");
+  const firstName = stringValue(body.first_name, 40, "first_name", true);
+  const lastName = stringValue(body.last_name, 60, "last_name");
+  const words = stringValue(body.review, 1200, "review", true);
+  const hash = await reviewHash(token);
+  const keyHash = await sha256(`${pepper}:review:${callerAddress(req)}`);
+  const { data: permitted, error: rateError } = await admin.rpc("consume_listing_inquiry_rate_limit", { p_request_key_hash: keyHash, p_limit: 10, p_window_seconds: 3600 });
+  if (rateError) throw new Error(rateError.message);
+  if (!permitted) throw new HttpError(429, "Too many requests. Please try again later");
+  const { data, error } = await admin.rpc("review_submit", { p_hash: hash, p_first: firstName, p_initial: lastName, p_body: words });
+  if (error) throw new HttpError(400, error.message);
+  if (data !== true) throw new HttpError(410, "This review link has been used or has expired");
+  return json({ message: "Thank you. Your review was sent and will appear after a quick check." }, 201);
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -1117,6 +1175,18 @@ Deno.serve(async (req) => {
     }
     if (parts.length === 1 && parts[0] === "contacts" && req.method === "POST") {
       return await submitContact(req, admin, pepper);
+    }
+    if (parts.length === 1 && parts[0] === "agents" && req.method === "GET") {
+      return await listAgents(new URL(req.url), admin);
+    }
+    if (parts.length === 1 && parts[0] === "agent-check" && req.method === "GET") {
+      return await checkAgent(req, new URL(req.url), admin, pepper);
+    }
+    if (parts.length === 2 && parts[0] === "reviews" && req.method === "GET") {
+      return await getReview(parts[1], admin);
+    }
+    if (parts.length === 2 && parts[0] === "reviews" && req.method === "POST") {
+      return await submitReview(req, parts[1], admin, pepper);
     }
     if (parts.length === 2 && parts[0] === "agents" && req.method === "GET") {
       return await getAgent(req, parts[1], admin, pepper);

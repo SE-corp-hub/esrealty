@@ -1,4 +1,4 @@
-/* Agent websites, Phase 1: the listing function's agent endpoints (run in Node against a fake
+/* Agent websites, Phases 1 to 3: the listing function's agent endpoints (run in Node against a fake
  * database), the fixed town list kept equal to the Value Guide's, and the wiring around them.
  *
  *   node tests/agent_sites_node.js
@@ -33,9 +33,25 @@ c("public_agent and the counter are for the server only",
   && /revoke all on function public\.public_agent\(text\) from public, anon, authenticated;/.test(mig)
   && !/grant execute on function public\.public_agent\(text\) to (anon|authenticated)/.test(mig));
 c("migrations README lists 0015", /0015_agent_sites\.sql/.test(read("supabase/migrations/README.md")));
+c("migrations README lists 0016", /0016_agent_sites_proof\.sql/.test(read("supabase/migrations/README.md")));
+const mig16 = read("supabase/migrations/0016_agent_sites_proof.sql");
+const api = read("supabase/functions/listing-api/index.ts");
+c("0016 says to apply it after 0015", /AFTER 0015/.test(mig16));
+c("the directory, lookup and review functions are for the server only",
+  ["public_agents(text, text, text)", "agent_check(text)", "review_lookup(text)", "review_submit(text, text, text, text)", "agent_public_slug(uuid)", "agent_page_lookup(text)"].every((f) =>
+    new RegExp("revoke all on function public\\." + f.replace(/[()]/g, "\\$&") + " from public, anon, authenticated;").test(mig16)
+    && new RegExp("grant execute on function public\\." + f.replace(/[()]/g, "\\$&") + " to service_role;").test(mig16)));
+c("the directory, check and review routes are wired", /parts\[0\] === "agents" && req\.method === "GET"\) \{\n\s*return await listAgents/.test(api)
+  && /parts\[0\] === "agent-check" && req\.method === "GET"/.test(api) && /parts\[0\] === "reviews" && req\.method === "POST"/.test(api));
+c("a listing's details carry its agent's page address", /admin\.rpc\("agent_public_slug", \{ p_agent: agentId \}\)/.test(api) && /out\.agent_slug = slug/.test(api));
+const sf = read("js/storefront.js");
+c("Listed by links to the agent's page", /'<a href="#\/agents\/' \+ esc\(d\.agent_slug\) \+ '">'/.test(sf));
+c("Find an agent joins the menu only from 8 published agents", /var AGENT_NAV_MIN = 8;/.test(sf) && /if \(publishedAgents < AGENT_NAV_MIN\) return NAV;/.test(sf));
+const lr = read("supabase/functions/location-report/index.ts");
+c("a Value Guide request from an agent's page goes to that agent, found by the server", /admin\.rpc\("agent_page_lookup", \{ p_slug: agentSlug \}\)/.test(lr) && /assigned_to_id: agentId,/.test(lr));
+c("the Value Guide sends the agent's page address", /agent_slug: vgAgent\(\)\.slug,/.test(read("js/estimator.js")));
 
 // The endpoints, run in Node.
-const api = read("supabase/functions/listing-api/index.ts");
 c("the agent routes are wired", /parts\[0\] === "agents" && req\.method === "GET"/.test(api)
   && /parts\[0\] === "agents" && parts\[2\] === "inquiries" && req\.method === "POST"/.test(api)
   && /parts\[0\] === "agents" && parts\[2\] === "taps" && req\.method === "POST"/.test(api));
@@ -44,19 +60,25 @@ c("instant phone alerts load web-push only when needed, so a failure cannot stop
   && /await pushNow\(admin, agentId\);/.test(api) && /await pushNow\(admin, listing\.agent_id as string \| null\);/.test(api));
 c("browsers may send an Idempotency-Key", /"Access-Control-Allow-Headers": "[^"]*idempotency-key"/.test(api));
 const block = api.slice(api.indexOf("// Agent pages (agent websites plan, Phase 1)"), api.indexOf("Deno.serve(async (req) => {"))
-  .replace(/: Record<string, string>/g, "").replace(/: SupabaseClient/g, "").replace(/: Request/g, "").replace(/: string/g, "")
+  .replace(/: Record<string, string>/g, "").replace(/: SupabaseClient/g, "").replace(/: Request/g, "").replace(/: URL/g, "").replace(/: string/g, "")
   .replace(/ as JsonRecord\[\]/g, "").replace(/ as JsonRecord/g, "").replace(/\(l\)/g, "(l)");
 
+const OPEN_TOKEN = "a".repeat(64);
+const OPEN_HASH = crypto.createHash("sha256").update(OPEN_TOKEN).digest("hex");
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const PAGE = { agent_id: "agent-1", slug: "maria-santos", name: "Maria Santos", listings: [{ id: "L1", title: "Corner lot" }] };
 function harness() {
   const calls = [], leads = [], pushed = [];
-  let firstToday = true;
+  let firstToday = true, submitted = false;
   const admin = {
     rpc: async (name, args) => {
       calls.push(name + ":" + JSON.stringify(args));
       if (name === "public_agent") return { data: args.p_slug === "maria-santos" ? PAGE : null, error: null };
       if (name === "consume_listing_inquiry_rate_limit") return { data: firstToday, error: null };
+      if (name === "public_agents") return { data: { total: 2, agents: [{ slug: "maria-santos" }, { slug: "beatriz-lim" }] }, error: null };
+      if (name === "agent_check") return { data: args.p_q === "0012345" ? [{ slug: "maria-santos" }, { slug: "x" }, { slug: "y" }, { slug: "z" }] : [], error: null };
+      if (name === "review_lookup") return { data: args.p_hash === OPEN_HASH ? { agent: "Maria Santos", open: true, status: "open" } : null, error: null };
+      if (name === "review_submit") return { data: args.p_hash === OPEN_HASH && !submitted ? (submitted = true) : false, error: null };
       return { data: null, error: null };
     },
     from: (table) => {
@@ -70,7 +92,7 @@ function harness() {
       return q;
     },
   };
-  const json = (body, status = 200) => ({ status, body });
+  const json = (body, status = 200, headers) => ({ status, body, headers });
   const stringValue = (value, max, field, required = false) => {
     const r = String(value ?? "").trim();
     if (required && !r) throw new HttpError(400, field + " is required");
@@ -80,14 +102,14 @@ function harness() {
   const phoneValue = (v, required) => { const t = stringValue(v, 50, "phone", required); if (t && t.replace(/\D/g, "").length < 7) throw new HttpError(400, "phone is invalid"); return t; };
   const enumValue = (value, allowed, fallback, field) => { const r = String(value ?? fallback).trim().toLowerCase(); if (!allowed.has(r)) throw new HttpError(400, field + " is invalid"); return r; };
   const deps = {
-    HttpError, json, stringValue, phoneValue, enumValue, MAX_FORM_BODY: 32000, PRIVACY_NOTICE_VERSION: "2026-10-01",
+    HttpError, json, stringValue, phoneValue, enumValue, MAX_FORM_BODY: 32000, PRIVACY_NOTICE_VERSION: "2026-10-01", PUBLIC_CACHE: { "Cache-Control": "public, max-age=60" },
     parseBody: async (req) => JSON.parse(req.body || "{}"),
     sha256: async (v) => crypto.createHash("sha256").update(v).digest("hex"),
     callerAddress: () => "1.2.3.4",
     crypto: { randomUUID: () => crypto.randomUUID() },
     pushNow: async (admin, userId) => { pushed.push(userId); return 1; },
   };
-  const fns = new Function(...Object.keys(deps), block + "\nreturn { getAgent, recordAgentTap, submitAgentInquiry };")(...Object.values(deps));
+  const fns = new Function(...Object.keys(deps), block + "\nreturn { getAgent, recordAgentTap, submitAgentInquiry, listAgents, checkAgent, getReview, submitReview };")(...Object.values(deps));
   const req = (url, body, headers) => ({ url: "https://x/api" + url, body: body && JSON.stringify(body), headers: { get: (k) => (headers || {})[k.toLowerCase()] || null } });
   const run = async (fn, ...args) => { try { return await fn(...args); } catch (e) { return { status: e.status || 500, body: { error: e.message } }; } };
   return { fns, req, run, calls, leads, pushed, admin, setFirst: (v) => { firstToday = v; } };
@@ -129,6 +151,45 @@ function harness() {
     h.setFirst(false);
     r = await h.run(h.fns.submitAgentInquiry, h.req("/agents/maria-santos/inquiries", msg, { "idempotency-key": "k2" }), "maria-santos", h.admin, "pepper");
     c("too many messages from one visitor answers 429", r.status === 429);
+
+    // Phase 2: the directory.
+    h = harness();
+    r = await h.run(h.fns.listAgents, new URL("https://x/api/agents?town=lipa-city&need=sell"), h.admin);
+    c("the directory lists published agents, cached for a minute", r.status === 200 && r.body.total === 2 && r.body.data.length === 2 && r.headers["Cache-Control"] === "public, max-age=60", JSON.stringify(r));
+    c("its filters go to the database as given", h.calls.some((x) => x === 'public_agents:{"p_town":"lipa-city","p_need":"sell","p_language":null}'), h.calls.join(" | "));
+    h.calls.length = 0;
+    r = await h.run(h.fns.listAgents, new URL("https://x/api/agents?town=Lipa%20City';--"), h.admin);
+    c("a filter outside the fixed lists' shape is refused without asking the database", r.status === 400 && h.calls.length === 0);
+
+    // Phase 3: check an agent.
+    r = await h.run(h.fns.checkAgent, h.req("/agent-check?q=0012345"), new URL("https://x/api/agent-check?q=0012345"), h.admin, "pepper");
+    c("check-an-agent answers at most three matches", r.status === 200 && r.body.data.length === 3, JSON.stringify(r));
+    r = await h.run(h.fns.checkAgent, h.req("/agent-check?q=0999"), new URL("https://x/api/agent-check?q=0999"), h.admin, "pepper");
+    c("a miss is an empty answer, never a list of people", r.status === 200 && r.body.data.length === 0);
+    r = await h.run(h.fns.checkAgent, h.req("/agent-check"), new URL("https://x/api/agent-check"), h.admin, "pepper");
+    c("an empty check is refused", r.status === 400);
+    h.setFirst(false);
+    r = await h.run(h.fns.checkAgent, h.req("/agent-check?q=0012345"), new URL("https://x/api/agent-check?q=0012345"), h.admin, "pepper");
+    c("too many checks from one visitor answers 429", r.status === 429);
+    h.setFirst(true);
+
+    // Phase 3: reviews. The link's secret is never sent to the database, only its hash.
+    h.calls.length = 0;
+    r = await h.run(h.fns.getReview, OPEN_TOKEN, h.admin);
+    c("an open review link shows whose review it is", r.status === 200 && r.body.data.agent === "Maria Santos" && r.body.data.open === true);
+    c("the database sees the link's hash, not the link", h.calls.every((x) => x.indexOf(OPEN_TOKEN) < 0) && h.calls.some((x) => x.indexOf(OPEN_HASH) >= 0));
+    r = await h.run(h.fns.getReview, "not-a-token", h.admin);
+    c("a malformed link answers 404", r.status === 404);
+    r = await h.run(h.fns.getReview, "b".repeat(64), h.admin);
+    c("an unknown link answers 404", r.status === 404);
+    const words = { first_name: "Rhea", last_name: "Dizon", review: "Maria did the viewing on video and sent the title first.", consent: true };
+    r = await h.run(h.fns.submitReview, h.req("/reviews/x", { ...words, consent: false }), OPEN_TOKEN, h.admin, "pepper");
+    c("no agreement, no review", r.status === 400);
+    r = await h.run(h.fns.submitReview, h.req("/reviews/x", words), OPEN_TOKEN, h.admin, "pepper");
+    c("a review is sent once", r.status === 201);
+    c("the review goes to the database with first name and last name for the initial", h.calls.some((x) => x.startsWith("review_submit") && x.includes('"p_first":"Rhea"') && x.includes('"p_initial":"Dizon"')));
+    r = await h.run(h.fns.submitReview, h.req("/reviews/x", words), OPEN_TOKEN, h.admin, "pepper");
+    c("the same link cannot send a second review", r.status === 410);
   } catch (e) {
     c("the agent endpoints run in Node", false, e && e.stack);
   }

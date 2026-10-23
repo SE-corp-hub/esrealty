@@ -153,6 +153,26 @@
     { href: "#/project-bt", label: "Shophouses" }
   ];
 
+  /* Find an agent joins the menu only once at least 8 agents are published (agent websites plan,
+   * Phase 2), so a thin directory is never advertised. The directory itself works at any count. */
+  var AGENT_NAV_MIN = 8;
+  var publishedAgents = 0;
+  function navItems() {
+    if (publishedAgents < AGENT_NAV_MIN) return NAV;
+    return NAV.slice(0, 2).concat([{ href: "#/agents", label: "Find an agent" }], NAV.slice(2));
+  }
+  function loadAgentCount() {
+    if (!API || !API.agents) return;
+    API.agents({}).then(function (result) {
+      publishedAgents = Number(result && result.total) || 0;
+      if (publishedAgents < AGENT_NAV_MIN) return;
+      Array.prototype.forEach.call(document.querySelectorAll(".sf-nav, [data-sf-menu-panel]"), function (nav) {
+        var props = nav.querySelector('a[href="#/search"]');
+        if (props && !nav.querySelector('a[href="#/agents"]')) props.insertAdjacentHTML("afterend", navLink({ href: "#/agents", label: "Find an agent" }));
+      });
+    }).catch(function () { /* the menu stays as it is */ });
+  }
+
   function navLink(item) {
     return '<a href="' + esc(item.href) + '"' + (item.cta ? ' class="sf-nav-cta"' : "") + (item.est ? ' data-est-services' : "") + '>' + esc(item.label) + '</a>';
   }
@@ -199,13 +219,13 @@
   function header() {
     return '<header class="sf-header"><a class="sf-brand" href="#/home" aria-label="SEA ESTATES home">' +
       '<span class="sf-brand-mark">S.E</span><span><b>SEA ESTATES</b><small>Property &amp; local guidance.</small></span></a>' +
-      '<nav class="sf-nav" aria-label="Primary">' + NAV.map(navLink).join("") +
+      '<nav class="sf-nav" aria-label="Primary">' + navItems().map(navLink).join("") +
       dropDown("Services", SERVICES, "", tourLink("sf-drop-cta")) + dropDown("Project B.T", PROJECT_BT) + '</nav>' +
       /* No public Sign in / Create account: visitors need no account. Agents sign
          in from the footer. */
       '<div class="sf-header-actions">' +
       '<button class="sf-menu-btn" data-sf-menu aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button></div>' +
-      '<div class="sf-menu" data-sf-menu-panel>' + NAV.map(navLink).join("") +
+      '<div class="sf-menu" data-sf-menu-panel>' + navItems().map(navLink).join("") +
       menuGroup("Services", SERVICES, tourLink("sf-nav-cta")) + menuGroup("Project B.T", PROJECT_BT) + '</div></header>';
   }
 
@@ -228,9 +248,10 @@
       '<h2>Information used by the property guide</h2><p>The guide uses property details you enter, such as municipality, barangay, street, BIR classification, lot area, property type, and optional house, ownership, and selling details. The estimate is calculated in your browser. To look for available listing context, the selected municipality and property type may be queried through the Vercel-hosted market-search service; your name and contact details are not needed for that search.</p>' +
       '<h2>When you send an inquiry or request a report</h2><p>We receive the contact details and message you submit, together with the property details and estimate snapshot needed to respond. Requests are recorded in SEA ESTATES CRM and inquiry records hosted by Supabase. Where report delivery is configured, your report and email address are sent through Resend so the report can be delivered.</p>' +
       '<h2>How we use and share information</h2><p>We use submitted information to respond to your request, prepare or deliver a requested report, coordinate a property inquiry with the relevant broker or agent, maintain service records, and protect the service from abuse. Technical request information may also be processed to prevent abuse. We do not sell personal information; Supabase, Vercel, Resend, and any relevant listing agent may process information only to provide the requested service.</p>' +
+      '<h2>Agent pages, the agent directory and reviews</h2><p>Each SEA ESTATES broker or salesperson page shows the details that agent chose to publish and the licence details our office checked. A message sent from an agent\u2019s page, or a Value Guide request started there, goes to that agent and to SEA ESTATES. When you check an agent, the number you type is compared with licence numbers and published contact numbers only, and is used only for that check. If you write a review from a link our office sent you, it is shown with your first name, the first letter of your last name, the town and the month of your deal, only if you agree and after our office checks it.</p>' +
       '<h2>Retention and your choices</h2><p>We keep inquiry and report records for as long as needed to respond, maintain business records, and meet applicable legal obligations. Under the Data Privacy Act, you may exercise applicable rights such as access, correction, objection, or deletion by contacting us through the form above. You may also raise a concern with the National Privacy Commission. Some records may need to be retained where the law requires it.</p>' +
       '<h2>Security and updates</h2><p>We use access controls and reasonable safeguards for the systems that receive inquiry information. This notice may be updated as the website or its service providers change; the date below identifies the latest revision.</p>' +
-      '<p class="sf-privacy-updated">Last updated: 1 October 2026</p></div></section>');
+      '<p class="sf-privacy-updated">Last updated: 23 October 2026</p></div></section>');
   }
 
   /* ------------------------------------------------------------------
@@ -1193,7 +1214,9 @@
     var badges = [];
     if (d.exclusive) badges.push('<span class="sf-trust-badge">Exclusive with SEA ESTATES</span>');
     if (d.docs_checked) badges.push('<span class="sf-trust-badge">Title and tax declaration seen by the agent</span>');
-    var agent = listing.agent_name ? 'Listed by ' + esc(listing.agent_name) + (d.agent_prc ? ', PRC no. ' + esc(d.agent_prc) : '') : (d.agent_prc ? 'PRC no. ' + esc(d.agent_prc) : '');
+    // The name links to the agent's page while that page is public (agent websites, Phase 2).
+    var agentName = listing.agent_name ? (d.agent_slug && /^[a-z0-9-]{1,70}$/.test(d.agent_slug) ? '<a href="#/agents/' + esc(d.agent_slug) + '">' + esc(listing.agent_name) + '</a>' : esc(listing.agent_name)) : '';
+    var agent = agentName ? 'Listed by ' + agentName + (d.agent_prc ? ', PRC no. ' + esc(d.agent_prc) : '') : (d.agent_prc ? 'PRC no. ' + esc(d.agent_prc) : '');
     if (!badges.length && !agent) return '';
     return '<section class="sf-trust" data-sf-trust>' + (badges.length ? '<div class="sf-trust-badges">' + badges.join('') + '</div>' : '') + (agent ? '<p class="sf-trust-agent">' + agent + '</p>' : '') + '</section>';
   }
@@ -1479,7 +1502,9 @@
     "property-value": "Talk to our team | SEA ESTATES",
     "privacy": "Privacy Notice | SEA ESTATES",
     "project-bt": "Project B.T — Coming Soon | SEA ESTATES",
-    "listing": "Property details | SEA ESTATES"
+    "listing": "Property details | SEA ESTATES",
+    "agents": "Find an agent you can check | SEA ESTATES",
+    "review": "Review your agent | SEA ESTATES"
   };
 
   /* Services no longer point at the homepage services section: they are real
@@ -1518,23 +1543,184 @@
       '<p>The agent may have moved on, or their licence check is being renewed. ' + (viewState.error && !/not found/i.test(viewState.error) ? esc(viewState.error) + " " : "") + '</p>' +
       '<p><a class="sf-outline-btn" href="#/search">Browse properties</a> <a class="sf-outline-btn" href="#/property-value?go=form">Contact SEA ESTATES</a></p></section>');
   }
+  // Agent pages and the directory set headlines in Schibsted Grotesk once it loads (Inter until then).
+  function loadAgentFont() {
+    if (document.getElementById("sf-agent-font")) return;
+    var font = document.createElement("link");
+    font.id = "sf-agent-font"; font.rel = "stylesheet";
+    font.href = "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@700;800&display=swap";
+    document.head.appendChild(font);
+  }
   function bindAgentPage() {
     var data = viewState.result && viewState.result.data;
     var root = host && host.querySelector(".ag");
     if (!data || !root || !window.SEA_AGENT_PAGE) return;
     try { document.title = data.name + ", " + data.role_label + " | SEA ESTATES"; } catch (e) {}
-    if (!document.getElementById("sf-agent-font")) {
-      var font = document.createElement("link");
-      font.id = "sf-agent-font"; font.rel = "stylesheet";
-      font.href = "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@700;800&display=swap";
-      document.head.appendChild(font);
-    }
+    loadAgentFont();
     window.SEA_AGENT_PAGE.bind(root, data, { tap: API.agentTap, inquire: API.agentInquire });
+  }
+
+  /* ---- Find an agent (agent websites plan, Phases 2 and 3) --------------------------------
+   * Published agents whose licence check holds, filtered by the fixed lists. Measured reply time
+   * comes first (the server's order); "Most deals" and "Most listings" re-sort here. A number with
+   * no record behind it is left out, never shown as a zero. Nobody pays for a place. */
+  var DIRECTORY_PAGE = 10;
+  var directoryShown = DIRECTORY_PAGE;
+  var DIRECTORY_SORTS = [["", "Fastest reply"], ["deals", "Most deals"], ["listings", "Most listings"]];
+
+  function selectOptions(list, picked, anyLabel) {
+    return (anyLabel ? '<option value="">' + esc(anyLabel) + '</option>' : '') + list.map(function (pair) {
+      return '<option value="' + esc(pair[0]) + '"' + (pair[0] === picked ? ' selected' : '') + '>' + esc(pair[1]) + '</option>';
+    }).join("");
+  }
+  function countLabel(n, word) { return Number(n) + " " + word + (Number(n) === 1 ? "" : "s"); }
+
+  function directoryCard(a) {
+    var P = window.SEA_AGENT_PAGE;
+    var towns = P.labels(P.TOWNS, a.towns), needs = P.labels(P.NEEDS, a.needs), langs = P.labels(P.LANGUAGES, a.languages);
+    var photo = safeImage(a.photo);
+    var href = "#/agents/" + encodeURIComponent(a.slug);
+    var nums = [];
+    if (Number(a.deals) > 0) nums.push('<div><b>' + Number(a.deals) + '</b><span>' + (Number(a.deals) === 1 ? "deal" : "deals") + ' since ' + esc(P.month(a.deals_since)) + '</span></div>');
+    if (Number(a.listing_count) > 0) nums.push('<div><b>' + Number(a.listing_count) + '</b><span>' + (Number(a.listing_count) === 1 ? "listing" : "listings") + '</span></div>');
+    if (Number(a.review_count) > 0) nums.push('<div><b>' + Number(a.review_count) + '</b><span>' + (Number(a.review_count) === 1 ? "review" : "reviews") + '</span></div>');
+    return '<article class="agd-card">' +
+      (photo ? '<img class="agd-photo" src="' + esc(photo) + '" alt="" width="104" height="104" loading="lazy">'
+             : '<div class="agd-photo agd-initials" aria-hidden="true">' + esc(P.initials(a.name)) + '</div>') +
+      '<div class="agd-who"><h2><a href="' + href + '">' + esc(a.name) + '</a></h2>' +
+      '<p class="agd-sub">' + esc(a.role_label) + (towns.length ? ', ' + esc(P.joinWords(towns.slice(0, 2))) + (towns.length > 2 ? ' and nearby' : '') : '') + '.' +
+        (langs.length ? ' Speaks ' + esc(P.joinWords(langs)) + '.' : '') + '</p>' +
+      '<p class="agd-marks"><span class="agd-ok">' + P.icon("check") + 'Licence checked ' + esc(P.day(a.licence_checked_on)) + '</span>' +
+        (a.verified_on ? '<span class="agd-ver">' + P.icon("shield") + 'Verified</span>' : '') + '</p>' +
+      '<p class="agd-line">' + (a.reply ? 'Usually replies ' + esc(a.reply) : 'New on SEA ESTATES') + '</p>' +
+      (needs.length ? '<p class="agd-line">' + esc(needs.join(", ")) + '</p>' : '') + '</div>' +
+      (nums.length ? '<div class="agd-nums">' + nums.join("") + '</div>' : '') +
+      '<a class="agd-btn agd-btn-primary agd-go" href="' + href + '">View website<span class="sr-only">: ' + esc(a.name) + '</span></a></article>';
+  }
+
+  function checkAgentBox() {
+    return '<section class="agd-check" id="agd-check" aria-labelledby="agd-check-h"><h2 id="agd-check-h">Check an agent’s licence</h2>' +
+      '<p>Got a call or a Facebook message from someone who says they work with us? Look them up before you pay anything.</p>' +
+      '<form class="agd-check-form" data-agd-check novalidate><label class="agd-label" for="agd-q">PRC licence number or phone number</label>' +
+      '<input class="agd-input" id="agd-q" name="q" inputmode="tel" autocomplete="off" maxlength="40" aria-describedby="agd-q-help">' +
+      '<p class="agd-help" id="agd-q-help">For example 0012345, or the number that contacted you.</p>' +
+      '<button type="submit" class="agd-btn agd-btn-trust">Check</button></form>' +
+      '<div class="agd-check-result" role="status" aria-live="polite"></div>' +
+      '<p class="agd-warn">SEA ESTATES never asks you to pay into a personal account.</p>' +
+      '<p class="agd-help">You can also check any licence on the PRC website.</p></section>';
+  }
+
+  function directoryPage(params) {
+    var P = window.SEA_AGENT_PAGE;
+    if (!P) return shell('<section class="sf-section"><p>Loading…</p></section>');
+    var town = params.get("town") || "", need = params.get("need") || "", language = params.get("language") || "", sort = params.get("sort") || "";
+    var result = viewState.result || {};
+    var agents = Array.isArray(result.data) ? result.data.slice() : [];
+    if (sort === "deals") agents.sort(function (a, b) { return (Number(b.deals) || 0) - (Number(a.deals) || 0); });
+    if (sort === "listings") agents.sort(function (a, b) { return (Number(b.listing_count) || 0) - (Number(a.listing_count) || 0); });
+    var picked = [["town", P.TOWNS, town], ["need", P.NEEDS, need], ["language", P.LANGUAGES, language]]
+      .map(function (f) { var name = (P.labels(f[1], [f[2]])[0]) || ""; return name ? [f[0], name] : null; }).filter(Boolean);
+    var townName = P.labels(P.TOWNS, [town])[0];
+    var status;
+    if (viewState.loading) status = 'Finding agents…';
+    else if (viewState.error) status = 'Could not load agents. ' + esc(viewState.error);
+    else status = countLabel(agents.length, "agent") + (townName ? ' in ' + esc(townName) : '');
+    var shown = agents.slice(0, directoryShown);
+    var list = viewState.loading ? '<p class="agd-empty" aria-busy="true">Finding agents…</p>'
+      : viewState.error ? '<p class="agd-empty">Could not load agents. Check your connection and <button type="button" class="agd-link" data-agd-retry>try again</button>.</p>'
+      : !agents.length ? '<p class="agd-empty">No agent matches ' + (picked.length ? 'these filters yet. Remove a filter or try a nearby town.' : 'yet.') + '</p>'
+      : shown.map(directoryCard).join("") + (agents.length > shown.length ? '<button type="button" class="agd-btn agd-more" data-agd-more>Show ' + Math.min(DIRECTORY_PAGE, agents.length - shown.length) + ' more agents</button>' : '');
+    return shell('<div class="agd"><section class="agd-top"><div class="agd-in">' +
+      '<h1>Find an agent you can check</h1>' +
+      '<p class="agd-lede">Every agent’s PRC licence is checked by our office before their page goes live. Deal counts come from our own records, and reviews come only from clients with a closed deal.</p>' +
+      '<p class="agd-check-jump">Contacted by someone who says they work with us? <a href="#agd-check" data-sf-scroll="agd-check">Check their licence</a></p>' +
+      '<form class="agd-filters" data-agd-filters aria-label="Filter agents">' +
+      '<label class="agd-label">Town<select class="agd-input" name="town">' + selectOptions(P.TOWNS, town, "All towns") + '</select></label>' +
+      '<label class="agd-label">I need help with<select class="agd-input" name="need">' + selectOptions(P.NEEDS, need, "Anything") + '</select></label>' +
+      '<label class="agd-label">Language<select class="agd-input" name="language">' + selectOptions(P.LANGUAGES, language, "Any language") + '</select></label>' +
+      '<label class="agd-label">Sort by<select class="agd-input" name="sort">' + selectOptions(DIRECTORY_SORTS, sort) + '</select></label>' +
+      '<button type="submit" class="agd-btn agd-btn-primary">Show agents</button></form>' +
+      '<div class="agd-status"><span role="status">' + status + '</span>' + picked.map(function (f) {
+        return '<button type="button" class="agd-chip" data-agd-remove="' + f[0] + '"><span class="sr-only">Remove filter: </span>' + esc(f[1]) + '<span class="agd-x" aria-hidden="true">×</span></button>';
+      }).join("") + '</div></div></section>' +
+      '<div class="agd-in agd-body"><section class="agd-list" aria-label="Agents">' + list +
+      '<div class="agd-fallback"><p>Not finding the right person? Try a nearby town, or tell our team what you need and we will match you with an agent.</p>' +
+      '<a class="agd-btn" href="#/property-value?service=broker&amp;go=form">Ask our team</a></div></section>' +
+      '<aside class="agd-aside">' + checkAgentBox() +
+      '<section class="agd-box" aria-labelledby="agd-how-h"><h2 id="agd-how-h">How we check an agent</h2><ol>' +
+      '<li><b>Licence checked</b> against the PRC record before the page goes live: every agent.</li>' +
+      '<li><b>Verified badge:</b> government ID seen and phone confirmed by our office: shown when done.</li></ol>' +
+      '<p>No agent pays to be here. Agents with a measured reply time come first, then the most recently updated pages. When a licence expires, the agent’s page comes down until it is renewed.</p></section>' +
+      '<section class="agd-box agd-join" aria-labelledby="agd-join-h"><h2 id="agd-join-h">Licensed agent?</h2><p>Get your own website and appear here, free.</p>' +
+      '<button type="button" class="agd-btn agd-btn-primary" data-sf-auth="signup">Join as an agent</button></section></aside></div></div>');
+  }
+
+  function directoryGo(form) {
+    var params = new URLSearchParams();
+    ["town", "need", "language", "sort"].forEach(function (name) { var v = form.elements[name] && form.elements[name].value; if (v) params.set(name, v); });
+    var qs = params.toString();
+    go("agents" + (qs ? "?" + qs : ""));
+  }
+
+  function checkAgent(form) {
+    var box = form.closest(".agd-check");
+    var out = box.querySelector(".agd-check-result");
+    var q = String(form.elements.q.value || "").trim();
+    var phone = siteContact.phone ? ' on <a href="tel:' + encodeURIComponent(telHref(siteContact.phone)) + '">' + esc(siteContact.phone) + '</a>' : '';
+    if (q.replace(/\D/g, "").length < 5) { out.innerHTML = '<p class="agd-result agd-result-miss">Enter a licence number or a full phone number.</p>'; form.elements.q.focus(); return; }
+    var button = form.querySelector("button");
+    button.disabled = true; out.innerHTML = '<p class="agd-result">Checking…</p>';
+    API.agentCheck(q).then(function (result) {
+      var found = (result && result.data) || [];
+      var P = window.SEA_AGENT_PAGE;
+      out.innerHTML = found.length ? found.map(function (a) {
+        return '<div class="agd-result agd-result-hit"><p><b>' + esc(a.name) + '</b>, ' + esc(a.role_label) + ', licence no. ' + esc(a.licence_no) + '.' +
+          (a.verified_on ? ' Verified on ' + esc(P.day(a.verified_on)) + '.' : '') + '</p>' +
+          '<p>This matches a published SEA ESTATES agent. If they contacted you, check that the number is on <a href="#/agents/' + encodeURIComponent(a.slug) + '">their page</a>.</p></div>';
+      }).join("") : '<p class="agd-result agd-result-miss">No published agent matches. Call our office' + phone + ' before paying anything.</p>';
+    }).catch(function (error) {
+      out.innerHTML = '<p class="agd-result agd-result-miss">' + (error && error.status === 429 ? 'Too many checks from this connection. Try again in an hour, or call our office' + phone + '.'
+        : 'Could not check right now. Call our office' + phone + ' before paying anything.') + '</p>';
+    }).finally(function () { button.disabled = false; });
+  }
+
+  /* ---- A client's review (Phase 3): the one-time link from our office ---------------------- */
+  var reviewSent = false;
+  function reviewPage(token) {
+    var data = viewState.result && viewState.result.data;
+    var help = '<p><a class="sf-outline-btn" href="#/property-value?go=form">Contact SEA ESTATES</a></p>';
+    if (viewState.loading) return shell('<section class="sf-section sf-review" aria-busy="true"><p>Opening your review link…</p></section>');
+    if (!data) return shell('<section class="sf-section sf-review"><h1>This review link does not work</h1><p>Check that you opened the whole link from our message. Each link works once and for 30 days. Ask our office for a new one.</p>' + help + '</section>');
+    var first = String(data.agent || "your agent").split(/\s+/)[0];
+    if (reviewSent) return shell('<section class="sf-section sf-review"><div class="sf-review-done" role="status" tabindex="-1"><h1>Thank you</h1><p>Your review was sent. It appears on ' + esc(data.agent) + '’s page after a quick check by our office.</p></div></section>');
+    if (!data.open) return shell('<section class="sf-section sf-review"><h1>' + (data.status === "used" ? "This review has already been sent" : "This review link has expired") + '</h1><p>' +
+      (data.status === "used" ? "Each link works once. Thank you for your review." : "Links work for 30 days. Ask our office for a new one.") + '</p>' + help + '</section>');
+    return shell('<section class="sf-section sf-review"><h1>Review ' + esc(data.agent) + '</h1>' +
+      '<p class="sf-review-lede">Your review helps other buyers and sellers in Batangas. Our office checks it, then it appears on ' + esc(first) + '’s page with your first name, the first letter of your last name, the town and the month of your deal. There are no star ratings.</p>' +
+      '<form class="sf-review-form" data-sf-review="' + esc(token) + '" novalidate>' +
+      '<label>First name<input name="first_name" required maxlength="40" autocomplete="given-name"></label>' +
+      '<label>Last name<input name="last_name" maxlength="60" autocomplete="family-name" aria-describedby="sf-review-last"><small id="sf-review-last">Only the first letter is shown.</small></label>' +
+      '<label>Your review<textarea name="review" rows="6" required minlength="20" maxlength="1200" data-msg="Write at least a sentence about ' + esc(first) + ' (20 characters or more)." placeholder="What did ' + esc(first) + ' do well? What should other clients know?"></textarea></label>' +
+      '<label class="sf-consent"><input type="checkbox" name="consent" required data-msg="Tick this box so we may show your review."><span>I agree that SEA ESTATES may show this review on ' + esc(data.agent) + '’s page with my first name, the first letter of my last name, the town and the month of my deal, as the <a href="#/privacy">privacy notice</a> explains.</span></label>' +
+      '<button type="submit" class="sf-primary-btn">Send my review</button><p class="sf-form-status" aria-live="polite"></p></form></section>');
+  }
+
+  /* ---- The Value Guide started from an agent's page (#/home?agent=<slug>) ------------------ */
+  function showValueGuideAgent(params) {
+    var slug = String(params.get("agent") || "").toLowerCase();
+    if (slug.length > 70 || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) { window.ESREALTY_VG_AGENT = null; return; }
+    var name = "";
+    try { var saved = JSON.parse(sessionStorage.getItem("esrealty_vg_agent_v1") || "null"); if (saved && saved.slug === slug) name = String(saved.name || ""); } catch (e) {}
+    window.ESREALTY_VG_AGENT = { slug: slug, name: name };
+    var guide = host && host.querySelector("#sf-estimator");
+    if (!guide || host.querySelector(".sf-vg-agent")) return;
+    guide.insertAdjacentHTML("beforebegin", '<div class="sf-vg-agent" role="note"><p>Your Value Guide request goes to ' + (name ? '<b>' + esc(name) + '</b>, whose page you came from' : 'the agent whose page you came from') +
+      '. Our office prepares the report. <a href="#/agents/' + esc(slug) + '">Back to ' + (name ? esc(name.split(/\s+/)[0]) + '’s' : 'their') + ' page</a></p></div>');
   }
 
   function setTitle(path, params) {
     try {
-      var key = path.indexOf("listing/") === 0 ? "listing" : path;
+      var key = path.indexOf("listing/") === 0 ? "listing" : path.indexOf("review/") === 0 ? "review" : path;
       var next = PAGE_TITLES[key] || PAGE_TITLES.home;
       if (key === "property-value") {
         var service = String((params && params.get("service")) || "").toLowerCase();
@@ -1575,11 +1761,18 @@
     else if (current.path === "property-value") host.innerHTML = propertyValuePage(current.params);
     else if (current.path.indexOf("listing/") === 0) host.innerHTML = detailPage(viewState.result && viewState.result.data);
     else if (current.path.indexOf("agents/") === 0) host.innerHTML = agentPage();
+    else if (current.path === "agents") host.innerHTML = directoryPage(current.params);
+    else if (current.path.indexOf("review/") === 0) host.innerHTML = reviewPage(current.path.slice(7));
     else if (current.path === "search") host.innerHTML = searchPage(current.params);
     else if (current.path === "compare") host.innerHTML = comparisonPage();
     else host.innerHTML = home();
     setTitle(current.path, current.params);
     if (current.path.indexOf("agents/") === 0) bindAgentPage();
+    if (current.path === "agents") loadAgentFont();
+    if (current.path === "agents" && current.params.get("check") === "1") {
+      setTimeout(function () { var box = document.getElementById("agd-check"); if (box) { box.scrollIntoView({ block: "start" }); var q = box.querySelector("input"); if (q) q.focus({ preventScroll: true }); } }, 60);
+    }
+    if (current.path === "home" || current.path === "") showValueGuideAgent(current.params);
     syncSearchFilters();
     if (current.path === "search") {
       compareReturn = location.hash;
@@ -1664,6 +1857,15 @@
     var pending;
     if (current.path.indexOf("listing/") === 0) pending = API.get(current.path.slice(8));
     else if (current.path.indexOf("agents/") === 0) pending = API.agent(current.path.slice(7));
+    else if (current.path === "agents") {
+      var agentFilters = {};
+      ["town", "need", "language"].forEach(function (name) { var v = current.params.get(name); if (v && /^[a-z-]{2,40}$/.test(v)) agentFilters[name] = v; });
+      directoryShown = DIRECTORY_PAGE;
+      pending = API.agents(agentFilters);
+    } else if (current.path.indexOf("review/") === 0) {
+      reviewSent = false;
+      pending = API.review(current.path.slice(7));
+    }
     else if (current.path === "search") {
       var filters = {};
       current.params.forEach(function (value, name) { filters[name] = value; });
@@ -1852,6 +2054,15 @@
       if (back) { history.length > 1 ? history.back() : go("search"); return; }
       var mode = event.target.closest("[data-sf-mode]");
       if (mode) { viewState.mode = mode.getAttribute("data-sf-mode"); renderCurrent(); return; }
+      var agdRemove = event.target.closest("[data-agd-remove]");
+      if (agdRemove) { var rr = route(); rr.params.delete(agdRemove.getAttribute("data-agd-remove")); var rq = rr.params.toString(); go("agents" + (rq ? "?" + rq : "")); return; }
+      if (event.target.closest("[data-agd-more]")) {
+        var before = host.querySelectorAll(".agd-card").length;
+        directoryShown += DIRECTORY_PAGE; renderCurrent();
+        var next = host.querySelectorAll(".agd-card h2 a")[before]; if (next) next.focus();
+        return;
+      }
+      if (event.target.closest("[data-agd-retry]")) { loadCurrent(true); return; }
       var page = event.target.closest("[data-sf-page]");
       if (page && !page.disabled) { var r = route(); r.params.set("page", page.getAttribute("data-sf-page")); go("search?" + r.params.toString()); }
     });
@@ -1878,9 +2089,10 @@
         var bad = !el.checkValidity();
         if (!bad && el.name === "phone" && el.value.trim()) bad = String(el.value).replace(/\D/g, "").length < 10;
         if (!bad) return;
-        var msg = FIELD_MSG[el.name] || "Fill in this field.";
+        var msg = el.getAttribute("data-msg") || FIELD_MSG[el.name] || "Fill in this field.";
         if (el.name === "email" && el.value.trim()) msg = "That email does not look complete. Use the form name@example.com.";
         if (el.name === "phone" && el.value.trim()) msg = "That number looks too short. Use the form 0917 123 4567.";
+        if (el.name === "first_name") msg = "Enter your first name.";
         var err = document.createElement("span");
         err.className = "sf-field-err"; err.id = "sf-err-" + el.name + "-" + Math.random().toString(36).slice(2, 7); err.textContent = msg;
         (el.closest("label") || el.parentNode).appendChild(err);
@@ -1912,6 +2124,28 @@
 
     document.addEventListener("submit", function (event) {
       if (!active) return;
+      var agdFilters = event.target.closest("[data-agd-filters]");
+      if (agdFilters) { event.preventDefault(); directoryGo(agdFilters); return; }
+      var agdCheck = event.target.closest("[data-agd-check]");
+      if (agdCheck) { event.preventDefault(); checkAgent(agdCheck); return; }
+      var review = event.target.closest("[data-sf-review]");
+      if (review) {
+        event.preventDefault();
+        if (!checkFields(review)) return;
+        var reviewStatus = review.querySelector(".sf-form-status"), reviewButton = review.querySelector("button[type=submit]"), reviewData = new FormData(review);
+        reviewButton.disabled = true; reviewStatus.textContent = "Sending…"; reviewStatus.className = "sf-form-status";
+        API.sendReview(review.getAttribute("data-sf-review"), {
+          first_name: reviewData.get("first_name"), last_name: reviewData.get("last_name"), review: reviewData.get("review"), consent: reviewData.get("consent") === "on"
+        }).then(function () {
+          reviewSent = true; renderCurrent();
+          var done = host.querySelector(".sf-review-done"); if (done) done.focus();
+        }).catch(function (error) {
+          reviewButton.disabled = false;
+          reviewStatus.textContent = (error && error.status === 410 ? "This link has already been used or has expired." : (error && error.message ? error.message + " " : "") + "Your review is still here. Check your connection and press Send again.");
+          reviewStatus.className = "sf-form-status error";
+        });
+        return;
+      }
       var search = event.target.closest("[data-sf-search]");
       if (search) {
         event.preventDefault(); var params = new URLSearchParams(new FormData(search));
@@ -2016,12 +2250,12 @@
       host = options.host; openAuth = options.openAuth || openAuth; active = true;
       document.body.classList.remove("sf-has-sticky");
       document.body.classList.add("storefront-active");
-      bind(); loadSiteContact(); loadCurrent();
+      bind(); loadSiteContact(); loadAgentCount(); loadCurrent();
     },
     unmount: function () {
       active = false; destroyDetailMap(); cacheKey = "";
       document.body.classList.remove("storefront-active", "sf-has-sticky");
     },
-    refresh: function () { cacheKey = ""; loadCurrent(true); }
+    refresh: function () { cacheKey = ""; loadAgentCount(); loadCurrent(true); }
   };
 })();

@@ -2749,6 +2749,11 @@ return {
     return String(window.ESREALTY_API_BASE).replace(/\/listing-api\/api$/, "/location-report");
   }
 
+  function vgAgent() {
+    var a = typeof window !== "undefined" && window.ESREALTY_VG_AGENT;
+    return { slug: a && a.slug ? String(a.slug) : "", name: a && a.name ? String(a.name) : "" };
+  }
+
   function submitLead(form) {
     var status = form.querySelector("[data-est-lead-status]");
     var button = form.querySelector("button[type=submit]");
@@ -2780,6 +2785,9 @@ return {
         : "valuation-report",
       message: message.join(" | "),
       notes: notes ? String(notes) : "",
+      /* Started from an agent's page (storefront sets this from #/home?agent=<slug>): the
+         server sends the request to that agent. */
+      agent_slug: vgAgent().slug,
       report: {
         property: {
           purpose: est.purpose, type: snap ? snap.type : est.type,
@@ -2860,7 +2868,10 @@ return {
       form.reset();
       delete form.dataset.estIdempotencyKey;
       // Saving is all the website does: the team calls, then sends the report.
-      var confirmMsg = est.leadKind === "broker"
+      var agentFirst = vgAgent().name.split(/\s+/)[0];
+      var confirmMsg = agentFirst
+        ? "Your request has been saved and sent to " + vgAgent().name + ". " + agentFirst + " will call you to confirm your details."
+        : est.leadKind === "broker"
         ? "Your request has been saved. A licensed SEA ESTATES broker will call you."
         : est.leadKind === "appraisal"
           ? "Your request has been saved. The SEA ESTATES team will call you to confirm your details and arrange the consultation."
