@@ -10,7 +10,7 @@ let passed = 0;
 const ok = (name, cond, detail) => { assert.ok(cond, name + (detail ? "  " + detail : "")); passed++; console.log("[PASS] " + name); };
 
 // ---- listing-api -------------------------------------------------------------------------------
-const api = read("supabase/functions/listing-api/index.ts");
+const api = read("supabase/functions/listing-api/index.ts") + "\n" + read("supabase/functions/listing-api/agents.ts");
 const likeSrc = /const likeLiteral = [^\n]*/.exec(api)[0].replace("(value: string)", "(value)");
 const { likeLiteral } = new Function(likeSrc + "\nreturn { likeLiteral };")();
 ok("text filter: a plain place name is unchanged", likeLiteral("Lipa City") === "Lipa City");

@@ -55,7 +55,7 @@ const runGet = async (query) => {
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "L1", agent_id: null }, error: null }) }) }) }),
     rpc: async (name) => { rpcs.push(name); return { data: true, error: null }; },
   };
-  const deps = { json: (body) => body, publicDetails: async () => ({}), sha256: async () => "h", callerAddress: () => "1.2.3.4", HttpError: Error, PUBLIC_LISTING_COLUMNS: "*" };
+  const deps = { json: (body) => body, publicDetails: async () => ({}), firstToday: async () => { rpcs.push("first-today"); return true; }, callerAddress: () => "1.2.3.4", HttpError: Error, PUBLIC_LISTING_COLUMNS: "*" };
   const getListing = new Function(...Object.keys(deps), getSrc + "\nreturn getListing;")(...Object.values(deps));
   const body = await getListing({ url: "https://x/functions/v1/listing-api/api/listings/L1" + query }, "L1", admin, "pepper");
   return { body, rpcs };

@@ -18241,27 +18241,20 @@ if (!Array.isArray(state.portfolioAuditEvents)) state.portfolioAuditEvents = [];
       if (idBox.checked || v.id_seen) row.id_seen = idBox.checked;
       if (phoneBox.checked || v.phone_confirmed) row.phone_confirmed = phoneBox.checked;
       const recheck = !!(ov.querySelector("#lc-recheck") || {}).checked;
-      // A new number or name clears the ID and phone checks (migration 0016); ticks given with the change
-      // are saved in a second step, as a fresh check.
-      const newIdentity = !!v.agent_id && (row.licence_no !== String(v.licence_no || "").trim() || row.prc_name !== String(v.prc_name || "").trim());
-      const reTick = newIdentity && (row.id_seen || row.phone_confirmed) ? { agent_id: u.id, id_seen: !!row.id_seen, phone_confirmed: !!row.phone_confirmed } : null;
       const problem = row.licence_no.length < 3 ? "Enter the licence or accreditation number." : row.prc_name.length < 3 ? "Enter the name as it appears on the PRC record." : !row.valid_until ? "Enter the date the licence is valid until." : "";
       if (problem) { err.textContent = problem; return; }
       try {
         if (currentUser.demo) LICENCE_DEMO[u.id] = Object.assign({ checked_at: new Date().toISOString() }, row);
         else {
-          let r = await SB.from("agent_verifications").upsert(reTick ? Object.assign({}, row, { id_seen: false, phone_confirmed: false }) : row, { onConflict: "agent_id" }).select().single();
+          // One call, one transaction: the database applies the date and re-check rules (migration 0018).
+          const r = await SB.rpc("licence_check_save", { p_agent: u.id, p_fields: row, p_recheck: recheck });
           if (r.error) throw r.error;
-          if (reTick) { r = await SB.from("agent_verifications").update(reTick).eq("agent_id", u.id).select().single(); if (r.error) throw r.error; }
-          // A plain update (not the upsert, whose insert step stamps a date first): empty means "today".
-          if (recheck) { r = await SB.from("agent_verifications").update({ checked_at: null }).eq("agent_id", u.id).select().single(); if (r.error) throw r.error; }
           licenceChecks[u.id] = r.data;
         }
         close(); toast("Licence check saved"); render({ keepScroll: true });
       } catch (x) {
         const msg = String((x && x.message) || x || "");
-        err.textContent = /id_seen|phone_confirmed/i.test(msg) ? "The Verified checks need database migration 0016 first."
-          : /agent_verifications|does not exist|schema cache/i.test(msg) ? "Licence checks need database migration 0015 first." : friendlyErr(msg);
+        err.textContent = /licence_check_save|does not exist|schema cache/i.test(msg) ? "Licence checks need database migration 0018 first." : friendlyErr(msg);
       }
     });
   }
@@ -20165,10 +20158,11 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     else if (currentUser) { add(currentUser.id, currentUser.name || currentUser.email); brokerTeamMembers().forEach(m => add(m.id, m.name)); }
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }
-  function dealAgentSelect(id, chosenId, chosenName, label) {
+  function dealAgentSelect(id, chosenId, chosenName, label, locked) {
     const list = dealAgentChoices();
     if (chosenId && !list.some(x => x.id === String(chosenId))) list.unshift({ id: String(chosenId), name: chosenName || "Someone no longer on the team" });
-    return '<div class="field"><label for="' + id + '">' + label + '</label><select class="input" id="' + id + '"><option value="">None, or not one of ours</option>' +
+    // Credit is fixed at closing (migration 0018): only a Super Admin changes the agents on a closed deal.
+    return '<div class="field"><label for="' + id + '">' + label + '</label><select class="input" id="' + id + '"' + (locked ? ' disabled title="Fixed at closing. A Super Admin can correct it."' : "") + '><option value="">None, or not one of ours</option>' +
       list.map(x => '<option value="' + esc(x.id) + '"' + (String(chosenId || "") === x.id ? " selected" : "") + ">" + esc(x.name) + "</option>").join("") + "</select></div>";
   }
   async function openReviewLink(dealId, agentId) {
@@ -20212,6 +20206,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     if (!txCanManage()) { toast("You don't have permission to manage transactions", "err"); return; }
     closeTxModal();
     const t = id ? transactionScope().find(x => x.id === id) || {} : {};
+    const agentsLocked = (t.stage === "doas" || t.stage === "done") && !roleIs("super-admin");
     const listOpts = '<option value="">No linked listing</option>' + (state.listings || []).map(x => '<option value="' + esc(x.id) + '"' + (t.listingId === x.id ? " selected" : "") + ">" + esc(x.title) + "</option>").join("");
     const body =
       '<div class="grid grid-2">' +
@@ -20224,8 +20219,8 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       '<div class="field"><label>Referral (if any)</label><input class="input" id="tx-referral" type="text" value="' + esc(t.referralName || "") + '"></div>' +
       '<div class="field"><label for="tx-kind">Deal type</label><select class="input" id="tx-kind"><option value="sale"' + (t.dealKind === "rental" ? "" : " selected") + '>Sale</option><option value="rental"' + (t.dealKind === "rental" ? " selected" : "") + ">Rental (lease)</option></select></div>" +
       '<div class="field"></div>' +
-      dealAgentSelect("tx-buyer-agent", t.buyerAgentId, t.buyerAgentName, "Buyer's or tenant's agent") +
-      dealAgentSelect("tx-seller-agent", t.sellerAgentId, t.sellerAgentName, "Seller's or landlord's agent") +
+      dealAgentSelect("tx-buyer-agent", t.buyerAgentId, t.buyerAgentName, "Buyer's or tenant's agent", agentsLocked) +
+      dealAgentSelect("tx-seller-agent", t.sellerAgentId, t.sellerAgentName, "Seller's or landlord's agent", agentsLocked) +
       '<fieldset class="field tx-consent" style="grid-column:span 2"><legend>Agent websites</legend>' +
       '<p class="field-hint">Closed deals are counted on the agents\' pages. Tick these only if the client agreed.</p>' +
       '<label class="site-check"><input type="checkbox" id="tx-show-deal"' + (t.showDeal ? " checked" : "") + "> The client agreed to list this deal (month, property type and town, no names)</label>" +

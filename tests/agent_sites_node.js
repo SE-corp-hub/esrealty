@@ -35,7 +35,8 @@ c("public_agent and the counter are for the server only",
 c("migrations README lists 0015", /0015_agent_sites\.sql/.test(read("supabase/migrations/README.md")));
 c("migrations README lists 0016", /0016_agent_sites_proof\.sql/.test(read("supabase/migrations/README.md")));
 const mig16 = read("supabase/migrations/0016_agent_sites_proof.sql");
-const api = read("supabase/functions/listing-api/index.ts");
+// The listing function: its router (index.ts) and the agent routes (agents.ts).
+const api = read("supabase/functions/listing-api/index.ts") + "\n" + read("supabase/functions/listing-api/agents.ts");
 c("0016 says to apply it after 0015", /AFTER 0015/.test(mig16));
 c("the directory, lookup and review functions are for the server only",
   ["public_agents(text, text, text)", "agent_check(text)", "review_lookup(text)", "review_submit(text, text, text, text)", "agent_public_slug(uuid)", "agent_page_lookup(text)"].every((f) =>
@@ -60,14 +61,15 @@ c("instant phone alerts load web-push only when needed, so a failure cannot stop
   /const loadWebPush = async \(\) => \(await import\("npm:web-push@3\.6\.7"\)\)\.default;/.test(api) && !/^import .*web-push/m.test(api)
   && /await pushNow\(admin, agentId\);/.test(api) && /await pushNow\(admin, listing\.agent_id as string \| null\);/.test(api));
 c("browsers may send an Idempotency-Key", /"Access-Control-Allow-Headers": "[^"]*idempotency-key"/.test(api));
-const block = api.slice(api.indexOf("// Agent pages (agent websites plan, Phase 1)"), api.indexOf("Deno.serve(async (req) => {"))
-  .replace(/: Record<string, string>/g, "").replace(/: SupabaseClient/g, "").replace(/: Request/g, "").replace(/: URL/g, "").replace(/: unknown/g, "").replace(/: string/g, "")
-  .replace(/ as JsonRecord\[\]/g, "").replace(/ as JsonRecord/g, "").replace(/\(l\)/g, "(l)");
+// The real modules, with their types removed by Node itself.
+const { stripTypeScriptTypes } = require("node:module");
+const loadTs = (p) => import("data:text/javascript;base64," + Buffer.from(stripTypeScriptTypes(read(p))).toString("base64"));
 
 const OPEN_TOKEN = "a".repeat(64);
 const OPEN_HASH = crypto.createHash("sha256").update(OPEN_TOKEN).digest("hex");
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const PAGE = { agent_id: "agent-1", slug: "maria-santos", name: "Maria Santos", listings: [{ id: "L1", title: "Corner lot" }] };
+let agentRoutes, makeLimits; // loaded below
 function harness() {
   const calls = [], leads = [], pushed = [];
   let firstToday = true, submitted = false;
@@ -108,10 +110,9 @@ function harness() {
     parseBody: async (req) => JSON.parse(req.body || "{}"),
     sha256: async (v) => crypto.createHash("sha256").update(v).digest("hex"),
     callerAddress: () => "1.2.3.4",
-    crypto: { randomUUID: () => crypto.randomUUID() },
     pushNow: async (admin, userId) => { pushed.push(userId); return 1; },
   };
-  const fns = new Function(...Object.keys(deps), block + "\nreturn { getAgent, recordAgentTap, submitAgentInquiry, listAgents, checkAgent, getReview, submitReview };")(...Object.values(deps));
+  const fns = agentRoutes({ ...deps, ...makeLimits(deps.sha256, HttpError) });
   const req = (url, body, headers) => ({ url: "https://x/api" + url, body: body && JSON.stringify(body), headers: { get: (k) => (headers || {})[k.toLowerCase()] || null } });
   const run = async (fn, ...args) => { try { return await fn(...args); } catch (e) { return { status: e.status || 500, body: { error: e.message } }; } };
   return { fns, req, run, calls, leads, pushed, admin, setFirst: (v) => { firstToday = v; } };
@@ -119,6 +120,8 @@ function harness() {
 
 (async () => {
   try {
+    ({ agentRoutes } = await loadTs("supabase/functions/listing-api/agents.ts"));
+    ({ makeLimits } = await loadTs("supabase/functions/listing-api/limits.ts"));
     let h = harness();
     let r = await h.run(h.fns.getAgent, h.req("/agents/maria-santos"), "maria-santos", h.admin, "pepper");
     c("a published agent's page is returned without their account id", r.status === 200 && r.body.data.name === "Maria Santos" && !("agent_id" in r.body.data), JSON.stringify(r));

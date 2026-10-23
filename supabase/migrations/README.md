@@ -74,6 +74,9 @@ one-time links that a Super Admin approves) follows `0015`.
 a 3-year window on the track record, agents reading the deals that credit them, Viber on directory
 cards, the page's preview image, sign-up licence details in Users & Access, and expired pre-selling
 listings leaving the public catalog) follows `0016`.
+`0018_agent_sites_tidy.sql` (agent websites, tidy-up after the code review: one rule for a public
+page, typed deal columns kept from the deal and fixed at closing, one rule for the closed deals that
+credit an agent, and saving a licence check in one call) follows `0017`.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses
