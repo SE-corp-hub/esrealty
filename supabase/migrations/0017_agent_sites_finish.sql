@@ -3,7 +3,8 @@
 --
 --   Track record     rental deals are counted on their own ("rentals"), and once an agent has 36
 --                    months of records the record covers the last 3 years ("in 3 years").
---   Agents' deals    an agent can read the deals that credit them (read-only), within the team.
+--   Agents' deals    an approved agent or broker can read the deals that credit them, within the
+--                    team, through agent_credited_deals() (no documents; nothing to change).
 --   Directory        cards carry the Viber number the agent published, for a Viber button.
 --   Preview image    a page keeps the 1200 x 630 image made when it is published (og_image).
 --   Sign-up          Users & Access shows the licence number and supervising broker a broker or
@@ -62,11 +63,21 @@ begin
 end $function$;
 
 -- 2. Agents read the deals that credit them -----------------------------------------------------
-grant execute on function public.deal_credit_ok(uuid, uuid) to authenticated;
+-- A function rather than a row rule: a row rule would also open the deal's stored documents (the
+-- storage rule follows who can see the deal) and would apply to any account named on a deal.
+-- Here only an approved agent or broker gets their credited deals, without the document list.
 drop policy if exists "broker_transactions select credited agent" on public.broker_transactions;
-create policy "broker_transactions select credited agent" on public.broker_transactions as permissive for select to authenticated
-  using ((payload ->> 'buyerAgentId' = auth.uid()::text or payload ->> 'sellerAgentId' = auth.uid()::text)
-         and public.deal_credit_ok(broker_id, auth.uid()));
+create or replace function public.agent_credited_deals() returns jsonb
+language sql stable security definer set search_path to 'public' as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', t.id, 'payload', t.payload - 'documents', 'broker_id', t.broker_id,
+                                               'created_by', t.created_by, 'updated_at', t.updated_at) order by t.updated_at desc), '[]'::jsonb)
+    from public.broker_transactions t
+   where exists (select 1 from public.profiles me where me.id = auth.uid() and me.registration_status = 'approved' and me.role::text in ('agent', 'broker'))
+     and (t.payload ->> 'buyerAgentId' = auth.uid()::text or t.payload ->> 'sellerAgentId' = auth.uid()::text)
+     and public.deal_credit_ok(t.broker_id, auth.uid()) $$;
+revoke all on function public.agent_credited_deals() from public, anon;
+grant execute on function public.agent_credited_deals() to authenticated;
+revoke all on function public.deal_credit_ok(uuid, uuid) from public, anon, authenticated;
 
 -- 3. Directory: the published Viber number ------------------------------------------------------
 create or replace function public.public_agents(p_town text default null, p_need text default null, p_language text default null)
@@ -218,7 +229,8 @@ create or replace view public.public_listing_catalog with (security_barrier=true
   WHERE listing.is_published
     AND NOT (listing.status = 'pre-selling'
              AND COALESCE(listing.payload ->> 'licenseToSellUntil', '') ~ '^\d{4}-\d{2}-\d{2}$'
-             AND (listing.payload ->> 'licenseToSellUntil')::date < (now() AT TIME ZONE 'Asia/Manila')::date);
+             -- Compared as text, so a malformed date can never break the catalog for everyone.
+             AND (listing.payload ->> 'licenseToSellUntil') < to_char((now() AT TIME ZONE 'Asia/Manila')::date, 'YYYY-MM-DD'));
 
 revoke all on function public.agent_record(uuid) from public, anon, authenticated;
 revoke all on function public.public_agents(text, text, text) from public, anon, authenticated;

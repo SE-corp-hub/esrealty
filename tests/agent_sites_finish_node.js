@@ -69,7 +69,12 @@ const m17 = read("supabase/migrations/0017_agent_sites_finish.sql");
 c("0017 says to apply it after 0016", /AFTER 0016/.test(m17));
 c("0017 keeps the directory for the server only", /revoke all on function public\.public_agents\(text, text, text\) from public, anon, authenticated;/.test(m17)
   && /grant execute on function public\.public_agents\(text, text, text\) to service_role;/.test(m17));
-c("agents read only the deals that credit them, within the team", /for select to authenticated\s+using \(\(payload ->> 'buyerAgentId' = auth\.uid\(\)::text or payload ->> 'sellerAgentId' = auth\.uid\(\)::text\)\s+and public\.deal_credit_ok\(broker_id, auth\.uid\(\)\)\);/.test(m17));
+c("agents get their credited deals from a function, not a row rule, and the team check stays closed",
+  /create or replace function public\.agent_credited_deals\(\)/.test(m17) && /t\.payload - 'documents'/.test(m17) && !/create policy "broker_transactions select credited agent"/.test(m17)
+  && /revoke all on function public\.deal_credit_ok\(uuid, uuid\) from public, anon, authenticated;/.test(m17) && !/grant execute on function public\.deal_credit_ok/.test(m17));
+c("the catalog compares the licence date as text, so a bad date cannot break it", /\(listing\.payload ->> 'licenseToSellUntil'\) < to_char\(/.test(m17) && !/licenseToSellUntil'\)::date/.test(m17));
+c("the listing function refuses dates that do not exist", /toISOString\(\)\.slice\(0, 10\) !== licenseToSellUntil/.test(api));
+c("agents never try to save deals they cannot change", /!txCanManage\(\)\) return 0;/.test(app) && /SB\.rpc\("agent_credited_deals"\)/.test(app));
 c("migrations README lists 0017", /0017_agent_sites_finish\.sql/.test(read("supabase/migrations/README.md")));
 
 console.log(fail ? fail + "/" + (pass + fail) + " FAILED" : "ALL GREEN (" + pass + " checks)");

@@ -255,7 +255,10 @@ const listingInput = (body: JsonRecord, existing: JsonRecord | null, ownerId: st
   // and the public catalog drops it after that date (migration 0017).
   const licenseToSell = stringValue(details.license_to_sell ?? oldPayload.licenseToSell, 180, "details.license_to_sell");
   const licenseToSellUntil = stringValue(details.license_to_sell_until ?? oldPayload.licenseToSellUntil, 10, "details.license_to_sell_until");
-  if (licenseToSellUntil && !/^\d{4}-\d{2}-\d{2}$/.test(licenseToSellUntil)) throw new HttpError(400, "details.license_to_sell_until must be a date (YYYY-MM-DD)");
+  if (licenseToSellUntil && (!/^\d{4}-\d{2}-\d{2}$/.test(licenseToSellUntil)
+      || Number.isNaN(Date.parse(licenseToSellUntil + "T00:00:00Z")) || new Date(licenseToSellUntil + "T00:00:00Z").toISOString().slice(0, 10) !== licenseToSellUntil)) {
+    throw new HttpError(400, "details.license_to_sell_until must be a real date (YYYY-MM-DD)");
+  }
   if (status === "pre-selling" && isPublished) {
     const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10); // Manila
     if (!licenseToSell) throw new HttpError(400, "A published pre-selling listing needs its DHSUD licence to sell number");

@@ -182,7 +182,7 @@
       rows.map(function (r) {
         var size = Number(r.lot_sqm) > 0 ? ", " + Number(r.lot_sqm).toLocaleString("en-PH") + " sqm" : (Number(r.floor_sqm) > 0 ? ", " + Number(r.floor_sqm).toLocaleString("en-PH") + " sqm floor area" : "");
         return "<tr><td>" + esc(month(r.month)) + "</td><td>" + esc(typeText(r.type) + size) + "</td><td>" + esc(r.town || "") + "</td><td>" + esc(sideText[r.side] || "") + "</td><td>" +
-          (Number(r.price) > 0 ? '<span class="ag-num">' + esc(money(r.price)) + "</span>" : '<span class="ag-muted">Not shown</span>') + "</td></tr>";
+          (Number(r.price) > 0 ? '<span class="ag-num">' + esc(money(r.price)) + (r.side === "rental" ? " a month" : "") + "</span>" : '<span class="ag-muted">Not shown</span>') + "</td></tr>";
       }).join("") + "</tbody></table></div>" : "";
     return '<section class="ag-section ag-record" id="ag-record" aria-labelledby="ag-record-h"><div class="ag-record-text">' +
       '<h2 id="ag-record-h">Track record</h2><p>' + plural(rec.deals, "deal") + " closed through SEA ESTATES " + (rec.window === "3y" ? "in the last 3 years" : "since " + esc(month(rec.since))) + ", counted from our deal records.</p>" +

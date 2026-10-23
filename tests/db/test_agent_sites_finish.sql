@@ -9,6 +9,8 @@ create or replace function pg_temp.as_user(uid text) returns void language sql a
   select set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true); $$;
 create or replace function pg_temp.as_service() returns void language sql as $$
   select set_config('request.jwt.claims', '', true); $$;
+create or replace function pg_temp.fails_priv(q text) returns boolean language plpgsql as $$
+begin execute q; return false; exception when insufficient_privilege then return true; end $$;
 create temp table results(name text, ok boolean, detail text);
 create temp table x(v jsonb);
 grant all on results, x to authenticated, anon, service_role;
@@ -57,19 +59,27 @@ insert into results select 'with 36 months of records the record covers the last
 delete from x;
 delete from public.broker_transactions where id = 'fn-d3';
 
--- Agents read the deals that credit them ------------------------------------------------------------
+-- Agents read the deals that credit them, through agent_credited_deals() -------------------------
 insert into public.broker_transactions (id, ref, title, payload, broker_id, created_by) values
-  ('fn-d4', 'TX-4', 'Office deal', '{"stage":"cts","buyerAgentId":"11111111-1111-1111-1111-111111111111"}', '77777777-7777-7777-7777-777777777777', '77777777-7777-7777-7777-777777777777'),
+  ('fn-d4', 'TX-4', 'Office deal', '{"stage":"cts","buyerAgentId":"11111111-1111-1111-1111-111111111111","documents":[{"name":"id.pdf"}]}', '77777777-7777-7777-7777-777777777777', '77777777-7777-7777-7777-777777777777'),
   ('fn-d5', 'TX-5', 'Other team', '{"stage":"cts","buyerAgentId":"11111111-1111-1111-1111-111111111111"}', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
-  ('fn-d6', 'TX-6', 'Office deal, someone else', '{"stage":"cts"}', '77777777-7777-7777-7777-777777777777', '77777777-7777-7777-7777-777777777777');
+  ('fn-d6', 'TX-6', 'Office deal, someone else', '{"stage":"cts"}', '77777777-7777-7777-7777-777777777777', '77777777-7777-7777-7777-777777777777'),
+  ('fn-d7', 'TX-7', 'Names a buyer account', '{"stage":"cts","buyerAgentId":"22222222-2222-2222-2222-222222222222"}', '77777777-7777-7777-7777-777777777777', '77777777-7777-7777-7777-777777777777');
 select pg_temp.as_user('11111111-1111-1111-1111-111111111111');
 set local role authenticated;
-insert into results select 'an agent reads a Super Admin''s deal that credits them', exists (select 1 from public.broker_transactions where id = 'fn-d4'), '';
-insert into results select 'but not another team''s deal that names them, nor deals that do not', not exists (select 1 from public.broker_transactions where id in ('fn-d5', 'fn-d6')), '';
-update public.broker_transactions set title = 'Changed by the agent' where id = 'fn-d4';
+insert into x select public.agent_credited_deals();
+insert into results select 'an agent gets the Super Admin''s deal that credits them, without its document list',
+  (select bool_or(e ->> 'id' = 'fn-d4') and bool_and(not (e -> 'payload' ? 'documents')) and not bool_or(e ->> 'id' in ('fn-d5', 'fn-d6', 'fn-d7'))
+     from x, jsonb_array_elements(v) e), (select v::text from x);
+delete from x;
+insert into results select 'the deal table itself stays closed to them (so its stored documents do too)', not exists (select 1 from public.broker_transactions where id = 'fn-d4'), '';
+insert into results select 'and the team check is not callable from the app', pg_temp.fails_priv($q$select public.deal_credit_ok('77777777-7777-7777-7777-777777777777', '11111111-1111-1111-1111-111111111111')$q$), '';
+reset role;
+select pg_temp.as_user('22222222-2222-2222-2222-222222222222');
+set local role authenticated;
+insert into results select 'an account that is not an approved agent or broker gets nothing, even when named', public.agent_credited_deals() = '[]'::jsonb, '';
 reset role;
 select pg_temp.as_service();
-insert into results select 'and cannot change a deal that credits them', (select title = 'Office deal' from public.broker_transactions where id = 'fn-d4'), '';
 
 -- Sign-up details in Users & Access -----------------------------------------------------------------
 update auth.users set raw_user_meta_data = '{"requested_role":"agent","requested_prc":"0099887","requested_broker":"Alfredo B. Reyes"}' where id = '11111111-1111-1111-1111-111111111111';
@@ -83,6 +93,10 @@ insert into public.shared_listings (id, owner_id, title, status, is_published, p
   ('fn-l1', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Expired LTS', 'pre-selling', true, now(), jsonb_build_object('licenseToSell', 'LTS 1', 'licenseToSellUntil', to_char(current_date - 1, 'YYYY-MM-DD'))),
   ('fn-l2', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Current LTS', 'pre-selling', true, now(), jsonb_build_object('licenseToSell', 'LTS 2', 'licenseToSellUntil', to_char(current_date + 30, 'YYYY-MM-DD'))),
   ('fn-l3', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Not pre-selling', 'available', true, now(), jsonb_build_object('licenseToSellUntil', to_char(current_date - 1, 'YYYY-MM-DD')));
+insert into public.shared_listings (id, owner_id, title, status, is_published, published_at, payload) values
+  ('fn-l4', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Impossible date', 'pre-selling', true, now(), '{"licenseToSellUntil":"2026-11-31"}');
+insert into results select 'a malformed date never breaks the catalog', (select count(*) >= 3 from public.public_listing_catalog), '';
+delete from public.shared_listings where id = 'fn-l4';
 insert into results select 'a pre-selling listing leaves the public catalog when its licence to sell has expired',
   (select array_agg(id order by id) from public.public_listing_catalog where id like 'fn-l%') = array['fn-l2', 'fn-l3'], (select string_agg(id, ',') from public.public_listing_catalog where id like 'fn-l%');
 

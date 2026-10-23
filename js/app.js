@@ -15268,6 +15268,16 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         brokerId: r.broker_id || (r.payload && r.payload.brokerId) || "",
         createdBy: r.created_by || (r.payload && r.payload.createdBy) || ""
       })) : [];
+      // An agent also sees the deals that credit them (migration 0017), read-only, without documents.
+      if (roleIs("agent")) {
+        try {
+          const cr = await SB.rpc("agent_credited_deals");
+          (Array.isArray(cr.data) ? cr.data : []).forEach(r => {
+            if (state.transactions.some(t => t.id === r.id)) return;
+            state.transactions.push(Object.assign({}, r.payload, { id: r.id, brokerId: r.broker_id || "", createdBy: r.created_by || "", creditedOnly: true }));
+          });
+        } catch (e) { /* before migration 0017: team deals only */ }
+      }
       syncTransactionsToListings();
     } catch (e) {
       cloudTransactionsReady = "error";
@@ -19910,7 +19920,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     return '<div class="dim tiny mt-8">Property details</div><div class="table-wrap mt-8"><table class="data"><tbody>' + rows.map(r => txRow(r[0], r[1])).join("") + "</tbody></table></div>";
   }
   function syncTransactionsToListings() {
-    if (!state.transactions || !state.listings) return 0;
+    if (!state.transactions || !state.listings || !txCanManage()) return 0; // only people who may save deals
     let changed = 0;
     state.transactions.forEach(t => {
       if (!t || !t.listingId) return;
@@ -20207,7 +20217,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       '<div class="grid grid-2">' +
       '<div class="field" style="grid-column:span 2"><label>Transaction title *</label><input class="input" id="tx-title" type="text" value="' + esc(t.title || "") + '" placeholder="e.g. 3BR House & Lot in Imus — sale"></div>' +
       '<div class="field"><label>Stage</label><select class="input" id="tx-stage">' + TX_STAGES.map(s => '<option value="' + s.value + '"' + (t.stage === s.value ? " selected" : "") + ">" + s.label + "</option>").join("") + "</select></div>" +
-      '<div class="field"><label>Price (₱)</label><input class="input input-num" id="tx-price" type="text" inputmode="decimal" value="' + (C.num(t.price, 0) > 0 ? C.fmtNum(t.price) : "") + '"></div>' +
+      '<div class="field"><label for="tx-price">Price (₱), or monthly rent for a rental</label><input class="input input-num" id="tx-price" type="text" inputmode="decimal" value="' + (C.num(t.price, 0) > 0 ? C.fmtNum(t.price) : "") + '"></div>' +
       '<div class="field"><label>Buyer / client</label><input class="input" id="tx-buyer" type="text" value="' + esc(t.buyerName || "") + '"></div>' +
       '<div class="field"><label>Seller / developer</label><input class="input" id="tx-seller" type="text" value="' + esc(t.sellerName || "") + '"></div>' +
       '<div class="field"><label>Handling agent</label><input class="input" id="tx-agent" type="text" value="' + esc(t.agentName || "") + '"></div>' +
