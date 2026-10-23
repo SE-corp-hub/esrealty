@@ -1823,6 +1823,23 @@
     }
     lastPageKey = pageKey(route());
     window.addEventListener("hashchange", function () { if (active) { toggleMenu(false); closeDrops(null); scrollTopOnNewPage(); loadCurrent(); } });
+    /* On a page served from a path (/listing/<id>), <base href="/"> makes "#content" mean
+     * "/#content" and "#/search" mean "/#/search", which would reload the site. Keep both on
+     * this page: a #/ link changes the route in place, and a #id link moves to that spot. */
+    document.addEventListener("click", function (event) {
+      if (location.pathname === "/" || event.defaultPrevented || event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      var link = event.target.closest && event.target.closest("a[href^='#']");
+      if (!link || link.target) return;
+      var href = link.getAttribute("href");
+      if (href.indexOf("#/") === 0) { event.preventDefault(); location.hash = href.slice(1); return; }
+      var id = ""; try { id = decodeURIComponent(href.slice(1)); } catch (e) { return; }
+      var spot = id && document.getElementById(id);
+      if (!spot) return;
+      event.preventDefault();
+      if (!spot.hasAttribute("tabindex") && !/^(A|BUTTON|INPUT|SELECT|TEXTAREA)$/.test(spot.tagName)) spot.setAttribute("tabindex", "-1");
+      spot.focus({ preventScroll: true });
+      spot.scrollIntoView({ block: "start" });
+    }, true);
     /* Dropdown hygiene: only one panel open at a time, close on outside click,
      * and close on Escape. <details> gives us keyboard opening for free but no
      * dismissal behaviour, so that part is ours.

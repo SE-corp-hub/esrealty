@@ -1,0 +1,23 @@
+// The site on Cloudflare: static files as before, plus a small Worker for share pages.
+// Agent websites plan, Phase 0. Before merging, confirm in the Cloudflare dashboard
+// (Workers & Pages > esrealty > Settings > Build) that the deploy command is
+// "npx wrangler deploy" and the root directory is the repository root.
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "esrealty",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    // Only these paths reach the Worker; every other file is served straight from the
+    // asset server, with _headers applied, exactly as today.
+    "run_worker_first": ["/listing/*", "/sitemap.xml"]
+  },
+  "vars": {
+    // The site's public address. Change it to the brand domain once it is attached.
+    "SITE_URL": "https://esrealty.tradersgag6.workers.dev",
+    "LISTING_API": "https://mrngaqtbaseewzcsogqi.supabase.co/functions/v1/listing-api/api"
+  },
+  "observability": { "enabled": true }
+}
