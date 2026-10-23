@@ -12,12 +12,14 @@
     "binding": "ASSETS",
     // Only these paths reach the Worker; every other file is served straight from the
     // asset server, with _headers applied, exactly as today.
-    "run_worker_first": ["/listing/*", "/sitemap.xml"]
+    "run_worker_first": ["/listing/*", "/agents/*", "/sitemap.xml"]
   },
   "vars": {
     // The site's public address. Change it to the brand domain once it is attached.
     "SITE_URL": "https://esrealty.tradersgag6.workers.dev",
-    "LISTING_API": "https://mrngaqtbaseewzcsogqi.supabase.co/functions/v1/listing-api/api"
+    "LISTING_API": "https://mrngaqtbaseewzcsogqi.supabase.co/functions/v1/listing-api/api",
+    // Agent pages carry noindex until this is "on" (after the lawyer's OK on the wording).
+    "AGENT_PAGES_INDEX": "off"
   },
   "observability": { "enabled": true }
 }

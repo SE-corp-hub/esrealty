@@ -6,6 +6,9 @@
  *   /listing/<id>   the normal site page, with that listing's title, description, photo and
  *                   schema.org data written into the HTML, so Facebook, Messenger and Google can
  *                   read it. The app then opens the listing as usual (storefront.js reads the path).
+ *   /agents/<slug>  an agent's page, the same way: name, licence, pitch and photo in the HTML. While
+ *                   AGENT_PAGES_INDEX is not "on" (until the lawyer's OK), it carries noindex. A page
+ *                   that is not public (unpublished, licence expired, access revoked) answers 410.
  *   /sitemap.xml    every available listing, on the site's own address.
  *
  * The listing comes from the listing function with ?count=0, so these reads are not counted as
@@ -139,6 +142,58 @@ async function listingRoute(request, env, id) {
   return html(withBase(shell), 200); // slow or down: the app loads the listing itself
 }
 
+const TOWN_NAMES = { "batangas-city": "Batangas City", "lipa-city": "Lipa City", "tanauan-city": "Tanauan City", "sto-tomas-city": "Sto. Tomas City",
+  "sta-teresita": "Sta. Teresita", "mataas-na-kahoy": "Mataas na Kahoy", "padre-garcia": "Padre Garcia" };
+const townName = (slug) => TOWN_NAMES[slug] || String(slug || "").split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
+export function agentPage(page, a, siteUrl, indexable) {
+  const url = siteUrl + "/agents/" + encodeURIComponent(a.slug);
+  const towns = (a.towns || []).map(townName);
+  const title = a.name + ", " + a.role_label + " | SEA ESTATES";
+  const desc = String(a.pitch || "").trim() || (a.role_label + (towns.length ? " in " + towns.slice(0, 3).join(", ") + ", Batangas" : " in Batangas") + ", with SEA ESTATES.");
+  const img = /^https:\/\//.test(a.photo || "") ? a.photo : "";
+  const ld = {
+    "@context": "https://schema.org", "@type": "RealEstateAgent", name: a.name, url, description: desc,
+    image: img || undefined,
+    telephone: (a.contacts && a.contacts.call) || undefined,
+    areaServed: towns.length ? towns.map((t) => ({ "@type": "City", name: t + ", Batangas" })) : undefined,
+    memberOf: { "@type": "RealEstateAgent", name: "SEA ESTATES" },
+  };
+  let out = withBase(page);
+  out = setTag(out, /<title>[\s\S]*?<\/title>/i, "<title>" + esc(title) + "</title>");
+  out = setTag(out, /<meta name="description"[^>]*>/i, '<meta name="description" content="' + esc(desc) + '">');
+  out = setTag(out, /<meta property="og:title"[^>]*>/i, '<meta property="og:title" content="' + esc(a.name + ", " + a.role_label) + '">');
+  out = setTag(out, /<meta property="og:description"[^>]*>/i, '<meta property="og:description" content="' + esc(desc) + '">');
+  out = setTag(out, /<meta name="twitter:card"[^>]*>/i, '<meta name="twitter:card" content="' + (img ? "summary_large_image" : "summary") + '">');
+  out = out.replace(/<\/head>/i, [
+    '<link rel="canonical" href="' + esc(url) + '">',
+    '<meta property="og:url" content="' + esc(url) + '">',
+    '<meta property="og:type" content="profile">',
+    img ? '<meta property="og:image" content="' + esc(img) + '">' : "",
+    indexable ? "" : '<meta name="robots" content="noindex">',
+    '<script type="application/ld+json">' + JSON.stringify(ld).replace(/</g, "\\u003c") + "</script>",
+  ].filter(Boolean).join("\n") + "\n</head>");
+  const lic = a.licence ? "Licence no. " + a.licence.no + ", checked by SEA ESTATES." : "";
+  const summary = "<noscript><h1>" + esc(a.name) + "</h1><p>" + esc(a.role_label + (towns.length ? " in " + towns.join(", ") : "")) + "</p><p>" + esc(desc) + "</p>" + (lic ? "<p>" + esc(lic) + "</p>" : "") + "</noscript>";
+  return out.replace(/<body([^>]*)>/i, (m) => m + "\n" + summary);
+}
+
+async function agentRoute(request, env, slug) {
+  const siteUrl = (env.SITE_URL || DEFAULT_SITE_URL).replace(/\/$/, "");
+  const api = (env.LISTING_API || DEFAULT_API).replace(/\/$/, "");
+  const [shell, found] = await Promise.all([
+    appShell(request, env),
+    getJson(api + "/agents/" + encodeURIComponent(slug) + "?count=0"),
+  ]);
+  const agent = found.body && found.body.data;
+  if (agent && agent.slug) return html(agentPage(shell, agent, siteUrl, env.AGENT_PAGES_INDEX === "on"), 200);
+  if (found.status === 404) {
+    // Not public (unpublished, licence expired, access revoked): gone, so search engines drop it.
+    return html(withBase(shell).replace(/<\/head>/i, '<meta name="robots" content="noindex">\n</head>'), 410);
+  }
+  return html(withBase(shell).replace(/<\/head>/i, '<meta name="robots" content="noindex">\n</head>'), 200); // slow or down
+}
+
 async function sitemapRoute(env) {
   const siteUrl = (env.SITE_URL || DEFAULT_SITE_URL).replace(/\/$/, "");
   const api = (env.LISTING_API || DEFAULT_API).replace(/\/$/, "");
@@ -168,6 +223,8 @@ export default {
         try { id = decodeURIComponent(m[1]); } catch (e) { id = ""; }
         if (id) return listingRoute(request, env, id);
       }
+      const a = url.pathname.match(/^\/agents\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/);
+      if (a) return agentRoute(request, env, a[1]);
       if (url.pathname === "/sitemap.xml") return sitemapRoute(env);
     }
     return env.ASSETS.fetch(request);

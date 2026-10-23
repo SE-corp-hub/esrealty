@@ -22,6 +22,10 @@ const LISTING = {
   images: [{ url: "https://x.supabase.co/storage/v1/object/public/listing-photos/a.jpg" }], updated_at: "2026-10-20T01:00:00Z",
 };
 
+const AGENT = { slug: "maria-santos", name: "Maria Santos <Dela Cruz>", role_label: "PRC-accredited real estate salesperson", pitch: "Lots and homes in Lipa.",
+  towns: ["lipa-city", "malvar"], photo: "https://x.supabase.co/storage/v1/object/public/listing-photos/u/p.jpg", contacts: { call: "+639171234567" },
+  licence: { no: "0012345", valid_until: "2027-08-31", checked_on: "2026-10-12" } };
+
 function setup(mode) {
   const calls = [];
   global.fetch = async (url, init) => {
@@ -33,6 +37,8 @@ function setup(mode) {
     }
     if (mode === "down") throw new Error("unreachable");
     const u = new URL(url);
+    if (/\/agents\/maria-santos$/.test(u.pathname)) return new Response(JSON.stringify({ data: AGENT }), { status: 200 });
+    if (/\/agents\/[^/]+$/.test(u.pathname)) return new Response(JSON.stringify({ error: "Agent not found" }), { status: 404 });
     if (/\/listings\/L-77$/.test(u.pathname)) return new Response(JSON.stringify({ data: LISTING }), { status: 200 });
     if (/\/listings\/[^/]+$/.test(u.pathname)) return new Response(JSON.stringify({ error: "Listing not found" }), { status: 404 });
     if (/\/listings$/.test(u.pathname)) {
@@ -98,6 +104,25 @@ function setup(mode) {
   res = await worker.fetch(new Request("https://sea.example/listing/%E0"), s.env);
   c("a broken address is passed to the asset server, not a crash", res.status === 200);
 
+  // Agent pages.
+  s = setup("ok");
+  res = await worker.fetch(new Request("https://sea.example/agents/maria-santos"), s.env);
+  body = await res.text();
+  c("an agent page answers 200 with the agent's name and role as the title", res.status === 200 && body.includes("<title>Maria Santos &lt;Dela Cruz&gt;, PRC-accredited real estate salesperson | SEA ESTATES</title>"));
+  c("Facebook gets the agent's pitch, photo and address", body.includes('<meta property="og:description" content="Lots and homes in Lipa.">') && body.includes('<meta property="og:image" content="https://x.supabase.co/storage/v1/object/public/listing-photos/u/p.jpg">') && body.includes('<link rel="canonical" href="https://sea.example/agents/maria-santos">'));
+  const ald = JSON.parse((body.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/) || [])[1] || "{}");
+  c("schema.org says it is a real estate agent serving those towns", ald["@type"] === "RealEstateAgent" && ald.areaServed && ald.areaServed[0].name === "Lipa City, Batangas" && ald.telephone === "+639171234567");
+  c("agent pages carry noindex until the lawyer's OK", body.includes('<meta name="robots" content="noindex">'));
+  c("the agent is read without counting a visit", s.calls.some((u) => /\/agents\/maria-santos\?count=0$/.test(u)));
+  res = await worker.fetch(new Request("https://sea.example/agents/maria-santos"), Object.assign({}, s.env, { AGENT_PAGES_INDEX: "on" }));
+  c("after the OK (AGENT_PAGES_INDEX on), search engines may index them", !(await res.text()).includes('content="noindex"'));
+  res = await worker.fetch(new Request("https://sea.example/agents/not-public"), s.env);
+  body = await res.text();
+  c("a page that is not public answers 410 Gone with noindex, still showing the site", res.status === 410 && body.includes('content="noindex"') && body.includes("js/app.min.js"));
+  s = setup("ok");
+  res = await worker.fetch(new Request("https://sea.example/agents/Bad_Slug"), s.env);
+  c("a malformed agent address goes to the asset server", s.assets.includes("/agents/Bad_Slug") && s.calls.length === 0);
+
   // Sitemap.
   s = setup("ok");
   res = await worker.fetch(new Request("https://sea.example/sitemap.xml"), s.env);
@@ -116,7 +141,7 @@ function setup(mode) {
   const ignore = read(".assetsignore").split(/\r?\n/).map((l) => l.trim());
   c("the Worker's code and settings are never served as files", ["worker", "wrangler.jsonc", ".git", ".assetsignore"].every((x) => ignore.includes(x)));
   const cfg = read("wrangler.jsonc");
-  c("only share paths reach the Worker; everything else is plain files", /"run_worker_first": \["\/listing\/\*", "\/sitemap\.xml"\]/.test(cfg) && /"main": "worker\/index\.js"/.test(cfg));
+  c("only share paths reach the Worker; everything else is plain files", /"run_worker_first": \["\/listing\/\*", "\/agents\/\*", "\/sitemap\.xml"\]/.test(cfg) && /"main": "worker\/index\.js"/.test(cfg));
   c("robots.txt points to the site's own sitemap", /^Sitemap: https:\/\/esrealty\.tradersgag6\.workers\.dev\/sitemap\.xml$/m.test(read("robots.txt")));
 
   const sf = read("js/storefront.js");
