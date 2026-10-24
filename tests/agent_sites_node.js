@@ -52,7 +52,7 @@ c("the Value Guide names the agent only when the server says it went to them", /
 c("a listing's details carry its agent's page address", /admin\.rpc\("agent_public_slug", \{ p_agent: agentId \}\)/.test(api) && /out\.agent_slug = slug/.test(api));
 const sf = read("js/storefront.js");
 c("Listed by links to the agent's page", /'<a href="#\/agents\/' \+ esc\(d\.agent_slug\) \+ '">'/.test(sf));
-c("Find an agent joins the menu only from 8 published agents", /var AGENT_NAV_MIN = 8;/.test(sf) && /if \(publishedAgents < AGENT_NAV_MIN\) return NAV;/.test(sf));
+c("Find an agent joins the menu from the first published agent", /var AGENT_NAV_MIN = 1;/.test(sf) && /if \(publishedAgents < AGENT_NAV_MIN\) return NAV;/.test(sf));
 const lr = read("supabase/functions/location-report/index.ts");
 c("a Value Guide request from an agent's page goes to that agent, found by the server", /admin\.rpc\("agent_page_lookup", \{ p_slug: agentSlug \}\)/.test(lr) && /assigned_to_id: agentId,/.test(lr));
 c("the Value Guide sends the agent's page address", /agent_slug: vgAgent\(\)\.slug,/.test(read("js/estimator.js")));
