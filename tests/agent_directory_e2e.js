@@ -64,9 +64,9 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     };
     document.addEventListener("click", e => { const a = e.target.closest && e.target.closest("a[data-ag-tap]"); if (a) e.preventDefault(); }, true);
 
-    // The menu link, once at least 8 agents are published.
+    // The menu link, once an agent is published.
     window.ESREALTY_STOREFRONT.refresh(); await wait(900);
-    chk("Find an agent joins the menu once 8 or more agents are published", !!q('.sf-nav a[href="#/agents"]') && !!q('[data-sf-menu-panel] a[href="#/agents"]'));
+    chk("Find an agent joins the menu once an agent is published", !!q('.sf-nav a[href="#/agents"]') && !!q('[data-sf-menu-panel] a[href="#/agents"]'));
 
     // The directory.
     location.hash = "#/agents"; await wait(1200);

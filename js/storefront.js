@@ -154,9 +154,9 @@
     { href: "#/project-bt", label: "Shophouses" }
   ];
 
-  /* Find an agent joins the menu only once at least 8 agents are published (agent websites plan,
-   * Phase 2), so a thin directory is never advertised. The directory itself works at any count. */
-  var AGENT_NAV_MIN = 8;
+  /* Find an agent joins the menu once an agent has published a page, so the link never opens an
+   * empty directory. The directory itself works at any count. */
+  var AGENT_NAV_MIN = 1;
   var publishedAgents = 0;
   function navItems() {
     if (publishedAgents < AGENT_NAV_MIN) return NAV;
