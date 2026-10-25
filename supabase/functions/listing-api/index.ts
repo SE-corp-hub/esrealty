@@ -61,8 +61,16 @@ class HttpError extends Error {
 // (its view count and price must stay current).
 const PUBLIC_CACHE = { "Cache-Control": "public, max-age=60" };
 
+// Public photos can go out through the site's Worker (/photos/<path>), which keeps a copy in
+// Cloudflare R2, so a photo leaves Supabase Storage once instead of on every view. Off until the
+// PHOTO_BASE secret is set (for example https://esrealty.tradersgag6.workers.dev/photos/). Stored
+// links are unchanged; only what this function answers is rewritten.
+const PHOTO_FROM = `${String(Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "")}/storage/v1/object/public/listing-photos/`;
+const PHOTO_BASE = String(Deno.env.get("PHOTO_BASE") || "").trim();
+const photoLinks = (text: string) => (PHOTO_BASE && text.includes(PHOTO_FROM) ? text.split(PHOTO_FROM).join(PHOTO_BASE) : text);
+
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
-  new Response(JSON.stringify(body), {
+  new Response(photoLinks(JSON.stringify(body)), {
     status,
     headers: { ...corsHeaders, ...headers, "Content-Type": "application/json; charset=utf-8" },
   });

@@ -11,6 +11,10 @@
  *                   that is not public (unpublished, licence expired, access revoked) answers 410.
  *   /sitemap.xml    every available listing, on the site's own address, and every published agent
  *                   page once AGENT_PAGES_INDEX is "on" (the directory's list, GET /agents).
+ *   /photos/<path>  a public listing photo (Supabase bucket listing-photos), from its copy in Cloudflare
+ *                   R2 (binding PHOTOS). The first request fetches it once from Supabase and keeps the
+ *                   copy, so a photo leaves Supabase once instead of on every view (the free plan's
+ *                   cached-egress quota). Uploads never overwrite a path, so copies are kept for good.
  *
  * The listing comes from the listing function with ?count=0, so these reads are not counted as
  * views. If the function is slow (over 1.5 s) or down, the plain site page is served instead and
@@ -22,6 +26,13 @@ const API_CACHE_SECONDS = 60;
 const SITEMAP_PAGES = 20; // 20 pages of 50 listings
 const DEFAULT_SITE_URL = "https://esrealty.tradersgag6.workers.dev";
 const DEFAULT_API = "https://mrngaqtbaseewzcsogqi.supabase.co/functions/v1/listing-api/api";
+const DEFAULT_SUPABASE = "https://mrngaqtbaseewzcsogqi.supabase.co";
+
+// <user id>/<file>, as the app names uploads. Only these image types are served from the site's own
+// address, never anything a browser could run (HTML, SVG).
+const PHOTO_PATH = /^\/photos\/([A-Za-z0-9_-]{1,80}\/[A-Za-z0-9._-]{1,160})$/;
+const PHOTO_TYPES = /^image\/(jpeg|png|webp|gif|avif)$/;
+const PHOTO_KEEP_BYTES = 5 * 1024 * 1024;
 
 // The same as the "/*" block in _headers (tests/worker_node.js keeps them equal). _headers is not
 // applied to responses the Worker builds itself.
@@ -224,6 +235,34 @@ async function sitemapRoute(env) {
   return new Response(xml, { status: 200, headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff" } });
 }
 
+function photoResponse(request, body, type) {
+  return new Response(request.method === "HEAD" ? null : body, {
+    status: 200,
+    headers: { "Content-Type": type, "Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'" },
+  });
+}
+
+async function photoRoute(request, env, key) {
+  const missing = (status) => new Response("Photo not found", { status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+  if (key.split("/").some((part) => part === "." || part === "..")) return missing(404);
+  if (env.PHOTOS) {
+    const kept = await env.PHOTOS.get(key);
+    const type = kept && kept.httpMetadata && kept.httpMetadata.contentType;
+    if (kept && PHOTO_TYPES.test(type || "")) return photoResponse(request, kept.body, type);
+  }
+  let res = null;
+  try { res = await fetch(String(env.SUPABASE_URL || DEFAULT_SUPABASE).replace(/\/$/, "") + "/storage/v1/object/public/listing-photos/" + key); } catch (e) { res = null; }
+  if (!res) return missing(502);
+  if (!res.ok) return missing(res.status >= 500 || res.status === 402 ? 502 : 404);
+  const type = String(res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  if (!PHOTO_TYPES.test(type)) return missing(404);
+  const bytes = await res.arrayBuffer();
+  if (env.PHOTOS && bytes.byteLength <= PHOTO_KEEP_BYTES) {
+    try { await env.PHOTOS.put(key, bytes, { httpMetadata: { contentType: type } }); } catch (e) { /* served anyway; kept next time */ }
+  }
+  return photoResponse(request, bytes, type);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -237,6 +276,8 @@ export default {
       const a = url.pathname.match(/^\/agents\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/);
       if (a) return agentRoute(request, env, a[1]);
       if (url.pathname === "/sitemap.xml") return sitemapRoute(env);
+      const p = url.pathname.match(PHOTO_PATH);
+      if (p) return photoRoute(request, env, p[1]);
     }
     return env.ASSETS.fetch(request);
   },

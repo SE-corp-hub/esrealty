@@ -38,6 +38,12 @@ function setup(mode) {
     }
     if (mode === "down") throw new Error("unreachable");
     const u = new URL(url);
+    if (/\/storage\/v1\/object\/public\/listing-photos\//.test(u.pathname)) {
+      if (mode === "restricted") return new Response("restricted", { status: 402 });
+      if (/page\.html$/.test(u.pathname)) return new Response("<script>alert(1)</script>", { status: 200, headers: { "Content-Type": "text/html" } });
+      if (/gone\.jpg$/.test(u.pathname)) return new Response("{}", { status: 400 });
+      return new Response(new Uint8Array([255, 216, 255, 1, 2, 3]), { status: 200, headers: { "Content-Type": "image/jpeg" } });
+    }
     if (/\/agents$/.test(u.pathname)) return new Response(JSON.stringify({ data: [{ slug: "maria-santos" }, { slug: "Bad Slug" }], total: 2 }), { status: 200 });
     if (/\/agents\/maria-santos$/.test(u.pathname)) return new Response(JSON.stringify({ data: AGENT }), { status: 200 });
     if (/\/agents\/[^/]+$/.test(u.pathname)) return new Response(JSON.stringify({ error: "Agent not found" }), { status: 404 });
@@ -145,6 +151,42 @@ function setup(mode) {
   c("once indexing is on, every published agent page is in the sitemap (well-formed addresses only)",
     body.includes("<loc>https://sea.example/agents/maria-santos</loc>") && !body.includes("Bad Slug") && !body.includes("Bad%20Slug"), body);
 
+  // Photos through R2.
+  const r2 = () => {
+    const kept = new Map();
+    return { kept, get: async (k) => (kept.has(k) ? { body: kept.get(k).bytes, httpMetadata: { contentType: kept.get(k).type } } : null), put: async (k, bytes, o) => { kept.set(k, { bytes, type: o.httpMetadata.contentType }); } };
+  };
+  s = setup("ok");
+  s.env.PHOTOS = r2();
+  s.env.SUPABASE_URL = "https://ref.supabase.co/";
+  res = await worker.fetch(new Request("https://sea.example/photos/user-1/abc-full.jpg"), s.env);
+  let bytes = new Uint8Array(await res.arrayBuffer());
+  c("a photo's first view is fetched once from Supabase Storage and kept in R2",
+    res.status === 200 && res.headers.get("content-type") === "image/jpeg" && bytes.length === 6 && s.env.PHOTOS.kept.has("user-1/abc-full.jpg")
+    && s.calls.length === 1 && s.calls[0] === "https://ref.supabase.co/storage/v1/object/public/listing-photos/user-1/abc-full.jpg", s.calls.join(" "));
+  c("photos are cached for a year (upload paths are never reused)", /max-age=31536000, immutable/.test(res.headers.get("cache-control")) && res.headers.get("x-content-type-options") === "nosniff");
+  res = await worker.fetch(new Request("https://sea.example/photos/user-1/abc-full.jpg"), s.env);
+  c("later views come from R2 without touching Supabase", res.status === 200 && (await res.arrayBuffer()).byteLength === 6 && s.calls.length === 1);
+  res = await worker.fetch(new Request("https://sea.example/photos/user-1/page.html"), s.env);
+  c("a file that is not an image is never served from the site's address, nor kept", res.status === 404 && !s.env.PHOTOS.kept.has("user-1/page.html") && !/script/.test(await res.text()));
+  res = await worker.fetch(new Request("https://sea.example/photos/user-1/gone.jpg"), s.env);
+  c("a missing photo answers 404 and is not cached", res.status === 404 && res.headers.get("cache-control") === "no-store");
+  s = setup("restricted");
+  s.env.PHOTOS = r2();
+  res = await worker.fetch(new Request("https://sea.example/photos/user-1/abc-full.jpg"), s.env);
+  c("Storage refusing (quota) answers 502, not a broken image cached for a year", res.status === 502 && res.headers.get("cache-control") === "no-store");
+  s = setup("ok");
+  res = await worker.fetch(new Request("https://sea.example/photos/user-1/abc-full.jpg"), s.env);
+  c("without the R2 bucket the photo is still served (straight from Supabase)", res.status === 200 && s.calls.length === 1);
+  s = setup("ok");
+  res = await worker.fetch(new Request("https://sea.example/photos/a/b/c.jpg"), s.env);
+  c("other /photos/ paths go to the asset server", s.assets.includes("/photos/a/b/c.jpg") && s.calls.length === 0);
+
+  const api = read("supabase/functions/listing-api/index.ts");
+  c("listing-api sends photo links through the Worker only once PHOTO_BASE is set",
+    /new Response\(photoLinks\(JSON\.stringify\(body\)\)/.test(api) && /PHOTO_BASE && text\.includes\(PHOTO_FROM\)/.test(api)
+    && /\/storage\/v1\/object\/public\/listing-photos\/`/.test(api));
+
   // Headers parity with _headers, and the files the Worker must never serve.
   const block = (read("_headers").split(/\r?\n\/\*\r?\n/)[1] || "").split(/\r?\n\r?\n/)[0];
   const fromFile = Object.fromEntries(block.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => [l.slice(0, l.indexOf(":")), l.slice(l.indexOf(":") + 1).trim()]));
@@ -153,7 +195,7 @@ function setup(mode) {
   const ignore = read(".assetsignore").split(/\r?\n/).map((l) => l.trim());
   c("the Worker's code and settings are never served as files", ["worker", "wrangler.jsonc", ".git", ".assetsignore"].every((x) => ignore.includes(x)));
   const cfg = read("wrangler.jsonc");
-  c("only share paths reach the Worker; everything else is plain files", /"run_worker_first": \["\/listing\/\*", "\/agents\/\*", "\/sitemap\.xml"\]/.test(cfg) && /"main": "worker\/index\.js"/.test(cfg));
+  c("only share pages, the sitemap and photos reach the Worker; everything else is plain files", /"run_worker_first": \["\/listing\/\*", "\/agents\/\*", "\/sitemap\.xml", "\/photos\/\*"\]/.test(cfg) && /"main": "worker\/index\.js"/.test(cfg));
   c("robots.txt points to the site's own sitemap", /^Sitemap: https:\/\/esrealty\.tradersgag6\.workers\.dev\/sitemap\.xml$/m.test(read("robots.txt")));
 
   const sf = read("js/storefront.js");
