@@ -25,7 +25,7 @@ come along.
 ## 2. Claude: point the repository at it
 
 ```
-node tools/switch_supabase_project.js <project ref> <publishable key>
+node tools/switch_supabase_project.js <project ref> <publishable key> [new site URL, if the Cloudflare account changed]
 ```
 
 This rewrites every place that names the project (site config, Worker, workflows, backend check,
