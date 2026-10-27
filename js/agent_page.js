@@ -307,9 +307,9 @@
     return lines.join("\r\n");
   }
 
-  /* An agent page's shareable address. Until the site's Worker is live (pull request #32), only
-   * the #/ form opens the page; the Worker turns PATH_LINKS on so links read /agents/<slug>. */
-  var PATH_LINKS = false;
+  /* An agent page's shareable address. The site's Worker serves /agents/<slug> with the agent's
+   * name and preview image for Facebook and Google, so links use that form. */
+  var PATH_LINKS = true;
   function pageUrl(slug) {
     var base = location.origin + location.pathname.replace(/[^/]*$/, "");
     return base + (PATH_LINKS ? "agents/" : "#/agents/") + encodeURIComponent(slug || "");

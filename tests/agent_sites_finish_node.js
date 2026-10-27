@@ -23,15 +23,15 @@ const go404 = (hostname, pathname) => {
   new Function("location", script)({ hostname, pathname, replace: (u) => { target = u; } });
   return target;
 };
-c("404: an agent address on the site's own domain opens the agent's page", go404("esrealty.tradersgag6.workers.dev", "/agents/maria-santos") === "/#/agents/maria-santos");
-c("404: a listing address opens the listing", go404("esrealty.tradersgag6.workers.dev", "/listing/lst-77/") === "/#/listing/lst-77");
+c("404: an agent address on the site's own domain opens the agent's page", go404("esrealty.extraricestore.workers.dev", "/agents/maria-santos") === "/#/agents/maria-santos");
+c("404: a listing address opens the listing", go404("esrealty.extraricestore.workers.dev", "/listing/lst-77/") === "/#/listing/lst-77");
 c("404: on GitHub Pages the project folder is kept", go404("tradersgag6.github.io", "/esrealty/agents/maria-santos") === "/esrealty/#/agents/maria-santos");
-c("404: anything else goes to the home page", go404("esrealty.tradersgag6.workers.dev", "/agents/") === "/" && go404("tradersgag6.github.io", "/esrealty/nope/deep") === "/esrealty/");
+c("404: anything else goes to the home page", go404("esrealty.extraricestore.workers.dev", "/agents/") === "/" && go404("tradersgag6.github.io", "/esrealty/nope/deep") === "/esrealty/");
 c("404: the old relative refresh that looped is gone", !/content="0;url=\.\/"/.test(page404));
 
 // Links before the Worker: one switch, off until pull request #32 turns it on.
 const ap = read("js/agent_page.js");
-c("agent page links use the #/ form until the Worker is live", /var PATH_LINKS = false;/.test(ap) && /\(PATH_LINKS \? "agents\/" : "#\/agents\/"\)/.test(ap));
+c("with the Worker, agent page links use the /agents/<slug> form", /var PATH_LINKS = true;/.test(ap) && /\(PATH_LINKS \? "agents\/" : "#\/agents\/"\)/.test(ap));
 const app = read("js/app.js");
 c("My website's address and the saved contact use that one function", /P\.pageUrl\(siteData\.slug\)/.test(app) && /"URL:" \+ pageUrl\(p\.slug\)/.test(ap) && !/"agents\/" \+ siteData\.slug/.test(app));
 
@@ -39,7 +39,7 @@ c("My website's address and the saved contact use that one function", /P\.pageUr
 const qr = read("vendor/qrcode/qrcode.min.js");
 c("the QR library is vendored with its licence", /Kazuhiko Arase, MIT/.test(qr) && /MIT License/.test(read("vendor/qrcode/LICENSE")));
 const qrcode = require(path.join(ROOT, "vendor/qrcode/qrcode.min.js"));
-const code = qrcode(0, "M"); code.addData("https://esrealty.tradersgag6.workers.dev/#/agents/maria-santos-dela-cruz"); code.make();
+const code = qrcode(0, "M"); code.addData("https://esrealty.extraricestore.workers.dev/#/agents/maria-santos-dela-cruz"); code.make();
 c("it encodes an agent page address", code.getModuleCount() >= 25 && code.isDark(0, 0) === true);
 const share = read("js/agent_share.js");
 c("My website loads it only when Download QR is pressed", /loadScriptOnce\("vendor\/qrcode\/qrcode\.min\.js\?v=1", "qrcode"\)/.test(share) && !/vendor\/qrcode/.test(read("index.html")) && /data-site-qr/.test(app));

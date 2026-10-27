@@ -3,7 +3,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { parseCsv, build, splitMaintain } = require("./db/build_baseline.js");
+const { parseCsv, build, splitMaintain, guardOtherRole } = require("./db/build_baseline.js");
 let passed = 0;
 const ok = (name, cond, detail) => { assert.ok(cond, name + (detail ? " — " + detail : "")); passed++; console.log("[PASS] " + name); };
 
@@ -28,10 +28,15 @@ ok("Postgres 17's MAINTAIN right goes in a step older versions skip",
   splitMaintain("grant DELETE, INSERT, MAINTAIN, SELECT on public.t to authenticated") === "grant DELETE, INSERT, SELECT on public.t to authenticated;\ndo $$ begin execute 'grant MAINTAIN on public.t to authenticated'; exception when others then null; end $$"
   && splitMaintain("grant MAINTAIN on public.t to anon") === "do $$ begin execute 'grant MAINTAIN on public.t to anon'; exception when others then null; end $$"
   && /in schema public grant INSERT on tables to anon;\ndo \$\$ begin execute 'alter default privileges for role postgres in schema public grant MAINTAIN on tables to anon'/.test(splitMaintain("alter default privileges for role postgres in schema public grant INSERT, MAINTAIN on tables to anon")));
+ok("default rights for another role (supabase_admin) are skipped when refused; postgres's stay plain",
+  guardOtherRole("alter default privileges for role supabase_admin in schema public grant EXECUTE on functions to anon") === "do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant EXECUTE on functions to anon'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$"
+  && guardOtherRole("alter default privileges for role postgres in schema public grant EXECUTE on functions to anon") === "alter default privileges for role postgres in schema public grant EXECUTE on functions to anon"
+  && /^do \$\$ begin execute 'alter default privileges for role supabase_admin in schema public grant INSERT on tables to anon'; exception when insufficient_privilege[^\n]*;\ndo \$\$ begin execute 'alter default privileges for role supabase_admin in schema public grant MAINTAIN/m.test(build("ord,name,ddl\n17,d,\"alter default privileges for role supabase_admin in schema public grant INSERT, MAINTAIN on tables to anon\"", "x")));
 assert.throws(() => build("a,b\n1,2", "x"), /ord, name, ddl/); passed++; console.log("[PASS] a wrong file is refused with a clear message");
 
 const base = fs.readFileSync(path.join(__dirname, "..", "supabase/migrations/0000_baseline.sql"), "utf8");
 ok("the committed baseline holds no email addresses", !/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/.test(base.replace(/onboarding@resend\.dev/g, "")));
+ok("the committed baseline only sets supabase_admin's default rights where refusal is allowed", !/^alter default privileges for role supabase_admin/m.test(base));
 ok("the committed baseline has no carriage returns", base.indexOf("\r") < 0);
 ok("the committed baseline creates the PMS book rules", /create policy "pms_payments manager all"/.test(base) && /pms_same_book/.test(base));
 

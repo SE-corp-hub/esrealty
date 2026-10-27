@@ -3400,25 +3400,25 @@ do $$ begin execute 'alter default privileges for role postgres in schema public
 alter default privileges for role postgres in schema public grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on tables to service_role;
 do $$ begin execute 'alter default privileges for role postgres in schema public grant MAINTAIN on tables to service_role'; exception when others then null; end $$;
 
-alter default privileges for role supabase_admin in schema public grant SELECT, UPDATE, USAGE on sequences to anon;
+do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant SELECT, UPDATE, USAGE on sequences to anon'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$;
 
-alter default privileges for role supabase_admin in schema public grant SELECT, UPDATE, USAGE on sequences to authenticated;
+do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant SELECT, UPDATE, USAGE on sequences to authenticated'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$;
 
-alter default privileges for role supabase_admin in schema public grant SELECT, UPDATE, USAGE on sequences to service_role;
+do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant SELECT, UPDATE, USAGE on sequences to service_role'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$;
 
-alter default privileges for role supabase_admin in schema public grant EXECUTE on functions to anon;
+do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant EXECUTE on functions to anon'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$;
 
-alter default privileges for role supabase_admin in schema public grant EXECUTE on functions to authenticated;
+do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant EXECUTE on functions to authenticated'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$;
 
-alter default privileges for role supabase_admin in schema public grant EXECUTE on functions to service_role;
+do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant EXECUTE on functions to service_role'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$;
 
-alter default privileges for role supabase_admin in schema public grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on tables to anon;
+do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on tables to anon'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$;
 do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant MAINTAIN on tables to anon'; exception when others then null; end $$;
 
-alter default privileges for role supabase_admin in schema public grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on tables to authenticated;
+do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on tables to authenticated'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$;
 do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant MAINTAIN on tables to authenticated'; exception when others then null; end $$;
 
-alter default privileges for role supabase_admin in schema public grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on tables to service_role;
+do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on tables to service_role'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$;
 do $$ begin execute 'alter default privileges for role supabase_admin in schema public grant MAINTAIN on tables to service_role'; exception when others then null; end $$;
 
 -- storage buckets

@@ -45,7 +45,7 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
     // Publish (demo), then download the QR code for print.
     const callBox = q("#site-c-call"); callBox.value = "0917 123 4567"; callBox.dispatchEvent(new Event("input", { bubbles: true })); await wait(100);
     q("[data-site-publish]").click(); await wait(900);
-    chk("the page address uses the #/ link that works today", /#\/agents\/[a-z0-9-]+$/.test(text("[data-site-address]")), text("[data-site-address]"));
+    chk("the page address is the Worker's /agents/ link", /\/agents\/[a-z0-9-]+$/.test(text("[data-site-address]")) && !/#\/agents/.test(text("[data-site-address]")), text("[data-site-address]"));
     const downloads = [];
     const realClick = HTMLAnchorElement.prototype.click;
     HTMLAnchorElement.prototype.click = function () { if (this.download) downloads.push({ name: this.download, href: this.href }); else realClick.call(this); };

@@ -27,7 +27,7 @@ jobs:
           # (this workflow, robots.txt, js/supabase-config.js and an index.html
           # preconnect). Keep the literal here, but name it once so a project
           # migration is a single edit in this file.
-          SUPABASE_REF: mrngaqtbaseewzcsogqi
+          SUPABASE_REF: hdkmvwxgjgzbuycjrbyq
           # Public host of the Market Scan micro-backend. Not a secret.
           MARKET_SCAN_URL: https://esrealty-market-scan.vercel.app
         run: |

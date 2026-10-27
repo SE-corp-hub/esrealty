@@ -27,7 +27,7 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
-      PROJECT_REF: mrngaqtbaseewzcsogqi
+      PROJECT_REF: hdkmvwxgjgzbuycjrbyq
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

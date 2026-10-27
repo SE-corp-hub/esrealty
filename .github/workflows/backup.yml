@@ -42,7 +42,7 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
-      PROJECT_REF: mrngaqtbaseewzcsogqi
+      PROJECT_REF: hdkmvwxgjgzbuycjrbyq
       PGHOST: localhost
       PGPORT: "5432"
       PGUSER: postgres

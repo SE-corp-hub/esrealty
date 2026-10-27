@@ -1,0 +1,8 @@
+# Files in the repository that are not part of the website. Cloudflare's asset
+# server never serves these (the Worker's own code and settings included).
+.git
+.github
+node_modules
+worker
+wrangler.jsonc
+.assetsignore

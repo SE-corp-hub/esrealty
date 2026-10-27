@@ -4,7 +4,7 @@
 // that GitHub already holds for the function deploys (SUPABASE_ACCESS_TOKEN).
 // Used by the GitHub workflows only; nothing in the app calls it.
 
-const DEFAULT_REF = "mrngaqtbaseewzcsogqi";
+const DEFAULT_REF = "hdkmvwxgjgzbuycjrbyq";
 
 function settings(env = process.env) {
   // A stray space or line break from copy-paste breaks the token.

@@ -8,10 +8,10 @@ const corsHeaders = {
 
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 // The production site (Cloudflare). SITE_URL overrides it.
-const SITE_URL = (Deno.env.get("SITE_URL") ?? "https://esrealty.tradersgag6.workers.dev").replace(/\/$/, "");
+const SITE_URL = (Deno.env.get("SITE_URL") ?? "https://esrealty.extraricestore.workers.dev").replace(/\/$/, "");
 // Canonical host + platform prefix that serves the crawlable per-property
 // pages. Omitting the /functions/v1 prefix makes sitemap URLs 404 from Google.
-const EDGE_ORIGIN = "https://mrngaqtbaseewzcsogqi.supabase.co/functions/v1";
+const EDGE_ORIGIN = "https://hdkmvwxgjgzbuycjrbyq.supabase.co/functions/v1";
 
 const PUBLIC_COLUMNS = [
   "id", "title", "description", "property_type", "offer_type", "status",

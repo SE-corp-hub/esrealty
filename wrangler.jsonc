@@ -1,0 +1,30 @@
+// The site on Cloudflare: static files as before, plus a small Worker for share pages.
+// Agent websites plan, Phase 0. Before merging, confirm in the Cloudflare dashboard
+// (Workers & Pages > esrealty > Settings > Build) that the deploy command is
+// "npx wrangler deploy" and the root directory is the repository root.
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "esrealty",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    // Only these paths reach the Worker; every other file is served straight from the
+    // asset server, with _headers applied, exactly as today.
+    "run_worker_first": ["/listing/*", "/agents/*", "/sitemap.xml", "/photos/*"]
+  },
+  "vars": {
+    // The site's public address. Change it to the brand domain once it is attached.
+    "SITE_URL": "https://esrealty.extraricestore.workers.dev",
+    "LISTING_API": "https://hdkmvwxgjgzbuycjrbyq.supabase.co/functions/v1/listing-api/api",
+    // Where /photos/<path> fetches a photo the first time (the project's Storage).
+    "SUPABASE_URL": "https://hdkmvwxgjgzbuycjrbyq.supabase.co",
+    // Agent pages carry noindex until this is "on" (after the lawyer's OK on the wording).
+    "AGENT_PAGES_INDEX": "off"
+  },
+  // Copies of the public listing photos (/photos/<path>). Create the bucket first:
+  // Cloudflare dashboard > R2 > Create bucket "esrealty-photos" (free tier, no charge for bandwidth).
+  "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "esrealty-photos" }],
+  "observability": { "enabled": true }
+}

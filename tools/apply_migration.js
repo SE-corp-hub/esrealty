@@ -6,8 +6,8 @@
 //
 // --test runs the file inside a transaction and rolls it back: it shows
 // whether the file goes through, and changes nothing.
-// The baseline (0000_baseline.sql) is never applied: it describes the live
-// database and is only for building a fresh one.
+// The baseline (0000_baseline.sql) builds a fresh database, so it only runs on
+// a project whose public schema has no tables yet (a new Supabase project).
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -18,10 +18,9 @@ const DIR = path.join(__dirname, "..", "supabase", "migrations");
 function pick(name) {
   const file = String(name || "").trim().replace(/^supabase\/migrations\//, "");
   if (!/^\d{4}_[a-z0-9_]+\.sql$/.test(file)) return { error: "Give a file name like 0003_short_name.sql (from supabase/migrations)." };
-  if (/^0000_/.test(file)) return { error: "0000_baseline.sql is never applied to the live database; it only builds a fresh one." };
   const full = path.join(DIR, file);
   if (!fs.existsSync(full)) return { error: "No such file: supabase/migrations/" + file };
-  return { file, sql: fs.readFileSync(full, "utf8") };
+  return { file, sql: fs.readFileSync(full, "utf8"), baseline: /^0000_/.test(file) };
 }
 
 // In test mode the whole file runs in one transaction that is rolled back.
@@ -36,6 +35,13 @@ async function main(argv, opts = {}) {
   if (p.error) { console.error("::error::" + p.error); return 1; }
   console.log((test ? "Testing (rolled back, nothing changes): " : "Applying: ") + p.file);
   try {
+    if (p.baseline) {
+      const n = await runSql("select count(*)::int as tables from pg_tables where schemaname = 'public';", opts);
+      if (!n || !n[0] || n[0].tables !== 0) {
+        console.error("::error::0000_baseline.sql only builds a fresh database, and this one already has tables. Apply the numbered files instead.");
+        return 1;
+      }
+    }
     const rows = await runSql(wrap(p.sql, test), opts);
     if (test) console.log("The file ran without errors and was rolled back.");
     else console.log("Done. The file's check (last statement):\n" + JSON.stringify(rows, null, 2));

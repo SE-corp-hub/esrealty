@@ -48,3 +48,12 @@ https://YOUR_PROJECT_REF.supabase.co/functions/v1/listing-api/api
 
 The browser wrapper is `js/listings-api.js`. A hosting proxy can map `/api/*`
 to this function later without changing the frontend wrapper's method contract.
+
+## Photos through the site's Worker (PHOTO_BASE)
+
+The Supabase free plan has a monthly cached-egress quota, and public listing photos use most of it.
+Once the site's Worker is live with its R2 bucket (`esrealty-photos`, see `wrangler.jsonc`), set the
+function secret `PHOTO_BASE` to `https://<site address>/photos/`. Every photo link this function
+answers then points at the Worker, which fetches each photo from Storage once and keeps a copy in R2.
+Stored links are not changed, and unsetting the secret switches back. When the site moves to the
+brand domain, update `PHOTO_BASE` to match, because the site's CSP only allows its own images.

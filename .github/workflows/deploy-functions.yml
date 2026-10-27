@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      PROJECT_REF: mrngaqtbaseewzcsogqi
+      PROJECT_REF: hdkmvwxgjgzbuycjrbyq
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
