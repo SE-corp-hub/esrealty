@@ -57,6 +57,9 @@ const FUNCTIONS = [
   },
   {
     name: "admin-delete-account",
+    // The app deletes accounts with the admin_delete_account database function; this edge
+    // function has no supabase/config.toml entry, so a new project doesn't get it.
+    skipBlocking: true,
     probes: [
       { path: "/admin-delete-account", method: "POST", expect: 401, note: "rejects anonymous session", body: { user_id: "x" } },
     ],
