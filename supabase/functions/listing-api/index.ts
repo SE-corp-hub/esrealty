@@ -63,7 +63,7 @@ const PUBLIC_CACHE = { "Cache-Control": "public, max-age=60" };
 
 // Public photos can go out through the site's Worker (/photos/<path>), which keeps a copy in
 // Cloudflare R2, so a photo leaves Supabase Storage once instead of on every view. Off until the
-// PHOTO_BASE secret is set (for example https://esrealty.tradersgag6.workers.dev/photos/). Stored
+// PHOTO_BASE secret is set (for example https://esrealty.extraricestore.workers.dev/photos/). Stored
 // links are unchanged; only what this function answers is rewritten.
 const PHOTO_FROM = `${String(Deno.env.get("SUPABASE_URL") || "").replace(/\/$/, "")}/storage/v1/object/public/listing-photos/`;
 const PHOTO_BASE = String(Deno.env.get("PHOTO_BASE") || "").trim();
@@ -923,7 +923,7 @@ const routeParts = (url: URL) => {
 // from a website form is pushed from here to the agent's phones as soon as it is saved. Needs the
 // function secret VAPID_PRIVATE_KEY (the same value as the repository secret of that name);
 // without it, or if anything fails, the scheduled job still sends it later. Never fails the request.
-const SITE_URL = "https://esrealty.tradersgag6.workers.dev";
+const SITE_URL = "https://esrealty.extraricestore.workers.dev";
 const loadWebPush = async () => (await import("npm:web-push@3.6.7")).default;
 const pushNow = async (admin: SupabaseClient, userId: string | null) => {
   const priv = (Deno.env.get("VAPID_PRIVATE_KEY") || "").replace(/\s+/g, "");

@@ -1,6 +1,6 @@
 # Response headers for Cloudflare (Workers static assets / Pages) and Netlify.
 #
-# Production (esrealty.tradersgag6.workers.dev) is served by Cloudflare, which
+# Production (esrealty.extraricestore.workers.dev) is served by Cloudflare, which
 # APPLIES this file: the CSP below is enforced for every visitor. GitHub Pages
 # (tradersgag6.github.io/esrealty) ignores it. Checked live on 2026-10-16: the
 # old policy silently blocked realtime notifications (wss), address lookup

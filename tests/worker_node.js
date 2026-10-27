@@ -196,7 +196,7 @@ function setup(mode) {
   c("the Worker's code and settings are never served as files", ["worker", "wrangler.jsonc", ".git", ".assetsignore"].every((x) => ignore.includes(x)));
   const cfg = read("wrangler.jsonc");
   c("only share pages, the sitemap and photos reach the Worker; everything else is plain files", /"run_worker_first": \["\/listing\/\*", "\/agents\/\*", "\/sitemap\.xml", "\/photos\/\*"\]/.test(cfg) && /"main": "worker\/index\.js"/.test(cfg));
-  c("robots.txt points to the site's own sitemap", /^Sitemap: https:\/\/esrealty\.tradersgag6\.workers\.dev\/sitemap\.xml$/m.test(read("robots.txt")));
+  c("robots.txt points to the site's own sitemap", /^Sitemap: https:\/\/esrealty\.extraricestore\.workers\.dev\/sitemap\.xml$/m.test(read("robots.txt")));
 
   const sf = read("js/storefront.js");
   c("on path pages, #/ links change the route in place and #id links stay on the page",

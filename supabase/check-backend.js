@@ -9,7 +9,7 @@
 // Usage:
 //   node supabase/check-backend.js [--ref YOUR_PROJECT_REF]
 //
-// Defaults to the production project ref mrngaqtbaseewzcsogqi. You never need
+// Defaults to the production project ref hdkmvwxgjgzbuycjrbyq. You never need
 // secrets to run this — it only hits public/health routes and expects 401/403
 // on protected ones.
 
@@ -20,7 +20,7 @@ const arg = (name, dflt) => {
   const i = process.argv.indexOf(name);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : dflt;
 };
-const REF = arg("--ref", "mrngaqtbaseewzcsogqi");
+const REF = arg("--ref", "hdkmvwxgjgzbuycjrbyq");
 const BASE = `https://${REF}.supabase.co/functions/v1`;
 
 const fnDir = path.join(__dirname, "functions");
@@ -114,8 +114,8 @@ const FUNCTIONS = [
 const REST = {
   base: `https://${REF}.supabase.co/rest/v1`,
   headers: {
-    apikey: "sb_publishable_OtrE6VXTJb4OrSCe6Z-f6g_qAcKyOvk",
-    Authorization: "Bearer sb_publishable_OtrE6VXTJb4OrSCe6Z-f6g_qAcKyOvk",
+    apikey: "sb_publishable_cZYofHijKLif1YXkHY8QLA_jK5SxY2I",
+    Authorization: "Bearer sb_publishable_cZYofHijKLif1YXkHY8QLA_jK5SxY2I",
   },
 };
 const REST_TABLES = [

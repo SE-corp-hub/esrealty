@@ -16,7 +16,7 @@
 "use strict";
 const { runSql, dollarTag } = require("./supabase_sql.js");
 
-const SITE = "https://esrealty.tradersgag6.workers.dev";
+const SITE = "https://esrealty.extraricestore.workers.dev";
 
 function payloadFor(n) {
   const view = /^[a-z-]{2,30}$/.test(String(n.link_view || "")) ? n.link_view : "";

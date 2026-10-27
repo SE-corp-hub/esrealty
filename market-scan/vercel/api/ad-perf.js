@@ -11,8 +11,8 @@ const AD_PERF_SOURCE_URL = process.env.AD_PERF_SOURCE_URL || "";
 const AD_PERF_SOURCE_TOKEN = process.env.AD_PERF_SOURCE_TOKEN || "";
 // Only approved back-office staff may read ad performance. The browser sends its
 // SEA ESTATES sign-in token; it is checked with Supabase on every call.
-const SUPABASE_URL = (process.env.SUPABASE_URL || "https://mrngaqtbaseewzcsogqi.supabase.co").replace(/\/$/, "");
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "sb_publishable_OtrE6VXTJb4OrSCe6Z-f6g_qAcKyOvk";
+const SUPABASE_URL = (process.env.SUPABASE_URL || "https://hdkmvwxgjgzbuycjrbyq.supabase.co").replace(/\/$/, "");
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "sb_publishable_cZYofHijKLif1YXkHY8QLA_jK5SxY2I";
 const STAFF_ROLES = ["super-admin", "broker", "agent"];
 
 // Returns the caller's role if they are approved staff, otherwise "".

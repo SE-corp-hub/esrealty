@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 10
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      PROJECT_REF: mrngaqtbaseewzcsogqi
+      PROJECT_REF: hdkmvwxgjgzbuycjrbyq
       SENDING: ${{ vars.REMINDER_ALERTS }}
     steps:
       - uses: actions/checkout@v5

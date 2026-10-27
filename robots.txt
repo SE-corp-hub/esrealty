@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 Disallow: /functions/
-Sitemap: https://esrealty.tradersgag6.workers.dev/sitemap.xml
+Sitemap: https://esrealty.extraricestore.workers.dev/sitemap.xml

@@ -24,9 +24,9 @@
 const TIMEOUT_MS = 1500;
 const API_CACHE_SECONDS = 60;
 const SITEMAP_PAGES = 20; // 20 pages of 50 listings
-const DEFAULT_SITE_URL = "https://esrealty.tradersgag6.workers.dev";
-const DEFAULT_API = "https://mrngaqtbaseewzcsogqi.supabase.co/functions/v1/listing-api/api";
-const DEFAULT_SUPABASE = "https://mrngaqtbaseewzcsogqi.supabase.co";
+const DEFAULT_SITE_URL = "https://esrealty.extraricestore.workers.dev";
+const DEFAULT_API = "https://hdkmvwxgjgzbuycjrbyq.supabase.co/functions/v1/listing-api/api";
+const DEFAULT_SUPABASE = "https://hdkmvwxgjgzbuycjrbyq.supabase.co";
 
 // <user id>/<file>, as the app names uploads. Only these image types are served from the site's own
 // address, never anything a browser could run (HTML, SVG).

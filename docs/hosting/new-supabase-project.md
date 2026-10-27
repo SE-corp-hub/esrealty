@@ -40,7 +40,7 @@ seo function, robots.txt, market-scan API). Then open a PR and merge it.
 
 ## 4. Owner: settings in the new project
 
-- **Authentication > URL Configuration**: set the Site URL to `https://esrealty.tradersgag6.workers.dev`
+- **Authentication > URL Configuration**: set the Site URL to `https://esrealty.extraricestore.workers.dev`
   and add it to Redirect URLs. Copy any custom email templates or SMTP settings from the old project.
 - **Edge Functions > Secrets**: add the ones you use. Supabase does not show the old values, so
   take them from where you keep them, or make new ones:
@@ -67,7 +67,7 @@ Everyone else signs up and is approved from Users & Access as before.
    tier has 10 GB of storage and no charge for bandwidth. Cloudflare may ask for a payment
    method before turning R2 on.
 2. Merge the Worker PR. Workers Builds must deploy with `npx wrangler deploy` (see `wrangler.jsonc`).
-3. Check that `https://esrealty.tradersgag6.workers.dev/photos/<a photo path>` shows the photo.
-4. Edge Functions > Secrets: set `PHOTO_BASE` to `https://esrealty.tradersgag6.workers.dev/photos/`.
+3. Check that `https://esrealty.extraricestore.workers.dev/photos/<a photo path>` shows the photo.
+4. Edge Functions > Secrets: set `PHOTO_BASE` to `https://esrealty.extraricestore.workers.dev/photos/`.
 
 From then on the site loads each photo from Cloudflare, and Supabase sends it once.

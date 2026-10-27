@@ -16,10 +16,10 @@
   },
   "vars": {
     // The site's public address. Change it to the brand domain once it is attached.
-    "SITE_URL": "https://esrealty.tradersgag6.workers.dev",
-    "LISTING_API": "https://mrngaqtbaseewzcsogqi.supabase.co/functions/v1/listing-api/api",
+    "SITE_URL": "https://esrealty.extraricestore.workers.dev",
+    "LISTING_API": "https://hdkmvwxgjgzbuycjrbyq.supabase.co/functions/v1/listing-api/api",
     // Where /photos/<path> fetches a photo the first time (the project's Storage).
-    "SUPABASE_URL": "https://mrngaqtbaseewzcsogqi.supabase.co",
+    "SUPABASE_URL": "https://hdkmvwxgjgzbuycjrbyq.supabase.co",
     // Agent pages carry noindex until this is "on" (after the lawyer's OK on the wording).
     "AGENT_PAGES_INDEX": "off"
   },

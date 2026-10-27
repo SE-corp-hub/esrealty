@@ -26,7 +26,7 @@ supabase functions deploy agent-dispatch
 supabase secrets set AGENT_DISPATCH_SECRET="<long-random-token>"
 ```
 
-Manual alternative (match the deployed ref `mrngaqtbaseewzcsogqi`):
+Manual alternative (match the deployed ref `hdkmvwxgjgzbuycjrbyq`):
 - Dashboard → **Project Settings → Secrets → Custom secrets** → add
   `AGENT_DISPATCH_SECRET` (default secrets already cover URL + service role).
 

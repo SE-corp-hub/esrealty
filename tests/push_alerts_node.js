@@ -57,7 +57,7 @@ const U = ctx.window.ESREALTY_UTIL;
     sendNotification: async (sub, payload, opts) => { calls.push({ sub, payload, opts }); if (sub.endpoint.endsWith("/gone")) { const e = new Error("gone"); e.statusCode = 410; throw e; } if (sub.endpoint.endsWith("/flaky")) { const e = new Error("busy"); e.statusCode = 500; throw e; } },
   };
   r = await main({ VAPID_PRIVATE_KEY: " " + k.privateKey + "\n" }, { run, webpush, out, wait: async () => {} });
-  ok("VAPID set with the site, the stored public key and the secret (spaces trimmed)", calls[0].vapid[0] === "https://esrealty.tradersgag6.workers.dev" && calls[0].vapid[1] === k.publicKey && calls[0].vapid[2] === k.privateKey);
+  ok("VAPID set with the site, the stored public key and the secret (spaces trimmed)", calls[0].vapid[0] === "https://esrealty.extraricestore.workers.dev" && calls[0].vapid[1] === k.publicKey && calls[0].vapid[2] === k.privateKey);
   const sends = calls.filter(c => c.sub);
   ok("each notification goes to each of the person's phones", sends.length === 5 && sends[0].sub.endpoint === "https://push.example/a" && sends[0].sub.keys.p256dh === "P1" && JSON.parse(sends[0].payload).url === "./index.html?open=leads" && sends[0].opts.TTL === 21600, JSON.stringify(sends.map(s => s.sub.endpoint)));
   ok("a phone the push service says is gone isn't tried again in the same run", !sends.some((s, i) => i > 1 && s.sub.endpoint.endsWith("/gone")));
