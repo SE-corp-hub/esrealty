@@ -1,6 +1,7 @@
 # Database migrations
 
-`0000_baseline.sql` rebuilds the whole SEA ESTATES database schema from scratch:
+`0000_baseline.sql` rebuilds the whole SEA ESTATES database schema from scratch
+(the workflow runs it only on a project with no tables yet, i.e. a new one):
 tables, functions, row rules, rights, storage rules and buckets. No data.
 
 ## Changing the database

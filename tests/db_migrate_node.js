@@ -14,7 +14,7 @@ const ok = (name, cond, detail) => { assert.ok(cond, name + (detail ? "  " + det
 (async () => {
   ok("a numbered file is accepted", !pick("0002_shared_records_updated_at.sql").error && /create trigger/.test(pick("0002_shared_records_updated_at.sql").sql));
   ok("the folder prefix may be typed too", pick("supabase/migrations/0001_pms_receipts_and_tenant_requests.sql").file === "0001_pms_receipts_and_tenant_requests.sql");
-  ok("the baseline is never applied", /never applied/.test(pick("0000_baseline.sql").error || ""));
+  ok("the baseline is picked as a baseline", !pick("0000_baseline.sql").error && pick("0000_baseline.sql").baseline === true && !pick("0002_shared_records_updated_at.sql").baseline);
   ok("odd names are refused (no paths, no other folders)", !!pick("../archive/schema.sql").error && !!pick("0002_x.sql; drop table x").error && !!pick("").error);
   ok("a missing file is reported", /No such file/.test(pick("0099_nothing_here.sql").error || ""));
   ok("test mode wraps the file in a rolled-back transaction", wrap("select 1;", true) === "begin;\nselect 1;\nrollback;" && wrap("select 1;", false) === "select 1;");
@@ -38,7 +38,10 @@ const ok = (name, cond, detail) => { assert.ok(cond, name + (detail ? "  " + det
   const codeTest = await main(["0002_shared_records_updated_at.sql", "--test"], opts);
   reply = { status: 400, body: { message: "syntax error at or near \"tabel\"" } };
   const codeErr = await main(["0002_shared_records_updated_at.sql"], opts);
+  reply = { status: 201, body: [{ tables: 42 }] };
   const codeBase = await main(["0000_baseline.sql"], opts);
+  reply = { status: 201, body: [{ tables: 0 }] };
+  const codeFresh = await main(["0000_baseline.sql", "--test"], opts);
   console.log = keep.log; console.error = keep.error;
   srv.close();
   const sql = fs.readFileSync(path.join(__dirname, "..", "supabase/migrations/0002_shared_records_updated_at.sql"), "utf8");
@@ -46,7 +49,8 @@ const ok = (name, cond, detail) => { assert.ok(cond, name + (detail ? "  " + det
   ok("apply: prints the file's check result", logs.some(l => /"updated_at_triggers": 3/.test(l)));
   ok("test: the same file, rolled back", codeTest === 0 && /^begin;\n/.test(seen[1].body.query) && /\nrollback;$/.test(seen[1].body.query));
   ok("an error from the database fails the run with its message", codeErr === 1 && logs.some(l => /::error::Database said \(400\): syntax error/.test(l)));
-  ok("the baseline isn't even sent", codeBase === 1 && seen.length === 3);
+  ok("the baseline is refused on a database that has tables (only the check is sent)", codeBase === 1 && /pg_tables/.test(seen[3].body.query) && /pg_tables/.test(seen[4].body.query) && logs.some(l => /already has tables/.test(l)));
+  ok("the baseline runs on an empty database", codeFresh === 0 && seen.length === 6 && /^begin;\n/.test(seen[5].body.query) && /create table/i.test(seen[5].body.query));
 
   const wf = fs.readFileSync(path.join(__dirname, "..", ".github/workflows/db-migrate.yml"), "utf8");
   ok("workflow: by hand only (no schedule, no push)", /workflow_dispatch:/.test(wf) && !/schedule:/.test(wf) && !/\n  push:/.test(wf));
