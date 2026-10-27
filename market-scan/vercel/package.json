@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@vercel/kv": "^3.0.0",
-    "@vercel/functions": "^2.0.0"
+    "@vercel/functions": "^3.10.3"
   },
   "scripts": {
     "start": "node server.js"
