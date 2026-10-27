@@ -37,8 +37,9 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
       if (!q) return false;
       const p = new URLSearchParams(q);
       for (const k of p.keys()) {
-        /* section/service steer page copy, sort/page are presentation */
-        if (["section", "service", "sort", "page"].indexOf(k) > -1) continue;
+        /* section/service steer page copy, go aims at a spot on the page (?go=form),
+           sort/page are presentation */
+        if (["section", "service", "go", "sort", "page"].indexOf(k) > -1) continue;
         if (fieldNames.indexOf(k) === -1) return true;
       }
       return false;
