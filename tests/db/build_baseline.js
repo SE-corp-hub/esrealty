@@ -31,6 +31,13 @@ function splitMaintain(ddl) {
   return (others.length ? m[1] + others.join(", ") + m[3] + ";\n" : "") + guarded;
 }
 
+// Default rights another role's objects get (supabase_admin's) can only be set by
+// that role: a new Supabase project already has them, so skip them when refused.
+function guardOtherRole(ddl) {
+  if (!/^alter default privileges for role (?!postgres )/i.test(ddl)) return ddl;
+  return "do $$ begin execute '" + ddl.replace(/;\s*$/, "").replace(/'/g, "''") + "'; exception when insufficient_privilege then raise notice 'default rights skipped: %', sqlerrm; end $$";
+}
+
 function build(csvText, source) {
   const rows = parseCsv(csvText);
   const head = rows.shift().map(h => h.trim().toLowerCase());
@@ -58,6 +65,7 @@ function build(csvText, source) {
     // Postgres 17 added the MAINTAIN right (live runs 17, CI and older copies
     // 16): it goes in its own step that older versions skip.
     if ((it.ord === 14 || it.ord === 17) && /\bMAINTAIN\b/.test(ddl)) ddl = splitMaintain(ddl);
+    if (it.ord === 17) ddl = ddl.split(";\n").map(guardOtherRole).join(";\n");
     out.push(ddl.replace(/;\s*$/, "") + ";");
     out.push("");
   }
@@ -69,4 +77,4 @@ if (require.main === module) {
   if (!file) { console.error("usage: node tests/db/build_baseline.js export.csv > supabase/migrations/0000_baseline.sql"); process.exit(2); }
   process.stdout.write(build(fs.readFileSync(file, "utf8"), require("path").basename(file)));
 }
-module.exports = { parseCsv, build, splitMaintain };
+module.exports = { parseCsv, build, splitMaintain, guardOtherRole };
