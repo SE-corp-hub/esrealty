@@ -15,6 +15,12 @@ create schema if not exists auth;
 create schema if not exists storage;
 create schema if not exists extensions;
 grant usage on schema public, auth, storage, extensions to anon, authenticated, service_role;
+-- What a new Supabase project sets before any migration runs: every right on every new table,
+-- function and sequence for visitors and signed-in users. Without this the tests ran with fewer
+-- rights than the live project has, and missed that anyone could make themselves Super Admin (0021).
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
 
 -- The signed-in user comes from request.jwt.claims, as PostgREST sets it.
 create or replace function auth.jwt() returns jsonb language sql stable as $$
