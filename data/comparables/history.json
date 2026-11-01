@@ -156,10 +156,200 @@
     }
    ],
    "accuracy": {
-    "house_lot": 0.043,
+    "house_lot": -0.008,
     "vacant_lot": 0.154
    },
-   "accuracyCalculationVersion": "2026.11.2"
+   "accuracyCalculationVersion": "2026.10.7"
+  },
+  {
+   "month": "2026-11",
+   "generatedOn": "2026-11-01",
+   "records": 476,
+   "matchRate": 0.891,
+   "bySource": {
+    "bdo": {
+     "status": "ok",
+     "observedOn": "2026-10-10",
+     "kept": 94
+    },
+    "bpi": {
+     "status": "ok",
+     "observedOn": "2026-11-01",
+     "kept": 13
+    },
+    "pagibig": {
+     "status": "ok",
+     "observedOn": "2026-11-01",
+     "kept": 369
+    },
+    "securitybank": {
+     "status": "skipped",
+     "observedOn": null,
+     "kept": 0
+    },
+    "sss": {
+     "status": "skipped",
+     "observedOn": null,
+     "kept": 0
+    }
+   },
+   "byTown": [
+    {
+     "town": "BATANGAS CITY",
+     "kind": "built",
+     "n": 44,
+     "medianPricePerSqm": 37980
+    },
+    {
+     "town": "BATANGAS CITY",
+     "kind": "vacant",
+     "n": 6,
+     "medianPricePerSqm": 8500
+    },
+    {
+     "town": "BAUAN",
+     "kind": "built",
+     "n": 3,
+     "medianPricePerSqm": 18562
+    },
+    {
+     "town": "CALACA",
+     "kind": "vacant",
+     "n": 1,
+     "medianPricePerSqm": 10000
+    },
+    {
+     "town": "LAUREL",
+     "kind": "vacant",
+     "n": 11,
+     "medianPricePerSqm": 11500
+    },
+    {
+     "town": "LEMERY",
+     "kind": "built",
+     "n": 2,
+     "medianPricePerSqm": 11355
+    },
+    {
+     "town": "LIPA CITY",
+     "kind": "built",
+     "n": 101,
+     "medianPricePerSqm": 21994
+    },
+    {
+     "town": "LIPA CITY",
+     "kind": "vacant",
+     "n": 54,
+     "medianPricePerSqm": 5750
+    },
+    {
+     "town": "MALVAR",
+     "kind": "built",
+     "n": 2,
+     "medianPricePerSqm": 24479
+    },
+    {
+     "town": "NASUGBU",
+     "kind": "built",
+     "n": 2,
+     "medianPricePerSqm": 19294
+    },
+    {
+     "town": "NASUGBU",
+     "kind": "vacant",
+     "n": 1,
+     "medianPricePerSqm": 50000
+    },
+    {
+     "town": "PADRE GARCIA",
+     "kind": "built",
+     "n": 1,
+     "medianPricePerSqm": 16268
+    },
+    {
+     "town": "PADRE GARCIA",
+     "kind": "vacant",
+     "n": 1,
+     "medianPricePerSqm": 7500
+    },
+    {
+     "town": "ROSARIO",
+     "kind": "built",
+     "n": 2,
+     "medianPricePerSqm": 16951
+    },
+    {
+     "town": "SAN JOSE",
+     "kind": "built",
+     "n": 17,
+     "medianPricePerSqm": 18649
+    },
+    {
+     "town": "SAN JUAN",
+     "kind": "built",
+     "n": 1,
+     "medianPricePerSqm": 13968
+    },
+    {
+     "town": "SAN JUAN",
+     "kind": "vacant",
+     "n": 2,
+     "medianPricePerSqm": 21780
+    },
+    {
+     "town": "SAN PASCUAL",
+     "kind": "built",
+     "n": 5,
+     "medianPricePerSqm": 43730
+    },
+    {
+     "town": "SAN PASCUAL",
+     "kind": "vacant",
+     "n": 2,
+     "medianPricePerSqm": 19100
+    },
+    {
+     "town": "STO. TOMAS CITY",
+     "kind": "built",
+     "n": 135,
+     "medianPricePerSqm": 28971
+    },
+    {
+     "town": "STO. TOMAS CITY",
+     "kind": "vacant",
+     "n": 4,
+     "medianPricePerSqm": 9000
+    },
+    {
+     "town": "TAAL",
+     "kind": "built",
+     "n": 5,
+     "medianPricePerSqm": 30577
+    },
+    {
+     "town": "TAAL",
+     "kind": "vacant",
+     "n": 1,
+     "medianPricePerSqm": 8700
+    },
+    {
+     "town": "TANAUAN CITY",
+     "kind": "built",
+     "n": 71,
+     "medianPricePerSqm": 30576
+    },
+    {
+     "town": "TANAUAN CITY",
+     "kind": "vacant",
+     "n": 2,
+     "medianPricePerSqm": 20000
+    }
+   ],
+   "accuracy": {
+    "house_lot": -0.026,
+    "vacant_lot": 0.375
+   },
+   "accuracyCalculationVersion": "2026.10.7"
   }
  ]
 }
