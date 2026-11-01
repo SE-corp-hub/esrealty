@@ -28,23 +28,26 @@ current resale asking prices instead of 10-15% above them.
 
    | Band | Prices | Developments | Grade | Effective CHB rate |
    |---|---|---|---|---|
-   | under 30 sqm | 67 | 24 | 0.742 | 11,872 |
-   | 30-49 sqm | 116 | 37 | 1.376 | 22,016 |
-   | 50-79 sqm | 33 | 21 | 1.659 | 26,544 |
-   | 80-149 sqm | 15 | 9 | 1.159 | 18,544 |
-   | 150 sqm and up | 13 | 10 | 0.707 | 11,312 |
+   | under 30 sqm | 72 | 18 | 0.951 | 15,216 |
+   | 30-49 sqm | 152 | 37 | 1.382 | 22,112 |
+   | 50-79 sqm | 88 | 27 | 1.500 | 24,000 |
+   | 80-149 sqm | 17 | 10 | 1.219 | 19,504 |
+   | 150 sqm and up | 12 | 9 | 0.786 | 12,576 |
 
-   Fitted by `market-scan/comparables/fit-model.js`: (price x 1.10 - guide
+   Fitted by `market-scan/comparables/fit-model.js` on the Nov 2026 snapshot
+   (476 bank and Pag-IBIG prices, 341 houses matched): (price x 1.10 - guide
    land) / guide building, median per development, median across
-   developments, shrunk by developments / (developments + 5) toward 1.
-   Held out one development at a time, the typical miss against the likely
-   sale price falls from 21% to about 15%, and the share within 20% rises
-   from 46% to 68%.
+   developments, shrunk by developments / (developments + 5) toward 1. The
+   first fit, on the Oct snapshot (264 house prices), put the under-30 band
+   at 0.742 and the 50-79 band at 1.659; the November data moved both toward
+   1, which is what the monthly refit is for. Held out one development at a
+   time on the October data, the typical miss against the likely sale price
+   fell from 21% to about 15%, and the share within 20% rose from 46% to 68%.
 2. **Measured range** (`rangeFactors`, data in `data/calibration.json`
    `range`). For houses and lots on residential land the band is where the
-   middle 68% of developments fell relative to the guide: houses 83%-126%
-   (71% of individual bank prices inside), lots 62%-143% (73% inside, against
-   9% inside the old 85%-130% band). A location matched only at town or
+   middle 68% of developments fell relative to the guide: houses 85%-126%
+   (70% of individual bank prices inside), lots 51%-151% (66% inside, against
+   9% inside the old 85%-130% band on the October data). A location matched only at town or
    province level widens the band by 25%. Everything else keeps the 85%-130%
    planning scenarios. The back office prints the same band.
 3. **Quick figure and home-page example** price at the town's typical
@@ -54,10 +57,15 @@ current resale asking prices instead of 10-15% above them.
    were under-priced by about 30%; the note names the barangay used.
 4. **Accuracy report** (`market-scan/comparables/accuracy.js`) adds the error
    against the likely sale price, the share of bank prices inside the guide's
-   range, and houses by size band. Oct 2026, calculation 2026.11.2: houses
-   median |error| 12.3% against bank prices (was 21.2%), 70.5% inside the
-   range (was 52%); every size band within 10% of bank prices, one
-   development counted once.
+   range, and houses by size band. Nov 2026 snapshot, calculation 2026.11.2:
+   houses median |error| 11.4% against bank prices (19.4% under the one-rate
+   model on the same snapshot), project-weighted +8.6% (the target is +10%,
+   the likely-sale lift), 70% inside the range; by band, one development
+   counted once: under 30 sqm +10%, 30-49 sqm +8%, 50-79 sqm +4%, 80-149 sqm
+   +16%, 150 sqm and up +15% (the last two bands hold 17 and 12 prices).
+   Lots: unchanged model, +38% project-weighted; 46 of the 82 lot prices are
+   one Lipa development, which the town-factor proposal in issue #49 only
+   partly offsets.
 5. **Monthly workflow** runs the fit script and puts house-size and range
    proposals in the same calibration pull request as the town factors, so
    the grades follow the market without a code change.
@@ -66,5 +74,5 @@ current resale asking prices instead of 10-15% above them.
 
 - 1.2 subdivision tiers (needs the proposed SMV class lists per subdivision).
 - 1.6 one engine for the back-office questions.
-- Lots keep the current land model: 46 of the 77 bank lot prices are one
+- Lots keep the current land model: 46 of the 82 bank lot prices are one
   development, too thin to re-fit.

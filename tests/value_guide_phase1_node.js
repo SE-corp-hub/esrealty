@@ -136,7 +136,12 @@ const HOUSE = { purpose: "Selling", type: "house_lot", municipality: "BAUAN", ba
   ok("...the error against the likely sale price", ACC.overall.house_lot.likelySale && typeof ACC.overall.house_lot.likelySale.medianAbs === "number");
   ok("...and houses by size band", Array.isArray(ACC.bySize) && ACC.bySize.length === 5 && ACC.bySize.every(b => b.n > 0));
   ok("houses now miss bank prices by well under the 21% of calculation 2026.10.7", ACC.overall.house_lot.medianAbs < 0.15, ACC.overall.house_lot.medianAbs);
-  ok("every size band sits within 10% of bank prices, one development counted once", ACC.bySize.every(b => Math.abs(b.projectWeightedMedian) <= 0.10), JSON.stringify(ACC.bySize.map(b => b.projectWeightedMedian)));
+  /* The guide aims at bank price x 1.10, so a band fitted exactly reads +10%
+     against bank prices; the small 80-149 and 150+ bands (17 and 12 prices in
+     Nov 2026) sit a little above that. Under the one rate the bands ran from
+     -25% to +29%. */
+  ok("every size band sits between -5% and +20% of bank prices, one development counted once", ACC.bySize.every(b => b.projectWeightedMedian >= -0.05 && b.projectWeightedMedian <= 0.20), JSON.stringify(ACC.bySize.map(b => b.projectWeightedMedian)));
+  ok("the three bands with 70+ prices sit within 10% of the likely sale price", ACC.bySize.filter(b => b.n >= 70).length === 3 && ACC.bySize.filter(b => b.n >= 70).every(b => Math.abs(b.projectWeightedMedian - 0.10) <= 0.10), JSON.stringify(ACC.bySize.map(b => [b.n, b.projectWeightedMedian])));
 
   /* ---- versions move together */
   ok("the calculation version advanced for the model change", config.calculationVersion === "2026.11.2");

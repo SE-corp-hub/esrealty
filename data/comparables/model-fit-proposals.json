@@ -1,7 +1,7 @@
 {
  "note": "Model fit proposals from bank and Pag-IBIG prices (market-scan/comparables/fit-model.js): house-size grades and the measured range. Suggestions only: they reach data/calibration.json through a pull request that a person merges.",
  "generatedOn": "2026-11-01",
- "snapshotMonth": "2026-10",
+ "snapshotMonth": "2026-11",
  "rules": {
   "BANK_GAP": 0.1,
   "PRIOR": 5,
@@ -46,192 +46,212 @@
    {
     "label": "under 30 sqm",
     "to": 30,
-    "factor": 0.742,
-    "ratio": 0.688,
-    "records": 67,
-    "projects": 24,
-    "weight": 0.828,
-    "current": 0.742,
+    "factor": 0.951,
+    "ratio": 0.937,
+    "records": 72,
+    "projects": 18,
+    "weight": 0.783,
+    "current": 0.951,
     "change": 0,
     "status": "no change needed",
     "projectDetail": [
      {
-      "name": "PRIMERAROSA",
-      "n": 12,
-      "ratio": 0.918
-     },
-     {
-      "name": "NUVISTA",
-      "n": 11,
-      "ratio": 0.75
-     },
-     {
-      "name": "BELA ROSA",
-      "n": 7,
-      "ratio": 0.626
-     },
-     {
-      "name": "IMPERIAL SOUTH MEADOWS",
-      "n": 6,
-      "ratio": 0.481
-     },
-     {
       "name": "LUMINA",
-      "n": 4,
-      "ratio": 1.419
+      "n": 17,
+      "ratio": 0.925
+     },
+     {
+      "name": "SAMPAGUITA WEST",
+      "n": 16,
+      "ratio": 1.018
+     },
+     {
+      "name": "PRIMERAROSA",
+      "n": 9,
+      "ratio": 0.95
      },
      {
       "name": "LUMINA LIPA",
+      "n": 5,
+      "ratio": 0.907
+     },
+     {
+      "name": "NUVISTA",
+      "n": 4,
+      "ratio": 1.148
+     },
+     {
+      "name": "IMPERIAL SOUTH MEADOWS",
       "n": 3,
-      "ratio": 1.055
+      "ratio": 1.167
+     },
+     {
+      "name": "BELLAVITA LIPA",
+      "n": 2,
+      "ratio": 0.355
+     },
+     {
+      "name": "MABINI",
+      "n": 2,
+      "ratio": 1.094
+     },
+     {
+      "name": "VIA VERDE",
+      "n": 2,
+      "ratio": 1.41
+     },
+     {
+      "name": "BELA ROSA",
+      "n": 2,
+      "ratio": 0.69
      },
      {
       "name": "REGINAROSA",
-      "n": 3,
-      "ratio": 0.923
-     },
-     {
-      "name": "NUVISTA LIPA",
       "n": 2,
-      "ratio": 0.542
+      "ratio": 0.665
      },
      {
-      "name": "BELLAVITA ROSARIO",
+      "name": "PLANTACION SOL",
       "n": 2,
-      "ratio": 1.075
-     },
-     {
-      "name": "BLUE ISLE",
-      "n": 2,
-      "ratio": 0.2
-     },
-     {
-      "name": "LUMINA TANAUAN",
-      "n": 2,
-      "ratio": 1.997
-     },
-     {
-      "name": "LUMINA BAUAN",
-      "n": 1,
-      "ratio": 1.777
+      "ratio": 1.411
      }
     ]
    },
    {
     "label": "30-49 sqm",
     "to": 50,
-    "factor": 1.376,
-    "ratio": 1.427,
-    "records": 116,
+    "factor": 1.382,
+    "ratio": 1.433,
+    "records": 152,
     "projects": 37,
     "weight": 0.881,
-    "current": 1.376,
+    "current": 1.382,
     "change": 0,
     "status": "no change needed",
     "projectDetail": [
      {
-      "name": "GREEN MEADOWS",
+      "name": "VIA VERDE",
       "n": 26,
-      "ratio": 1.48
+      "ratio": 2.68
+     },
+     {
+      "name": "GREEN MEADOWS",
+      "n": 17,
+      "ratio": 1.471
      },
      {
       "name": "CASA ISABEL",
-      "n": 15,
-      "ratio": 1.879
+      "n": 14,
+      "ratio": 1.906
      },
      {
       "name": "DECA TANAUAN",
-      "n": 9,
-      "ratio": 1.983
-     },
-     {
-      "name": "BON GIORNO",
-      "n": 5,
-      "ratio": 1.316
-     },
-     {
-      "name": "AZALEA VISTA",
-      "n": 5,
-      "ratio": 1.423
-     },
-     {
-      "name": "MOUBREZA",
-      "n": 5,
-      "ratio": 1.056
-     },
-     {
-      "name": "SOUTHGROVE POINTE",
-      "n": 4,
+      "n": 12,
       "ratio": 1.828
      },
      {
-      "name": "PRIMERAROSA",
-      "n": 4,
-      "ratio": 1.664
+      "name": "SOUTHGROVE POINTE",
+      "n": 11,
+      "ratio": 1.741
      },
      {
-      "name": "TIERRA VERDE PARCHOMES",
-      "n": 4,
-      "ratio": 1.384
+      "name": "BON GIORNO",
+      "n": 9,
+      "ratio": 0.988
      },
      {
-      "name": "VIA VERDE",
+      "name": "FIRST WORLD",
+      "n": 5,
+      "ratio": 0.2
+     },
+     {
+      "name": "ALDEA MONTE",
+      "n": 5,
+      "ratio": 2.065
+     },
+     {
+      "name": "GRANDVIEW",
+      "n": 5,
+      "ratio": 1.837
+     },
+     {
+      "name": "LUMINA",
+      "n": 4,
+      "ratio": 1.19
+     },
+     {
+      "name": "SAMPAGUITA WEST",
       "n": 3,
-      "ratio": 2.705
+      "ratio": 0.786
      },
      {
-      "name": "NUVISTA LIPA",
-      "n": 2,
-      "ratio": 1.847
-     },
-     {
-      "name": "LYNVILLE LIPA",
-      "n": 2,
-      "ratio": 1.737
+      "name": "MOUBREZA",
+      "n": 3,
+      "ratio": 1.462
      }
     ]
    },
    {
     "label": "50-79 sqm",
     "to": 80,
-    "factor": 1.659,
-    "ratio": 1.816,
-    "records": 33,
-    "projects": 21,
-    "weight": 0.808,
-    "current": 1.659,
+    "factor": 1.5,
+    "ratio": 1.593,
+    "records": 88,
+    "projects": 27,
+    "weight": 0.844,
+    "current": 1.5,
     "change": 0,
     "status": "no change needed",
     "projectDetail": [
      {
-      "name": "VALLE PIO",
-      "n": 6,
-      "ratio": 1.949
+      "name": "ECOVERDE ESPACIO TANAUAN",
+      "n": 21,
+      "ratio": 1.593
      },
      {
-      "name": "LYNVILLE LIPA",
-      "n": 4,
-      "ratio": 1.555
+      "name": "SAMPAGUITA WEST",
+      "n": 17,
+      "ratio": 1.471
+     },
+     {
+      "name": "FIRST WORLD",
+      "n": 9,
+      "ratio": 0.559
+     },
+     {
+      "name": "VALLE PIO",
+      "n": 8,
+      "ratio": 1.98
      },
      {
       "name": "MOUBREZA",
-      "n": 2,
-      "ratio": 1.115
+      "n": 4,
+      "ratio": 1.057
      },
      {
-      "name": "VILLAS PUEBLO",
-      "n": 2,
-      "ratio": 1.555
+      "name": "ECOVERDE PASCUAL",
+      "n": 3,
+      "ratio": 2.388
      },
      {
-      "name": "ECOVERDE ESPACIO TANAUAN",
-      "n": 2,
-      "ratio": 2.48
+      "name": "IMPERIAL SOUTH MEADOWS",
+      "n": 3,
+      "ratio": 1.2
      },
      {
-      "name": "HACIENDA SOL",
+      "name": "MABINI",
       "n": 2,
-      "ratio": 1.707
+      "ratio": 1.843
+     },
+     {
+      "name": "MONTE CLARO",
+      "n": 2,
+      "ratio": 1.232
+     },
+     {
+      "name": "DECA TANAUAN",
+      "n": 2,
+      "ratio": 1.971
      },
      {
       "name": "BETZAIDA",
@@ -239,41 +259,21 @@
       "ratio": 1.4
      },
      {
-      "name": "NUVISTA LIPA",
+      "name": "CALUMALA",
       "n": 1,
-      "ratio": 3.102
-     },
-     {
-      "name": "MABINI",
-      "n": 1,
-      "ratio": 1.831
-     },
-     {
-      "name": "BON GIORNO",
-      "n": 1,
-      "ratio": 1.621
-     },
-     {
-      "name": "ECOVERDE LIPA",
-      "n": 1,
-      "ratio": 3.349
-     },
-     {
-      "name": "MONTE CARLO",
-      "n": 1,
-      "ratio": 1.816
+      "ratio": 1.248
      }
     ]
    },
    {
     "label": "80-149 sqm",
     "to": 150,
-    "factor": 1.159,
-    "ratio": 1.247,
-    "records": 15,
-    "projects": 9,
-    "weight": 0.643,
-    "current": 1.159,
+    "factor": 1.219,
+    "ratio": 1.328,
+    "records": 17,
+    "projects": 10,
+    "weight": 0.667,
+    "current": 1.219,
     "change": 0,
     "status": "no change needed",
     "projectDetail": [
@@ -285,7 +285,7 @@
      {
       "name": "BATANGAS",
       "n": 3,
-      "ratio": 0.2
+      "ratio": 0.665
      },
      {
       "name": "CAMELLA LIPA",
@@ -293,19 +293,24 @@
       "ratio": 1.786
      },
      {
+      "name": "SAMPAGUITA WEST",
+      "n": 2,
+      "ratio": 1.573
+     },
+     {
       "name": "VILLAS PUEBLO",
       "n": 2,
       "ratio": 0.852
      },
      {
-      "name": "LYNVILLE LIPA",
+      "name": "VILLA MARIQUITA",
       "n": 1,
-      "ratio": 2.149
+      "ratio": 0.637
      },
      {
-      "name": "GREEN MEADOWS",
+      "name": "GAVINA VILLE",
       "n": 1,
-      "ratio": 2.116
+      "ratio": 1.975
      },
      {
       "name": "ANTONIO",
@@ -320,19 +325,19 @@
      {
       "name": "BLUE ISLE",
       "n": 1,
-      "ratio": 1.206
+      "ratio": 1.41
      }
     ]
    },
    {
     "label": "150 sqm and up",
     "to": null,
-    "factor": 0.707,
-    "ratio": 0.56,
-    "records": 13,
-    "projects": 10,
-    "weight": 0.667,
-    "current": 0.707,
+    "factor": 0.786,
+    "ratio": 0.668,
+    "records": 12,
+    "projects": 9,
+    "weight": 0.643,
+    "current": 0.786,
     "change": 0,
     "status": "no change needed",
     "projectDetail": [
@@ -340,11 +345,6 @@
       "name": "BATANGAS",
       "n": 4,
       "ratio": 1.248
-     },
-     {
-      "name": "ABACAN",
-      "n": 1,
-      "ratio": 0.2
      },
      {
       "name": "LEMERY",
@@ -355,11 +355,6 @@
       "name": "LIPA",
       "n": 1,
       "ratio": 1.352
-     },
-     {
-      "name": "MONTE CLARO",
-      "n": 1,
-      "ratio": 1.291
      },
      {
       "name": "MARMAINE VILLE",
@@ -375,6 +370,11 @@
       "name": "ANTONIO",
       "n": 1,
       "ratio": 0.668
+     },
+     {
+      "name": "TENNESSEE",
+      "n": 1,
+      "ratio": 0.706
      },
      {
       "name": "VILLA LOLITA",
@@ -395,43 +395,43 @@
   "segments": [
    {
     "kind": "house_lot",
-    "records": 244,
-    "projects": 73,
-    "lowFactor": 0.83,
+    "records": 341,
+    "projects": 72,
+    "lowFactor": 0.85,
     "highFactor": 1.26,
-    "inBand": 0.709,
-    "medianRatio": 1.063,
-    "projectWeightedRatio": 1.045,
-    "inPlanningBand": 0.73,
+    "inBand": 0.672,
+    "medianRatio": 1.053,
+    "projectWeightedRatio": 1.005,
+    "inPlanningBand": 0.724,
     "derivedMatches": {
-     "records": 20,
-     "p16": 1.24,
-     "p84": 1.45
+     "records": 50,
+     "p16": 1.04,
+     "p84": 1.24
     },
     "current": {
-     "lowFactor": 0.83,
+     "lowFactor": 0.85,
      "highFactor": 1.26
     },
     "status": "no change needed"
    },
    {
     "kind": "vacant_lot",
-    "records": 77,
-    "projects": 13,
-    "lowFactor": 0.62,
-    "highFactor": 1.43,
-    "inBand": 0.727,
+    "records": 82,
+    "projects": 12,
+    "lowFactor": 0.51,
+    "highFactor": 1.51,
+    "inBand": 0.683,
     "medianRatio": 0.686,
-    "projectWeightedRatio": 0.953,
-    "inPlanningBand": 0.078,
+    "projectWeightedRatio": 0.752,
+    "inPlanningBand": 0.049,
     "derivedMatches": {
-     "records": 0,
-     "p16": null,
-     "p84": null
+     "records": 2,
+     "p16": 4.93,
+     "p84": 4.97
     },
     "current": {
-     "lowFactor": 0.62,
-     "highFactor": 1.43
+     "lowFactor": 0.51,
+     "highFactor": 1.51
     },
     "status": "no change needed"
    }
