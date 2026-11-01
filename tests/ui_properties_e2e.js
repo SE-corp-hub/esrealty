@@ -71,16 +71,6 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
       "href=" + (chips[0] ? chips[0].getAttribute("href") : ""));
     chk("has-clear-all", !!document.querySelector(".sf-chip-clear"), "no clear-all link");
 
-    /* ---- 4. the empty state must explain itself and offer a way out ---- */
-    const emptyEl = document.querySelector(".sf-empty");
-    chk("empty-state-shown", !!emptyEl, "empty=" + !!emptyEl);
-    chk("empty-state-names-the-filter", !!emptyEl && /batangas/i.test(emptyEl.textContent),
-      "text=" + (emptyEl ? emptyEl.textContent.replace(/\s+/g, " ").trim().slice(0, 90) : ""));
-    chk("empty-state-not-generic", !!emptyEl && !/^No properties found/.test((emptyEl.querySelector("h3") || {}).textContent || ""),
-      "h3=" + ((emptyEl && emptyEl.querySelector("h3")) || {}).textContent);
-    const clearBtn = emptyEl && emptyEl.querySelector('a[href="#/search"]');
-    chk("empty-state-offers-escape", !!clearBtn, "no clear-filters action");
-
     /* clicking the chip actually restores the listings */
     if (chips.length) {
       chips[0].click();
@@ -91,6 +81,19 @@ function chk(n, ok, d) { window.__msChecks.push({ name: n, ok: !!ok, detail: d |
       chk("chips-gone-after-clear", document.querySelectorAll("[data-sf-clear-filter]").length === 0,
         "chips=" + document.querySelectorAll("[data-sf-clear-filter]").length);
     }
+
+    /* ---- 4. the empty state must explain itself and offer a way out ----
+       On its own filter that matches nothing: the live inventory may well have
+       Batangas listings, so the Batangas filter above can't be relied on to be empty. */
+    await go("#/search?state=Nowhere%20Province", 2400);
+    const emptyEl = document.querySelector(".sf-empty");
+    chk("empty-state-shown", !!emptyEl, "empty=" + !!emptyEl);
+    chk("empty-state-names-the-filter", !!emptyEl && /nowhere province/i.test(emptyEl.textContent),
+      "text=" + (emptyEl ? emptyEl.textContent.replace(/\s+/g, " ").trim().slice(0, 90) : ""));
+    chk("empty-state-not-generic", !!emptyEl && !/^No properties found/.test((emptyEl.querySelector("h3") || {}).textContent || ""),
+      "h3=" + ((emptyEl && emptyEl.querySelector("h3")) || {}).textContent);
+    const clearBtn = emptyEl && emptyEl.querySelector('a[href="#/search"]');
+    chk("empty-state-offers-escape", !!clearBtn, "no clear-filters action");
 
     /* ---- 5. the homepage must actually show the listings it fetches ---- */
     await go("#/home", 3200);
