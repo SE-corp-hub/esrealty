@@ -36,11 +36,11 @@ const DEFAULT_SITE_CONTACT = {
   hours: "Monday–Saturday, 9:00 AM–6:00 PM",
 };
 
-// The live calculator's own factors (data/zonal-config.json, calculation 2026.11.1). They are the
+// The live calculator's own factors (data/zonal-config.json, calculation 2026.11.2). They are the
 // fallbacks when no super-admin has approved an override, so they must equal what the public site
 // computes with; tests/value_guide_phase0_node.js pins them to the config.
 const VALUE_GUIDE_LIVE_FACTORS = {
-  version: "2026.11.1", approvedBy: "", approvedAt: "",
+  version: "2026.11.2", approvedBy: "", approvedAt: "",
   proxyFactors: { residential: 1, commercial: 1, agricultural: 1, industrial: 1 },
   marketBandMid: { residential: 2.5, commercial: 2.5, agricultural: 1.5, industrial: 2 },
   construction: { wood_prefab: 11000, mixed_chb: 16000, rca_steel: 22000 },

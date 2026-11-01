@@ -66,6 +66,13 @@ jobs:
       - name: Calibration proposals
         run: node market-scan/comparables/calibrate.js
 
+      # House-size grades and the measured range (accuracy plan items 1.1 and
+      # 1.3). Written to data/comparables/model-fit-proposals.json with the
+      # snapshot; the houseSize and range sections of data/calibration.json
+      # change only through the pull request below.
+      - name: Model fit proposals
+        run: node market-scan/comparables/fit-model.js
+
       - name: Test
         run: |
           node tests/comparables_pipeline_node.js
@@ -92,6 +99,7 @@ jobs:
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           node market-scan/comparables/calibrate.js --write-calibration > /tmp/cal.log
+          node market-scan/comparables/fit-model.js --write-calibration >> /tmp/cal.log
           if git diff --quiet -- data/calibration.json; then echo "No calibration change proposed."; exit 0; fi
           month=$(date -u +%Y-%m); branch="calibration/$month"
           node -e '
@@ -104,6 +112,14 @@ jobs:
               "How it is worked out: each lot price x 1.10 (bank and Pag-IBIG prices sit below resale), divided by the guide land value; the median per development, then the median across developments; moved only part of the way (developments / (developments + 10)) and capped at 0.75-1.25.", "",
               ...rows.map(t => "**" + t.town + "** by development: " + t.projectDetail.map(d => d.name + " (" + d.n + " lots, " + d.ratio + ")").join(", ")), "",
               "Check before merging: is one development very different from the town (a resort, a remote estate)? If so, it may be better to decline. Details: data/comparables/calibration-proposals.json"];
+            const f = require("./data/comparables/model-fit-proposals.json");
+            if (f.proposals.indexOf("houseSize") >= 0) lines.push("", "**House-size grades** (the construction rate by floor-area band, from bank and Pag-IBIG house prices; merging changes house values on the public calculator):", "",
+              "| Band | Prices | Developments | Grade now | Proposed |", "|---|---|---|---|---|",
+              ...f.houseSize.bands.map(b => "| " + b.label + " | " + b.records + " | " + b.projects + " | " + b.current + " | " + b.factor + (b.status === "proposed" ? "" : " (" + b.status + ")") + " |"));
+            if (f.proposals.indexOf("range") >= 0) lines.push("", "**Measured range** (where 68% of developments fell relative to the guide; merging changes the range shown with every residential figure):", "",
+              "| Segment | Prices | Developments | Band now | Proposed | Prices inside |", "|---|---|---|---|---|---|",
+              ...f.range.segments.map(s => "| " + s.kind + " | " + s.records + " | " + s.projects + " | " + (s.current ? s.current.lowFactor + "-" + s.current.highFactor : "none") + " | " + (s.lowFactor == null ? "-" : s.lowFactor + "-" + s.highFactor) + " | " + (s.inBand == null ? "-" : Math.round(s.inBand * 100) + "%") + (s.status === "proposed" ? "" : " (" + s.status + ")") + " |"));
+            if (f.proposals.length) lines.push("", "Details: data/comparables/model-fit-proposals.json");
             require("fs").writeFileSync("/tmp/cal.md", lines.join("\n"));
           '
           git checkout -b "$branch"
@@ -111,11 +127,11 @@ jobs:
           git commit -m "Calibration proposal $month (review before merging)"
           git push -f origin "$branch"
           if gh pr list --head "$branch" --state open --json number --jq '.[0].number' | grep -q .; then echo "PR already open; branch updated."; exit 0; fi
-          if ! gh pr create --base main --head "$branch" --title "Town land-factor proposal $month - review before merging" --body-file /tmp/cal.md; then
+          if ! gh pr create --base main --head "$branch" --title "Value Guide calibration proposal $month - review before merging" --body-file /tmp/cal.md; then
             # Repository setting "Allow GitHub Actions to create pull requests" is off:
             # leave the branch and ask for the pull request through an issue instead.
             { echo "GitHub Actions is not allowed to open pull requests here, so the proposal is on branch \`$branch\`."; echo; echo "Open it as a pull request: $REPO_URL/compare/main...$branch?expand=1"; echo; cat /tmp/cal.md; } > /tmp/cal-issue.md
-            gh issue create --title "Town land-factor proposal $month - review" --body-file /tmp/cal-issue.md
+            gh issue create --title "Value Guide calibration proposal $month - review" --body-file /tmp/cal-issue.md
           fi
         shell: bash
 

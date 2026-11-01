@@ -228,6 +228,62 @@
     return { factor: f, month: t.month || "", records: t.records || 0, projects: t.projects || 0 };
   }
 
+  /* House-size grade on the construction rate (accuracy plan item 1.1), from
+     data/calibration.json houseSize, fitted by market-scan/comparables/fit-model.js
+     on bank and Pag-IBIG house prices. The cost approach at one rate under-priced
+     30-79 sqm homes by about a quarter and over-priced rowhouses under 30 sqm and
+     houses over 150 sqm (Oct 2026: 264 prices, 86 developments). The grade
+     multiplies the construction rate by floor-area band. Across a band boundary
+     it blends linearly over a window of +/-10% of the boundary, so one extra
+     square metre never jumps the figure. Returns null when no grade is in force. */
+  var HOUSE_SIZE_BLEND = 0.10;
+  function houseSizeGrade(cfg, floorArea) {
+    var hs = cfg && cfg.townCalibration && cfg.townCalibration.houseSize;
+    var bands = hs && hs.bands;
+    if (!bands || !bands.length || !(floorArea > 0)) return null;
+    var i = 0;
+    while (i < bands.length - 1 && !(bands[i].to > floorArea)) i++;
+    var b = bands[i], factor = Number(b.factor), blended = false;
+    if (!(factor > 0)) return null;
+    /* blend with the band above or below when inside the window around a boundary */
+    var up = bands[i + 1], down = i > 0 ? bands[i - 1] : null;
+    if (up && b.to > 0 && Number(up.factor) > 0) {
+      var w = b.to * HOUSE_SIZE_BLEND;
+      if (floorArea > b.to - w) { factor = factor + (Number(up.factor) - factor) * (floorArea - (b.to - w)) / (2 * w); blended = true; }
+    }
+    if (!blended && down && down.to > 0 && Number(down.factor) > 0) {
+      var w2 = down.to * HOUSE_SIZE_BLEND;
+      if (floorArea < down.to + w2) { factor = Number(down.factor) + (factor - Number(down.factor)) * (floorArea - (down.to - w2)) / (2 * w2); blended = true; }
+    }
+    factor = Math.round(Math.max(0.2, Math.min(3, factor)) * 1000) / 1000;
+    return { factor: factor, band: b.label || "", records: b.records || 0, projects: b.projects || 0, month: hs.month || "", blended: blended };
+  }
+
+  /* The range around the figure. Residential houses and lots take the measured
+     band from data/calibration.json range (where 68% of bank and Pag-IBIG prices
+     fell relative to the guide, one development counted once); a location
+     matched only at town or province level widens it by the stated factor.
+     Everything else keeps the 85%-130% planning scenarios. */
+  function rangeFactors(cfg, typeKey, use, depth) {
+    var sr = (cfg && cfg.scenarioRange) || {};
+    var out = { lowFactor: Number(sr.lowFactor) > 0 ? Number(sr.lowFactor) : 0.85, highFactor: Number(sr.highFactor) > 0 ? Number(sr.highFactor) : 1.30,
+      measured: null, widened: false, method: "85%-130% planning scenarios; not a statistical confidence interval" };
+    var rg = cfg && cfg.townCalibration && cfg.townCalibration.range;
+    var seg = rg && rg.segments && rg.segments[typeKey];
+    if (!seg || use !== "residential") return out;
+    var low = Number(seg.lowFactor), high = Number(seg.highFactor);
+    if (!(low > 0 && low < 1 && high > 1)) return out;
+    if (depth >= 3) {
+      var w = Number(rg.derivedMatchWidening) > 1 ? Number(rg.derivedMatchWidening) : 1.25;
+      low = 1 - (1 - low) * w; high = 1 + (high - 1) * w; out.widened = true;
+    }
+    out.lowFactor = Math.round(Math.max(0.1, low) * 1000) / 1000;
+    out.highFactor = Math.round(high * 1000) / 1000;
+    out.measured = { records: seg.records || 0, projects: seg.projects || 0, month: rg.month || "", inBand: seg.inBand != null ? seg.inBand : null, kind: typeKey };
+    out.method = "Measured: 68% of " + (rg.month || "") + " bank and Pag-IBIG " + (typeKey === "house_lot" ? "house" : "lot") + " prices (" + (seg.records || 0) + " prices, " + (seg.projects || 0) + " developments, one development counted once) fell between " + Math.round(seg.lowFactor * 100) + "% and " + Math.round(seg.highFactor * 100) + "% of the guide" + (out.widened ? "; widened by " + Math.round(((Number(rg.derivedMatchWidening) > 1 ? Number(rg.derivedMatchWidening) : 1.25) - 1) * 100) + "% because the location was matched only at town or province level" : "");
+    return out;
+  }
+
   /* The suggested asking price sits this far above the guide total. One number
      in data/zonal-config.json (askingPrice.premiumPct) for both surfaces. */
   function askingPremium(cfg) {
@@ -363,6 +419,7 @@
     var kind = typeDef.kind === "built" ? "built" : "land";
 
     var floorArea = 0, floorsMult = 1, ageMid = 0, depPct = 0, buildCost = 0, improvement = 0, featuresTotal = 0, featuresUsed = [];
+    var grade = null, gradedCost = 0;
     if (kind === "built") {
       if (!isFinite(Number(opts.floorArea || 0)) || Number(opts.floorArea) < 0 || Number(opts.floorArea) > 100000) return unavailable("invalid-floor-area");
       if (opts.construction && !cfg.construction[opts.construction]) return unavailable("invalid-construction");
@@ -386,6 +443,10 @@
       depPct = Math.min(ageMid / life, maxDep);
       var cons = cfg.construction ? cfg.construction[(opts.construction || "mixed_chb")] : null;
       buildCost = (cons && cons.costPerSqm) || 16000;
+      /* the rate graded by house size (see houseSizeGrade); a whole-peso rate so
+         the disclosure "rate x grade = effective rate" reconciles exactly */
+      grade = houseSizeGrade(cfg, floorArea);
+      gradedCost = Math.round(buildCost * (grade ? grade.factor : 1));
       featuresTotal = 0;
       featuresUsed = [];
       var feats = cfg.features || {};
@@ -393,7 +454,7 @@
         var fdef = feats[fk];
         if (fdef && isFiniteNum(fdef.cost) && featuresUsed.indexOf(fk) === -1) { featuresTotal += fdef.cost; featuresUsed.push(fk); }
       });
-      improvement = Math.round(buildCost * floorArea * floorsMult * (1 - depPct)) + featuresTotal;
+      improvement = Math.round(gradedCost * floorArea * floorsMult * (1 - depPct)) + featuresTotal;
     }
 
     var ownershipAdj = ownershipAdjustments(opts);
@@ -407,7 +468,8 @@
     }
     var unadjustedTotal = landValue + improvement;
     var total = Math.round(unadjustedTotal * (1 - ownershipAdjustmentPct / 100));
-    var rangeLowFactor = 0.85, rangeHighFactor = 1.30;
+    var rng = rangeFactors(cfg, typeKey, use, hit.depth);
+    var rangeLowFactor = rng.lowFactor, rangeHighFactor = rng.highFactor;
     var rangePct = 0.30; // compatibility field; new range is asymmetric
     var low = Math.round(total * rangeLowFactor);
     var high = Math.round(total * rangeHighFactor);
@@ -520,6 +582,8 @@
       ageMidpoint: ageMid,
       depreciatedPct: Math.round(depPct * 10000) / 100,
       buildCostPerSqm: buildCost,
+      gradedBuildCostPerSqm: kind === "built" ? gradedCost : 0,
+      houseSizeGrade: grade,
       construction: opts.construction || "mixed_chb",
       constructionLabel: labelFor(cfg, "construction", opts.construction || "mixed_chb"),
       improvement: improvement,
@@ -530,7 +594,8 @@
       rangePct: rangePct,
       rangeLowFactor: rangeLowFactor,
       rangeHighFactor: rangeHighFactor,
-      rangeMethod: "85%-130% planning scenarios; not a statistical confidence interval",
+      rangeMethod: rng.method,
+      rangeBasis: { measured: rng.measured, widened: rng.widened },
       low: low,
       high: high,
       salePrice: salePrice,
@@ -572,6 +637,25 @@
     }));
   }
 
+  /* The town's typical barangay for a classification: the one whose
+     all-other-streets rate is the median of every barangay's rate (the lower
+     of the two middle ones for an even count). Used by the quick figure and
+     the home-page example when no barangay is given. */
+  function typicalBarangay(muniData, classification) {
+    var cls = normKey(classification || "RR");
+    var rows = [];
+    Object.keys((muniData && muniData.barangays) || {}).forEach(function (name) {
+      var b = muniData.barangays[name];
+      var v = b && b.other && b.other[cls];
+      v = v && typeof v === "object" ? Number(v.value) : Number(v);
+      if (v > 0) rows.push({ name: name, rate: v });
+    });
+    if (!rows.length) return null;
+    rows.sort(function (a, b) { return a.rate - b.rate || (a.name < b.name ? -1 : 1); });
+    var pick = rows[Math.floor((rows.length - 1) / 2)];
+    return { name: pick.name, rate: pick.rate, barangays: rows.length, classification: cls };
+  }
+
   function integrityCheck(result) {
     if (!result || !result.available) return { ok: false, reason: "unavailable" };
     var adjustedBase = result.landValue + result.improvement;
@@ -605,7 +689,10 @@
     referenceTools: referenceTools,
     normalizeComparable: normalizeComparable,
     comparableSummary: comparableSummary,
-    integrityCheck: integrityCheck
+    integrityCheck: integrityCheck,
+    typicalBarangay: typicalBarangay,
+    houseSizeGrade: houseSizeGrade,
+    rangeFactors: rangeFactors
   };
 
   /* ---------------------------------------------------------- */
@@ -1525,6 +1612,18 @@ out += "</div>";
     return out;
   }
 
+  /* One sentence on what the range is, from the result's own basis. */
+  function rangeNote(r) {
+    var m = r.rangeBasis && r.rangeBasis.measured;
+    if (!m) return "85%–130% planning scenarios, not a statistical confidence interval";
+    return "measured band: 68% of " + (m.month ? m.month + " " : "") + "bank and Pag-IBIG " + (m.kind === "house_lot" ? "house" : "lot") + " prices (" + fmt(m.records) + " prices, " + fmt(m.projects) + " developments, one development counted once) fell between " + Math.round(r.rangeLowFactor * 100) + "% and " + Math.round(r.rangeHighFactor * 100) + "% of the guide" + (r.rangeBasis.widened ? ", widened because the location was matched only at town level" : "") + "; not a statistical confidence interval";
+  }
+  function rangeShort(r) {
+    var m = r.rangeBasis && r.rangeBasis.measured;
+    if (!m) return "85%–130% scenarios, not guaranteed offers or statistical confidence.";
+    return Math.round(r.rangeLowFactor * 100) + "%–" + Math.round(r.rangeHighFactor * 100) + "% of the guide: 68% of " + (m.month ? m.month + " " : "") + "bank and Pag-IBIG prices fell inside" + (r.rangeBasis.widened ? ", widened for a town-level match" : "") + ". Not a guaranteed offer.";
+  }
+
   /* Until 2026-11 this box carried the 130% scenario label while showing the
      +7% figure, so every report printed the wrong pricing advice. */
   function askingPriceHtml(r) {
@@ -1794,7 +1893,8 @@ var displayRange = '';
     if (r.type === "house_lot") {
       s.push({ t: "House value (replacement cost approach)", h:
         "<ul class=\"sf-est-rdl\">" +
-        "<li>Construction: <b>≈ " + money(r.buildCostPerSqm) + "/sqm</b> on " + fmt(r.floorArea) + " sqm floor area</li>" +
+        "<li>Construction: <b>≈ " + money(r.buildCostPerSqm) + "/sqm</b>" + (r.houseSizeGrade ? " × size grade <b>" + r.houseSizeGrade.factor.toFixed(3) + "</b> = <b>≈ " + money(r.gradedBuildCostPerSqm) + "/sqm</b>" : "") + " on " + fmt(r.floorArea) + " sqm floor area</li>" +
+        (r.houseSizeGrade ? "<li>House-size grade: " + fmt(r.houseSizeGrade.records) + " bank and Pag-IBIG prices across " + fmt(r.houseSizeGrade.projects) + " developments (" + esc(r.houseSizeGrade.month) + ") show that one construction rate " + (r.houseSizeGrade.factor > 1 ? "under-prices" : "over-prices") + " homes of " + esc(r.houseSizeGrade.band) + (r.houseSizeGrade.blended ? " (blended with the next size band)" : "") + ".</li>" : "") +
         /* No storeys multiplier is printed. It used to read "Storeys: ×1.05", which
            invited the reader to believe storeys were counted a second time on top of
            an area already measured across all of them. They are not: floorArea is a
@@ -1809,7 +1909,7 @@ var displayRange = '';
 
     s.push({ t: "Total estimate and range", h:
       "<p class=\"sf-est-rdp\"><b>" + money(r.marketGuideEstimate) + "</b> · guide range <b>" + money(r.low) + " – " + money(r.high) +
-        "</b> (85%–130% planning scenarios, not a statistical confidence interval). ≈ <b>" + money(r.perSqm) + "</b>/sqm.</p>" });
+        "</b> (" + esc(rangeNote(r)) + "). ≈ <b>" + money(r.perSqm) + "</b>/sqm.</p>" });
 
     s.push({ t: "Coverage and limitations", h:
       "<p class=\"sf-est-rdp\">The BIR figure is matched street-by-street; where a street has no listed rate for a classification the engine falls back to the barangay all-other-streets rate, then municipality and province medians. The numerical estimate uses the BIR base, selected property-use and market-band factors, optional corner adjustment, and— for house-and-lot—replacement-cost and age-depreciation inputs. Comparable listing prices are shown as context and are not currently fed into the formula." + comparableNote + " Rows the BIR masked as “same as above” were resolved only when a municipality-wide rate existed — never guessed.</p>" });
@@ -1866,7 +1966,7 @@ var displayRange = '';
   function termsHtml() {
     return '<details class="sf-est-terms"><summary>What do these terms mean?</summary><dl>' +
       '<div><dt>BIR zonal value</dt><dd>The government\'s published land rate per sqm, used to compute taxes. It is a reference, not a selling price.</dd></div>' +
-      '<div><dt>Planning range</dt><dd>The 85% to 130% scenarios around the central figure. It is a planning band, not a forecast of where a sale will land; the monthly check against bank and Pag-IBIG prices reports how often prices fall inside it.</dd></div>' +
+      '<div><dt>Planning range</dt><dd>The band around the central figure. For houses and lots on residential land it is measured: where 68% of the bank and Pag-IBIG prices fell relative to the guide, one development counted once, widened where the location is matched only at town level. Elsewhere it is the 85% to 130% planning scenarios. It is a planning band, not a forecast of where a sale will land; the monthly check against bank and Pag-IBIG prices reports how often prices fall inside it.</dd></div>' +
       '<div><dt>Classification</dt><dd>How the BIR groups land by use: residential, commercial, agricultural or industrial.</dd></div>' +
       '<div><dt>All other streets</dt><dd>The BIR rate for streets in a barangay that its list does not name.</dd></div>' +
       '</dl></details>';
@@ -1902,7 +2002,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       '<div class="sf-est-result-summary-head"><div><p class="sf-est-result-summary-label">ESTIMATED PROPERTY VALUE</p><h4>' + (r.landMethod === "time-indexed" ? 'Indexed-reference planning scenario' : 'Central planning estimate') + '</h4></div>' +
       '<span class="sf-est-result-evidence">' + badge + '</span></div>' +
       '<strong class="sf-est-result-value">' + money(r.marketGuideEstimate) + '</strong>' +
-      '<p class="sf-est-scenario-range">Planning range <b>' + money(r.low) + ' – ' + money(r.high) + '</b><span>85%–130% scenarios, not guaranteed offers or statistical confidence.</span></p>' +
+      '<p class="sf-est-scenario-range">Planning range <b>' + money(r.low) + ' – ' + money(r.high) + '</b><span>' + esc(rangeShort(r)) + '</span></p>' +
       /* The two numbers that make the estimate, then the bank line; the method
          notes (BIR card, multiple, context, reference status, independence) sit
          under one disclosure so the card reads as an answer, not a document. */
@@ -2733,8 +2833,9 @@ function missingScreen1Field() {
       landPerSqm: r.landPerSqm,
       cornerApplied: !!(r.corner && r.corner.applied), cornerPct: r.corner ? r.corner.pct : 0,
       proxyFactor: r.factors.proxyFactor, bandMid: r.factors.bandMid, regionalAdj: r.factors.regionalAdj,
-      buildCostPerSqm: r.buildCostPerSqm, floorsMultiplier: r.floorsMultiplier,
+      buildCostPerSqm: r.buildCostPerSqm, gradedBuildCostPerSqm: r.gradedBuildCostPerSqm, houseSizeGrade: r.houseSizeGrade ? r.houseSizeGrade.factor : null, floorsMultiplier: r.floorsMultiplier,
       ageMidpoint: r.ageMidpoint, depreciatedPct: r.depreciatedPct, featuresTotal: r.featuresTotal,
+      rangeLowFactor: r.rangeLowFactor, rangeHighFactor: r.rangeHighFactor,
       provenance: provenancePayload(r)
     } : null;
   }
@@ -3078,7 +3179,7 @@ return {
       '<strong class="sf-quick-figure" data-quick-figure data-value="' + quickRound(r.marketGuideEstimate) + '">' + money(quickRound(r.marketGuideEstimate)) + '</strong>' +
       '<div class="sf-quick-range" aria-hidden="true"><span style="left:' + pos.toFixed(1) + '%"></span></div>' +
       '<p class="sf-quick-range-text"><span>' + money(quickRound(r.low)) + '</span><span class="sf-quick-range-mid">Planning range</span><span>' + money(quickRound(r.high)) + '</span></p>' +
-      '<p class="sf-quick-note">Town-wide figure for a ' + fmt(r.area) + ' sqm lot' + (r.improvement > 0 ? ' with a ' + fmt(r.floorArea) + ' sqm house under 5 years old' : '') + '. Your barangay, street and house details sharpen it.</p>';
+      '<p class="sf-quick-note">Starting figure for a ' + fmt(r.area) + ' sqm lot' + (r.improvement > 0 ? ' with a ' + fmt(r.floorArea) + ' sqm house about 6–10 years old' : '') + (r.typicalBarangay ? ', priced at a typical barangay for ' + esc(titleCase(r.municipality)) + ' (' + esc(titleCase(r.typicalBarangay.name)) + ')' : ' at the town-wide rate') + '. Your barangay, street and house details sharpen it.</p>';
   }
 
   function quickSay() {
@@ -3144,10 +3245,14 @@ return {
     quick.loading = true;
     var box = document.querySelector("[data-est-quick] [data-quick-result]");
     if (box) box.classList.add("is-loading");
+    /* A typical barangay for the town (median all-other-streets rate) with a
+       6-10-year-old house: the town-wide median rate under-priced homes matched
+       only at town level by about 30% against Oct 2026 bank prices, and "under 5
+       years" is younger than most homes for sale. */
     estimate({
-      purpose: "Selling", type: quick.type, municipality: quick.municipality, barangay: "", streetKey: "",
+      purpose: "Selling", type: quick.type, municipality: quick.municipality, barangay: "", streetKey: "", typicalBarangay: true,
       classification: "RR", area: quick.area, landMethod: "factor", saleContext: "private-resale",
-      floorArea: 0, floors: "1", ageBand: "0-5", construction: "mixed_chb", features: []
+      floorArea: 0, floors: "1", ageBand: "6-10", construction: "mixed_chb", features: []
     }).then(function (r) {
       if (req !== quick.request) return;
       quick.loading = false; quick.result = r; renderQuick(true);
@@ -3178,9 +3283,9 @@ return {
     };
     if (sampleResult) { paint(sampleResult); return; }
     estimate({
-      purpose: "Selling", type: SAMPLE.type, municipality: SAMPLE.municipality, barangay: "", streetKey: "",
+      purpose: "Selling", type: SAMPLE.type, municipality: SAMPLE.municipality, barangay: "", streetKey: "", typicalBarangay: true,
       classification: "RR", area: SAMPLE.area, landMethod: "factor", saleContext: "private-resale",
-      floorArea: 0, floors: "1", ageBand: "0-5", construction: "mixed_chb", features: []
+      floorArea: 0, floors: "1", ageBand: "6-10", construction: "mixed_chb", features: []
     }).then(function (r) { sampleResult = r; paint(r); }).catch(function () { box.hidden = true; });
   }
 
@@ -3339,7 +3444,14 @@ return {
         };
       }
       return loadMunicipality(row.slug).then(function (md) {
-        var result = core.computeEstimate(d.config, d.index, md, opts);
+        /* typicalBarangay: no barangay given, so price at the town's typical one
+           (the barangay whose all-other-streets rate is the median of all the
+           town's barangays) instead of the town-wide median rate, which runs low
+           for homes. The result names the barangay used. */
+        var tb = opts && opts.typicalBarangay && !opts.barangay ? core.typicalBarangay(md, opts.classification) : null;
+        var runOpts = tb ? Object.assign({}, opts, { barangay: tb.name, streetKey: "", allOther: true }) : opts;
+        var result = core.computeEstimate(d.config, d.index, md, runOpts);
+        if (tb) result.typicalBarangay = tb;
         result.integrity = core.integrityCheck(result);
         result.projectContext = ((d.projectEvidence || {}).records || []).filter(function (record) { return evidence.place(record.municipality) === evidence.place(opts.municipality); });
         return result;

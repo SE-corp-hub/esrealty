@@ -315,10 +315,16 @@
     }
 
     r.total = r.landValue + r.improvement;
-    r.rangeLowFactor = MODEL.RANGE_LOW;
-    r.rangeHighFactor = MODEL.RANGE_HIGH;
-    r.low = Math.round(r.total * MODEL.RANGE_LOW);
-    r.high = Math.round(r.total * MODEL.RANGE_HIGH);
+    /* The public estimator's band: measured for residential houses and lots
+       (data/calibration.json range, where 68% of bank and Pag-IBIG prices fell),
+       otherwise the 85%-130% planning scenarios MODEL keeps as the fallback. One
+       band for one property, whichever surface prints it. */
+    r.rangeLowFactor = Number(base.rangeLowFactor) > 0 && Number(base.rangeLowFactor) < 1 ? Number(base.rangeLowFactor) : MODEL.RANGE_LOW;
+    r.rangeHighFactor = Number(base.rangeHighFactor) > 1 ? Number(base.rangeHighFactor) : MODEL.RANGE_HIGH;
+    r.rangeMethod = base.rangeMethod || "85%-130% planning scenarios; not a statistical confidence interval";
+    r.rangeBasis = base.rangeBasis || { measured: null, widened: false };
+    r.low = Math.round(r.total * r.rangeLowFactor);
+    r.high = Math.round(r.total * r.rangeHighFactor);
     r.perSqm = r.area ? Math.round(r.total / r.area) : 0;
 
     /* Public-model fields the report, the tax engine and the PDF read. `value` and
@@ -339,6 +345,9 @@
     r.ownershipAdjustmentPct = 0;
     r.floorsMultiplier = 1;
     r.buildCostPerSqm = rcn;
+    /* the house-size grade on the rate, as the public estimator applied it */
+    r.gradedBuildCostPerSqm = Number(base.gradedBuildCostPerSqm) > 0 ? Number(base.gradedBuildCostPerSqm) : rcn;
+    r.houseSizeGrade = base.houseSizeGrade || null;
     r.ageMidpoint = age;
     r.depreciatedPct = Math.round(dep * 10000) / 100;
     r.landMethod = "factor";

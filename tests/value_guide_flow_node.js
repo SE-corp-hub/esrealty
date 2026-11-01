@@ -62,13 +62,19 @@ function pdfText(bytes) {
     assert.strictEqual(r.birZonalRatePerSqm, 11500, "BIR rate unchanged");
     assert.strictEqual(r.birZonalValue, 1150000, "BIR value unchanged");
     /* 2026-10-14: land = public estimator land 2,352,500 (BIR x ramped band
-       2.0457) x (1 + net -0.5%); building = 16,000 x 120 x (1 - 8/40). */
+       2.0457) x (1 + net -0.5%); building = 16,000 x 120 x (1 - 8/40).
+       2026-11: the rate is graded by house size (data/calibration.json
+       houseSize, 80-149 sqm x 1.159 -> 18,544/sqm): 18,544 x 120 x 0.8 =
+       1,780,224; the range is the measured residential house band (0.83-1.26)
+       rather than 0.85-1.30. */
     assert.strictEqual(r.landValue, 2340738);
-    assert.strictEqual(r.improvement, 1536000);
-    assert.strictEqual(r.total, 3876738);
-    assert.strictEqual(r.low, 3295227);
-    assert.strictEqual(r.high, 5039759);
-    assert.strictEqual(r.perSqm, 38767);
+    assert.strictEqual(r.improvement, 1780224);
+    assert.strictEqual(r.total, 4120962);
+    assert.strictEqual(r.low, Math.round(4120962 * r.rangeLowFactor));
+    assert.strictEqual(r.high, Math.round(4120962 * r.rangeHighFactor));
+    assert.strictEqual(r.rangeLowFactor, 0.83);
+    assert.strictEqual(r.rangeHighFactor, 1.26);
+    assert.strictEqual(r.perSqm, 41210);
   });
 
   /* ---- 2. vacant-lot vector ------------------------------------------- */
@@ -76,8 +82,11 @@ function pdfText(bytes) {
     const r = await flow().compute(VACANT, EST);
     assert.strictEqual(r.improvement, 0);
     assert.strictEqual(r.total, 2340738);
-    assert.strictEqual(r.low, 1989627);
-    assert.strictEqual(r.high, 3042959);
+    /* 2026-11: the measured residential lot band (0.62-1.43) replaces 0.85-1.30 */
+    assert.strictEqual(r.rangeLowFactor, 0.62);
+    assert.strictEqual(r.rangeHighFactor, 1.43);
+    assert.strictEqual(r.low, Math.round(2340738 * 0.62));
+    assert.strictEqual(r.high, Math.round(2340738 * 1.43));
     assert.strictEqual(r.perSqm, 23407);
   });
 
@@ -116,16 +125,27 @@ function pdfText(bytes) {
   await check("no ownership adjustment", async () =>
     assert.strictEqual((await flow().compute(OPTS, EST)).ownershipAdjustmentPct, 0));
 
+  /* Since 2026-11 the construction rate carries the house-size grade from
+     data/calibration.json (a 120 sqm house sits in the 80-149 sqm band, away
+     from both blend windows), so the age checks read the graded rate the same
+     way the engine does instead of the bare 16,000. */
+  const GRADED_RATE = (() => {
+    const cal = JSON.parse(fs.readFileSync(path.join(ROOT, "data/calibration.json"), "utf8"));
+    const band = cal.houseSize.bands.find(b => b.to === null || b.to > 120);
+    return Math.round(16000 * band.factor);
+  })();
+
   await check("the oldest band depreciates 35/40 = 87.5%", async () => {
     const r = await flow().compute(Object.assign({}, OPTS, { ageBand: "31plus" }), EST);
     assert.strictEqual(r.depreciatedPct, 87.5);
-    assert.strictEqual(r.improvement, 120 * 16000 * 0.125);
+    assert.strictEqual(r.gradedBuildCostPerSqm, GRADED_RATE);
+    assert.strictEqual(r.improvement, Math.round(120 * GRADED_RATE * 0.125));
   });
 
   await check("the youngest band barely depreciates", async () => {
     const r = await flow().compute(Object.assign({}, OPTS, { ageBand: "0-5" }), EST);
     assert.strictEqual(r.depreciatedPct, 6.25);
-    assert.strictEqual(r.improvement, Math.round(120 * 16000 * (1 - 0.0625)));
+    assert.strictEqual(r.improvement, Math.round(120 * GRADED_RATE * (1 - 0.0625)));
   });
 
   await check("integrity check passes on the produced result", async () => {
@@ -163,7 +183,7 @@ function pdfText(bytes) {
 
   await check("the land net never touches the building component", async () => {
     const r = await flow().compute(OPTS, EST);
-    assert.strictEqual(r.improvement, 1536000);
+    assert.strictEqual(r.improvement, 1780224);
   });
 
   /* ---- 6. additive net ------------------------------------------------ */
@@ -185,7 +205,7 @@ function pdfText(bytes) {
   /* The golden fixture answers roadAccess +50 and carries the 2022-07-23 schedule
      date js/app.js passes, which derives zonalRecency -100 (between one and two
      years old, not yet "materially stale"), for -50 bp overall. Both surviving
-     factors are land-bound, so the building figure is unchanged at 1536000 -
+     factors are land-bound, so the building figure is unchanged at 1780224 -
      which is the proof the building was never in the net. */
   await check("the golden fixture lands on the net of -50 bp", async () => {
     const r = await flow().compute(OPTS, EST);

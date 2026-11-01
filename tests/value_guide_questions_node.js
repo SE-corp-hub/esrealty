@@ -207,12 +207,17 @@ check("no pricing field keeps the superseded model's number", async () => {
   assert.strictEqual(r.appliedMultiple, null);
 });
 
-check("the range follows the single total", async () => {
-  const r = await F.compute(Object.assign({}, OPTS, F.pickInputs({})), EST);
-  assert.strictEqual(r.rangeLowFactor, F.MODEL.RANGE_LOW);
-  assert.strictEqual(r.rangeHighFactor, F.MODEL.RANGE_HIGH);
-  assert.strictEqual(r.low, Math.round(r.total * F.MODEL.RANGE_LOW));
-  assert.strictEqual(r.high, Math.round(r.total * F.MODEL.RANGE_HIGH));
+check("the range follows the single total, with the public estimator's band", async () => {
+  /* 2026-11: the band is the public estimator's (measured for residential
+     houses and lots, data/calibration.json range), applied to this guide's
+     total; MODEL.RANGE_LOW/HIGH are only the fallback when none is in force. */
+  const o = Object.assign({}, OPTS, F.pickInputs({}));
+  const [r, s] = await Promise.all([F.compute(o, EST), EST.estimate(o)]);
+  assert.strictEqual(r.rangeLowFactor, s.rangeLowFactor);
+  assert.strictEqual(r.rangeHighFactor, s.rangeHighFactor);
+  assert.strictEqual(r.rangeMethod, s.rangeMethod);
+  assert.strictEqual(r.low, Math.round(r.total * r.rangeLowFactor));
+  assert.strictEqual(r.high, Math.round(r.total * r.rangeHighFactor));
   assert.ok(r.low < r.total && r.total < r.high, "the band brackets the figure");
 });
 

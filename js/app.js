@@ -20452,7 +20452,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
      1.35x), so one "Approve and publish" would have put them on the public
      site: +56% on house buildings, +70% on commercial land, -50% on farmland. */
   function valueGuideLiveDefaults() {
-    return { version: "2026.11.1", approvedBy: "", approvedAt: "", proxyFactors: { residential: 1, commercial: 1, agricultural: 1, industrial: 1 }, marketBandMid: { residential: 2.5, commercial: 2.5, agricultural: 1.5, industrial: 2 }, construction: { wood_prefab: 11000, mixed_chb: 16000, rca_steel: 22000 } };
+    return { version: "2026.11.2", approvedBy: "", approvedAt: "", proxyFactors: { residential: 1, commercial: 1, agricultural: 1, industrial: 1 }, marketBandMid: { residential: 2.5, commercial: 2.5, agricultural: 1.5, industrial: 2 }, construction: { wood_prefab: 11000, mixed_chb: 16000, rca_steel: 22000 } };
   }
   const VG_USES = ["residential", "commercial", "agricultural", "industrial"], VG_BUILDS = ["wood_prefab", "mixed_chb", "rca_steel"];
   function valueGuideFactorsFromConfig(cfg) {

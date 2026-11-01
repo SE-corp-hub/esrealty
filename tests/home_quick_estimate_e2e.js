@@ -17,9 +17,11 @@ const q = s => document.querySelector(s);
 const money = n => "₱" + new Intl.NumberFormat("en-PH", { maximumFractionDigits: 2 }).format(Number(n || 0));
 const round10k = n => Math.round((Number(n) || 0) / 1e4) * 1e4;
 const compact = n => n >= 1e6 ? "₱" + (Math.round(n / 1e4) / 100).toFixed(2) + "M" : "₱" + new Intl.NumberFormat("en-PH").format(Math.round(n / 1e3)) + "K";
+/* the same inputs js/estimator.js runQuick() uses: a typical barangay for the
+   town and a 6-10-year-old house (2026-11) */
 const quickOpts = (municipality, type, area) => ({
-  purpose: "Selling", type, municipality, barangay: "", streetKey: "", classification: "RR", area,
-  landMethod: "factor", saleContext: "private-resale", floorArea: 0, floors: "1", ageBand: "0-5", construction: "mixed_chb", features: []
+  purpose: "Selling", type, municipality, barangay: "", streetKey: "", typicalBarangay: true, classification: "RR", area,
+  landMethod: "factor", saleContext: "private-resale", floorArea: 0, floors: "1", ageBand: "6-10", construction: "mixed_chb", features: []
 });
 function pick(sel, value) { const e = q(sel); e.value = value; e.dispatchEvent(new Event("change", { bubbles: true })); }
 function type(sel, value) { const e = q(sel); e.value = value; e.dispatchEvent(new Event("input", { bubbles: true })); }
@@ -57,7 +59,7 @@ const figure = () => (q("[data-quick-figure]") || {}).textContent || "";
     check("figure equals the estimator (house & lot, 150 sqm)", figure() === money(round10k(e1.marketGuideEstimate)), figure() + " vs " + money(round10k(e1.marketGuideEstimate)));
     const rangeText = q(".sf-quick-range-text").textContent;
     check("range equals the estimator", rangeText.indexOf(money(round10k(e1.low))) >= 0 && rangeText.indexOf(money(round10k(e1.high))) >= 0, rangeText);
-    check("note states the house assumption", /135 sqm house|sqm house under 5 years/.test(q(".sf-quick-note").textContent), q(".sf-quick-note").textContent);
+    check("note states the house assumption and the barangay used", /sqm house about 6–10 years old/.test(q(".sf-quick-note").textContent) && /typical barangay/.test(q(".sf-quick-note").textContent), q(".sf-quick-note").textContent);
     check("result announced once to screen readers", /Starting figure for Lipa City/.test(q("[data-quick-say]").textContent), q("[data-quick-say]").textContent);
 
     /* 4) type and area */

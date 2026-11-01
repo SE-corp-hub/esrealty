@@ -94,7 +94,7 @@ ok(/delete merged\.vg/.test(APP), "a stale persisted draft is discarded on load"
 /* ---------- estimator reuse: one source of truth ---------- */
 section("reuses the public estimator");
 ok(/function estimate\(opts\)/.test(EST), "estimator exposes an estimate() entry point");
-ok(/core\.computeEstimate\(d\.config, d\.index, md, opts\)/.test(EST),
+ok(/core\.computeEstimate\(d\.config, d\.index, md, runOpts\)/.test(EST) && /var runOpts = tb \? Object\.assign\(\{\}, opts, \{ barangay: tb\.name, streetKey: "", allOther: true \}\) : opts;/.test(EST),
   "estimate() delegates to core.computeEstimate");
 ok(/result\.integrity = core\.integrityCheck\(result\)/.test(EST),
   "estimate() attaches the integrity verdict");

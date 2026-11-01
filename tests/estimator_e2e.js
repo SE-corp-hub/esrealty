@@ -192,7 +192,7 @@ function setInput(sel, v) { const e = q(sel); e.value = v; e.dispatchEvent(new E
     chk("provenance-avoids-pvs-claim", !/PVS\s*105/.test(provTxt) && !/PVS[- ]compliant/i.test(provTxt), "");
     chk("per-sqm-shown", !!q('.sf-est-per') && /sqm/.test(q('.sf-est-per').textContent), "");
     chk("bir-value-shown-separately", !!q('.sf-est-bir-primary') && /Official BIR zonal reference/.test(q('.sf-est-bir-primary').textContent) && /tax reference/.test(q('.sf-est-bir-primary').textContent), "");
-chk("central-estimate-and-range-in-summary", !!q('.sf-est-result-summary') && !!q('.sf-est-result-value') && /Central planning estimate/.test(q('.sf-est-result-summary').textContent) && /85%–130%/.test(q('.sf-est-result-summary').textContent), "");
+chk("central-estimate-and-range-in-summary", !!q('.sf-est-result-summary') && !!q('.sf-est-result-value') && /Central planning estimate/.test(q('.sf-est-result-summary').textContent) && /Planning range/.test(q('.sf-est-result-summary').textContent), "");
     chk("central-estimate-amount-matches-core", q('.sf-est-result-value').textContent === MONEY(rD1.marketGuideEstimate), q('.sf-est-result-value').textContent);
     chk("estimate-result-is-large", !!q('.sf-est-result-value') && parseFloat(getComputedStyle(q('.sf-est-result-value')).fontSize) >= 40, "font=" + (q('.sf-est-result-value') && getComputedStyle(q('.sf-est-result-value')).fontSize));
     chk("asking-price-amount-is-large", !!q('.sf-est-result-value') && parseFloat(getComputedStyle(q('.sf-est-result-value')).fontSize) >= 32, "font=" + (q('.sf-est-result-value') && getComputedStyle(q('.sf-est-result-value')).fontSize));

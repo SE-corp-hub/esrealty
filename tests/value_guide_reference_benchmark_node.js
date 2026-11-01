@@ -112,10 +112,11 @@ checkAsync("both surfaces are computed from the report's own inputs and differ f
       "guide land is not storefront land x (1 + question net)");
     assert.strictEqual(guide.improvement, storefront.improvement, "guide building != storefront building");
 
-    /* The building now uses the same 16,000/sqm rate and 20% depreciation the
-       report printed, so the building lines agree exactly; the remaining gap is
-       land only (the report's 1.174x vs our ramped band). */
-    assert.strictEqual(storefront.improvement, v.buildingValue, "building no longer matches the report's 16,000 x 120 x 0.8");
+    /* The building uses the same 16,000/sqm rate and 20% depreciation the
+       report printed, graded by house size since 2026-11 (the report's figure
+       is the ungraded one); land differs by the report's 1.174x vs our ramped
+       band. */
+    assert.strictEqual(storefront.improvement, Math.round(Math.round(16000 * storefront.houseSizeGrade.factor) * 120 * 0.8), "building is not the report's basis x the house-size grade");
   });
 });
 
@@ -129,11 +130,20 @@ checkAsync("the land multiplier choice, and nothing else, explains the residual 
     assert.strictEqual(expected, storefront.landValue,
       "the storefront land is not BIR base x the ramped band (" + expected + " vs " + storefront.landValue + ")");
     const dep = 1 - FX.reported.accumulatedDepreciationPct / 100;
-    assert.strictEqual(storefront.improvement, Math.round(storefront.buildCostPerSqm * FX.inputs.floorArea * dep),
-      "the building is not rate x floor area x (1 - dep)");
-    /* So the whole total gap vs the report is the land line. */
-    assert.strictEqual(storefront.total - v.total, storefront.landValue - v.landValue,
-      "a second cause of difference has appeared besides land");
+    /* Building: the config rate graded by house size (2026-11, accuracy plan
+       item 1.1: bank and Pag-IBIG prices show one rate under-prices 80-149 sqm
+       homes), x floor area x (1 - dep). The grade is the only thing between the
+       report's 16,000/sqm line and ours. */
+    assert.ok(storefront.houseSizeGrade && storefront.houseSizeGrade.factor > 0, "no house-size grade on a 120 sqm house");
+    assert.strictEqual(storefront.gradedBuildCostPerSqm, Math.round(storefront.buildCostPerSqm * storefront.houseSizeGrade.factor),
+      "the graded rate is not rate x grade");
+    assert.strictEqual(storefront.improvement, Math.round(storefront.gradedBuildCostPerSqm * FX.inputs.floorArea * dep),
+      "the building is not graded rate x floor area x (1 - dep)");
+    assert.strictEqual(Math.round(storefront.buildCostPerSqm * FX.inputs.floorArea * dep), v.buildingValue,
+      "without the grade the building would no longer equal the report's 16,000 x 120 x 0.8");
+    /* So the total gap vs the report is the land line plus the house-size grade. */
+    assert.strictEqual(storefront.total - v.total, (storefront.landValue - v.landValue) + (storefront.improvement - v.buildingValue),
+      "a third cause of difference has appeared besides land and the house-size grade");
   });
 });
 
