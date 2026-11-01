@@ -313,7 +313,7 @@
   }
 
   function defaultState() {
-    return { deals: [], current: null, view: "dashboard", wizardStep: 1, theme: "light", dealTab: "overview", appraisal: null, appraisalTab: "setup", appraisals: [], market: null, pms: { properties: [], units: [], owners: [], tenants: [], leases: [], payments: [], maintenance: [], expenses: [], documents: [] }, pmsTab: "properties", listings: [], favorites: [], listingFilters: {}, listingDetail: null, lsTab: "catalog", leads: [], leadFilters: {}, leadDetail: null, leadMode: "pipeline", leadCalendarMonth: "", lang: "en", users: [], transactions: [], financingScenarios: [], financingDraft: null, salesPlaybooks: [], playbookFilters: { q: "", stage: "", category: "", propertyType: "", status: "" }, commission: { settings: { grossPct: 3, brokerShare: 40, agentShare: 50, referralShare: 10 }, payouts: [] }, docVault: [], siteVisits: [], campaigns: [], listingStats: {}, valueGuide: { version: "2026.09.4", approvedBy: "", approvedAt: "", proxyFactors: { residential: 1, commercial: 1.7, agricultural: 0.5, industrial: 1.35 }, marketBandMid: { residential: 2.5, commercial: 2.5, agricultural: 1.5, industrial: 2 }, construction: { wood_prefab: 16000, mixed_chb: 25000, rca_steel: 32000 } }, siteContact: { eyebrow: "PROPERTY GUIDANCE", title: "What are you planning next?", description: "Tell SEA ESTATES whether you are buying, selling, renting, or reviewing a property. Include the location and any questions you would like us to help with.", phone: "0905 307 9119", email: "seaestate@gmail.com", address: "Batangas, Philippines", hours: "Monday–Saturday, 9:00 AM–6:00 PM" }, adminTab: "overview", txDetail: null, usersTab: "pending",
+    return { deals: [], current: null, view: "dashboard", wizardStep: 1, theme: "light", dealTab: "overview", appraisal: null, appraisalTab: "setup", appraisals: [], market: null, pms: { properties: [], units: [], owners: [], tenants: [], leases: [], payments: [], maintenance: [], expenses: [], documents: [] }, pmsTab: "properties", listings: [], favorites: [], listingFilters: {}, listingDetail: null, lsTab: "catalog", leads: [], leadFilters: {}, leadDetail: null, leadMode: "pipeline", leadCalendarMonth: "", lang: "en", users: [], transactions: [], financingScenarios: [], financingDraft: null, salesPlaybooks: [], playbookFilters: { q: "", stage: "", category: "", propertyType: "", status: "" }, commission: { settings: { grossPct: 3, brokerShare: 40, agentShare: 50, referralShare: 10 }, payouts: [] }, docVault: [], siteVisits: [], campaigns: [], listingStats: {}, valueGuide: valueGuideLiveDefaults(), siteContact: { eyebrow: "PROPERTY GUIDANCE", title: "What are you planning next?", description: "Tell SEA ESTATES whether you are buying, selling, renting, or reviewing a property. Include the location and any questions you would like us to help with.", phone: "0905 307 9119", email: "seaestate@gmail.com", address: "Batangas, Philippines", hours: "Monday–Saturday, 9:00 AM–6:00 PM" }, adminTab: "overview", txDetail: null, usersTab: "pending",
       portfolioAccounts: [], cashEntries: [], constructionProjects: [], constructionPhases: [], constructionVendors: [], constructionInvoices: [], changeOrders: [], portfolioTab: "overview", portfolioAuditEvents: [] };
   }
   function loadState() {
@@ -19831,15 +19831,15 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     const cgt = price * 0.06;
     const dst = price * 0.015;
     const transferTax = price * (C.num(t.transferPct, 0.5) / 100);
-    /* Registration was min(price * 0.01, 50000) + 2000, which is ~10x the
-       project's own registrationPct of 0.001 (data/zonal-config.json and
-       market-scan/build-batangas-data.js) on a typical base: PHP 52,000 against
-       PHP 5,000 on a PHP 5,000,000 transaction. It also carried a fixed PHP 2,000
-       fee that exists in no other rate in the codebase, and it disagreed with
-       the in-app closing-cost calculator's own labelled 0.25%. Follow the same
-       percent-override pattern as transferPct, defaulting to the canonical rate. */
-    const registrationPct = C.num(t.registrationPct, 0.1);
-    const registration = price * (registrationPct / 100);
+    /* Registration was min(price * 0.01, 50000) + 2000, then a flat 0.1% that
+       sat about 5x below the Registry's schedule (PHP 3,889 against PHP 18,696
+       on a PHP 3.9M sale). It now follows the LRA schedule of fees through the
+       shared owner, js/value_guide_finance.js lraRegistrationFee, the same
+       figure the Value Guide shows. A per-deal registrationPct still overrides
+       it when the Registry's own assessment is known as a percentage. */
+    const FIN = window.ESREALTY_FINANCE;
+    const registrationPct = C.num(t.registrationPct, 0);
+    const registration = registrationPct > 0 || !FIN ? price * (C.num(t.registrationPct, 0.1) / 100) : FIN.lraRegistrationFee(price);
     const notarial = C.num(t.notarialFee, 5000);
     const total = cgt + dst + transferTax + registration + notarial;
     return { cgt: cgt, dst: dst, transferTax: transferTax, transferPct: C.num(t.transferPct, 0.5), registrationPct: registrationPct, registration: registration, notarial: notarial, total: total, price: price };
@@ -20443,6 +20443,43 @@ const ccBtn = e.target.closest("[data-cc-calc]");
     return can(capability[tab] || "brokerage.view");
   }
 
+  /* The live calculator's own factors: data/zonal-config.json proxyFactors,
+     marketBand.bands[].mid and construction[].costPerSqm. These are the state's
+     defaults and the panel's pre-fill, so a page that has nothing approved
+     shows what the public site actually uses. tests/value_guide_phase0_node.js
+     pins them to the config. Before 2026-11 the defaults were the September
+     2026 factors (CHB 25,000/sqm, commercial 1.7x, farmland 0.5x, industrial
+     1.35x), so one "Approve and publish" would have put them on the public
+     site: +56% on house buildings, +70% on commercial land, -50% on farmland. */
+  function valueGuideLiveDefaults() {
+    return { version: "2026.11.1", approvedBy: "", approvedAt: "", proxyFactors: { residential: 1, commercial: 1, agricultural: 1, industrial: 1 }, marketBandMid: { residential: 2.5, commercial: 2.5, agricultural: 1.5, industrial: 2 }, construction: { wood_prefab: 11000, mixed_chb: 16000, rca_steel: 22000 } };
+  }
+  const VG_USES = ["residential", "commercial", "agricultural", "industrial"], VG_BUILDS = ["wood_prefab", "mixed_chb", "rca_steel"];
+  function valueGuideFactorsFromConfig(cfg) {
+    const d = valueGuideLiveDefaults();
+    const out = { version: String(cfg.calculationVersion || d.version), approvedBy: "", approvedAt: "", proxyFactors: {}, marketBandMid: {}, construction: {} };
+    VG_USES.forEach(k => {
+      out.proxyFactors[k] = Number(cfg.proxyFactors && cfg.proxyFactors[k] && cfg.proxyFactors[k].factor) || d.proxyFactors[k];
+      out.marketBandMid[k] = Number(cfg.marketBand && cfg.marketBand.bands && cfg.marketBand.bands[k] && cfg.marketBand.bands[k].mid) || d.marketBandMid[k];
+    });
+    VG_BUILDS.forEach(k => { out.construction[k] = Number(cfg.construction && cfg.construction[k] && cfg.construction[k].costPerSqm) || d.construction[k]; });
+    return out;
+  }
+  /* Read once from the served config, so a calibration merged after this bundle
+     was built still pre-fills correctly. Re-renders only when it differs. */
+  let vgLive = null, vgLiveLoading = false;
+  function loadValueGuideLive() {
+    if (vgLive || vgLiveLoading || typeof fetch !== "function") return;
+    vgLiveLoading = true;
+    fetch("data/zonal-config.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null).then(cfg => {
+      vgLiveLoading = false;
+      if (!cfg || typeof cfg !== "object") return;
+      const next = valueGuideFactorsFromConfig(cfg);
+      const changed = JSON.stringify(next) !== JSON.stringify(vgLive || valueGuideLiveDefaults());
+      vgLive = next;
+      if (changed && state.view === "admin" && state.adminTab === "value-guide") render();
+    }).catch(() => { vgLiveLoading = false; });
+  }
   function valueGuideSettings() {
     if (!state.valueGuide) state.valueGuide = defaultState().valueGuide;
     if (!state.valueGuide.proxyFactors) state.valueGuide.proxyFactors = {};
@@ -20452,16 +20489,43 @@ const ccBtn = e.target.closest("[data-cc-calc]");
   }
 
   function adminValueGuide() {
+    loadValueGuideLive();
     const v = valueGuideSettings();
-    const factor = (key, label) => '<div class="field"><label>' + label + ' proxy factor</label><input class="input input-num" id="vg-proxy-' + key + '" type="number" min="0.1" max="10" step="0.05" value="' + esc(v.proxyFactors[key] ?? "") + '"></div>' +
-      '<div class="field"><label>' + label + ' market midpoint</label><input class="input input-num" id="vg-mid-' + key + '" type="number" min="0.1" max="10" step="0.05" value="' + esc(v.marketBandMid[key] ?? "") + '"></div>';
-    return '<div class="card card-pad mb-24"><div class="row spread"><div><h3>Batangas Value Guide Factors</h3><p class="dim mt-8">Admin-approved assumptions used by the public Batangas market guide. These are not official BIR values.</p></div><span class="badge gold">Admin approval required</span></div>' +
+    const live = vgLive || valueGuideLiveDefaults();
+    const approved = !!(v.approvedBy && v.approvedAt);
+    /* Pre-fill from the approved override when one is in force, otherwise from
+       the live calculator; never from an unapproved saved row, which the public
+       site ignores (js/estimator.js applyGuideSettings). */
+    const fill = approved ? v : live;
+    const diffs = [];
+    if (approved) {
+      VG_USES.forEach(k => {
+        if (Number(v.proxyFactors[k]) !== live.proxyFactors[k]) diffs.push(k + " proxy " + live.proxyFactors[k] + " → " + v.proxyFactors[k]);
+        if (Number(v.marketBandMid[k]) !== live.marketBandMid[k]) diffs.push(k + " midpoint " + live.marketBandMid[k] + " → " + v.marketBandMid[k]);
+      });
+      VG_BUILDS.forEach(k => { if (Number(v.construction[k]) !== live.construction[k]) diffs.push(k.replace(/_/g, " ") + " " + live.construction[k] + " → " + v.construction[k]); });
+    }
+    const factor = (key, label) => '<div class="field"><label>' + label + ' proxy factor</label><input class="input input-num" id="vg-proxy-' + key + '" type="number" min="0.1" max="10" step="0.05" value="' + esc(fill.proxyFactors[key] ?? "") + '"></div>' +
+      '<div class="field"><label>' + label + ' market midpoint</label><input class="input input-num" id="vg-mid-' + key + '" type="number" min="0.1" max="10" step="0.05" value="' + esc(fill.marketBandMid[key] ?? "") + '"></div>';
+    const liveLine = 'Live calculator (data/zonal-config.json, calculation ' + esc(live.version) + '): ' + VG_USES.map(k => k + ' ' + live.proxyFactors[k] + ' / ' + live.marketBandMid[k] + 'x').join(', ') + ' · building ' + VG_BUILDS.map(k => k.replace(/_/g, ' ') + ' ' + Number(live.construction[k]).toLocaleString()).join(', ') + ' per sqm.';
+    const status = approved
+      ? '<p class="dim tiny mt-8">An approved override is in force' + (diffs.length ? ' and differs from the live calculator: ' + esc(diffs.join('; ')) : ' and matches the live calculator') + '. <button type="button" class="btn btn-sm" data-vg-reset>Reset the form to the live values</button></p>'
+      : '<p class="dim tiny mt-8">No approved override: the public guide uses the live calculator values shown below. Approving these same values changes nothing on the site.</p>';
+    return '<div class="card card-pad mb-24"><div class="row spread"><div><h3>Batangas Value Guide Factors</h3><p class="dim mt-8">Admin-approved assumptions used by the public Batangas market guide. These are not official BIR values. Approving replaces the live calculator\'s factors on the public site.</p></div><span class="badge gold">Admin approval required</span></div>' +
+      '<p class="dim tiny mt-8" data-vg-live>' + liveLine + '</p>' + status +
       '<div class="grid grid-2 mt-16">' + factor("residential", "Residential") + factor("commercial", "Commercial") + factor("agricultural", "Agricultural") + factor("industrial", "Industrial") + '</div>' +
       '<div class="subhead mt-16">Construction cost assumptions / sqm</div><div class="grid grid-3 mt-8">' +
-      ['wood_prefab', 'mixed_chb', 'rca_steel'].map(k => '<div class="field"><label>' + esc(k.replace(/_/g, " ")) + '</label><input class="input input-num" id="vg-cost-' + k + '" type="number" min="1000" max="200000" step="500" value="' + esc(v.construction[k] ?? "") + '"></div>').join("") +
+      VG_BUILDS.map(k => '<div class="field"><label>' + esc(k.replace(/_/g, " ")) + '</label><input class="input input-num" id="vg-cost-' + k + '" type="number" min="1000" max="200000" step="500" value="' + esc(fill.construction[k] ?? "") + '"></div>').join("") +
       '</div><p class="dim tiny mt-8">Rates remain provisional until supported by Batangas contractor, project, DPWH, PSA, or quantity-surveyor evidence.</p>' +
       '<button class="btn btn-primary mt-16" data-vg-save>' + icon("check", 15) + ' Approve and publish factors</button>' +
       '<p class="dim tiny mt-8">Last approval: ' + esc(v.approvedBy || "none") + (v.approvedAt ? " · " + esc(v.approvedAt) : "") + ' · version ' + esc(v.version || "—") + '</p></div>';
+  }
+  function adminValueGuideReset() {
+    const live = vgLive || valueGuideLiveDefaults();
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    VG_USES.forEach(k => { set("vg-proxy-" + k, live.proxyFactors[k]); set("vg-mid-" + k, live.marketBandMid[k]); });
+    VG_BUILDS.forEach(k => set("vg-cost-" + k, live.construction[k]));
+    toast("Form reset to the live calculator values; approve to publish them");
   }
   function adminCobroke() {
     loadCobroke();
@@ -20931,7 +20995,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
       const cost = read("vg-cost-" + k);
       if (cost > 0) v.construction[k] = cost;
     });
-    v.version = "2026.09." + Date.now().toString().slice(-4);
+    v.version = new Date().toISOString().slice(0, 7).replace("-", ".") + "." + Date.now().toString().slice(-4);
     v.approvedBy = (currentUser && (currentUser.email || currentUser.name)) || "super-admin";
     v.approvedAt = new Date().toISOString();
     save(); render(); toast("Value Guide factors approved and saved");
@@ -20959,6 +21023,7 @@ const ccBtn = e.target.closest("[data-cc-calc]");
         if (cs) { adminComSave(); return; }
         const vg = e.target.closest("[data-vg-save]");
         if (vg) { adminValueGuideSave(); return; }
+        if (e.target.closest("[data-vg-reset]")) { adminValueGuideReset(); return; }
         const csb = e.target.closest("[data-com-split]");
         if (csb) { openDealSplit(csb.getAttribute("data-com-split")); return; }
         if (e.target.closest("[data-com-statement]")) { openCommissionStatement(); return; }

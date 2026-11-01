@@ -77,8 +77,14 @@
     var regDef = byKey("registration");
     var notaryDef = byKey("notarial");
     var brokerDef = byKey("broker");
-    var costs = finance.transaction({ tax: { cgtPct: num(cgtDef && cgtDef.ratePct) / 100, dstPct: num(dstDef && dstDef.ratePct) / 100, transferPct: num(transferDef && transferDef.ratePct) / 100, registrationPct: num(regDef && regDef.ratePct) / 100 } }, estimateValue, Object.assign({}, estimate.costOptions || {}, {
-      marketGuideEstimate: estimateValue, salePrice: estimate.salePrice, birZonalValue: zonal,
+    var costs = finance.transaction({ tax: {
+      cgtPct: num(cgtDef && cgtDef.ratePct) / 100, dstPct: num(dstDef && dstDef.ratePct) / 100,
+      transferPct: num(transferDef && transferDef.ratePct) / 100,
+      cityTransferPct: transferDef && transferDef.cityRatePct != null ? num(transferDef.cityRatePct) / 100 : undefined,
+      cities: transferDef && transferDef.cities,
+      registrationMethod: regDef && regDef.method, registrationPct: num(regDef && regDef.ratePct) / 100
+    } }, estimateValue, Object.assign({}, estimate.costOptions || {}, {
+      marketGuideEstimate: estimateValue, salePrice: estimate.salePrice, birZonalValue: zonal, municipality: estimate.municipality,
       fairMarketValue: estimate.fairMarketValue || (estimate.costOptions || {}).fairMarketValue, transactionPrice: estimateValue, notarial: estimate.notarialFee || (estimate.costOptions || {}).notarial
     }));
     if (costs.quotationRequired) return { quotationRequired: true, available: false, direction: costs.note, quotedDeveloperFees: costs.quotedDeveloperFees, buyerTotal: costs.buyerTotal, transactionPrice: costs.projectedTransactionPrice };
@@ -123,7 +129,7 @@
         {
           key: "transfer", label: (transferDef && transferDef.label) || "Local transfer tax",
           amount: money(transfer), base: "higher of original price, current value or fair market value",
-          baseAmount: money(taxBase), rateLabel: num(transferDef && transferDef.ratePct) + "%",
+          baseAmount: money(taxBase), rateLabel: costs.transferBasis === "city" ? "up to " + (Math.round(costs.transferPct * 10000) / 100) + "% (city)" : num(transferDef && transferDef.ratePct) + "%",
           billedBy: transferDef && transferDef.billedBy, legalBasis: transferDef && transferDef.legalBasis,
           deadlineDays: transferDef && transferDef.deadlineDays, deadlineFrom: transferDef && transferDef.deadlineFrom,
           penalty: transferDef && transferDef.penalty, note: transferDef && transferDef.note
@@ -131,7 +137,7 @@
         {
           key: "registration", label: (regDef && regDef.label) || "Registration fee",
           amount: money(registration), base: "higher of selling price or fair market value",
-          baseAmount: money(taxBase), rateLabel: "about " + num(regDef && regDef.ratePct) + "%",
+          baseAmount: money(taxBase), rateLabel: costs.registrationMethod === "lra-schedule" ? "LRA schedule" : "about " + num(regDef && regDef.ratePct) + "%",
           billedBy: regDef && regDef.billedBy, legalBasis: regDef && regDef.legalBasis,
           deadlineDays: null, deadlineFrom: null, penalty: null, note: regDef && regDef.note
         },
@@ -188,20 +194,31 @@
       return finance.estate(g, estimate.estateInputs || {});
     }
 
+    /* The statutory basis for real property in an estate is the higher of the
+       BIR zonal value and the assessor's fair market value (NIRC Sec. 88(B)).
+       The guide has no assessor's value, so the house enters at its depreciated
+       cost, usually above the assessor's figure. The land-only zonal figure is
+       kept for vacant lots and for comparison; the market guide is the upper
+       case, not the basis the BIR applies. */
+    var grossStatutory = gross + num(estimate.improvement);
     var onZonal = assess(gross);
+    var onStatutory = assess(grossStatutory);
     var onMarket = assess(grossMarket);
 
     return {
       grossOnZonalBasis: onZonal.gross,
+      grossOnStatutoryBasis: onStatutory.gross,
       grossOnMarketBasis: onMarket.gross,
       standardDeduction: deduction,
       taxThreshold: threshold,
       taxPct: pct,
       onZonalBasis: onZonal,
+      onStatutoryBasis: onStatutory,
       onMarketBasis: onMarket,
       scenarioOnly: !estimate.estateInputs || !(estimate.estateInputs.grossEstate > 0),
       wholeEstate: estimate.estateInputs && estimate.estateInputs.grossEstate > 0 ? assess(estimate.estateInputs.grossEstate) : null,
-      likelyPayable: onMarket.tax > 0,
+      likelyPayable: onStatutory.tax > 0,
+      possiblyPayableOnMarketBasis: onMarket.tax > 0,
       basis: e.taxBasis,
       deductionBasis: e.standardDeductionBasis,
       note: e.note,

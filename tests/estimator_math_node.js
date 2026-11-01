@@ -34,7 +34,7 @@ function ok(cond, label, detail) {
 /* ---- dataset + manifest reconciliation ---- */
 eq(index.municipalities.length, 34, "dataset municipality count 34");
 eq(index.dataVersion, "bir-2022-rdo58-59", "dataset dataVersion");
-eq(config.calculationVersion, "2026.10.7", "config calculationVersion 2026.10.7");
+eq(config.calculationVersion, "2026.11.1", "config calculationVersion 2026.11.1");
 eq(manifest.status, "valid", "manifest status valid");
 eq(manifest.counts.municipalities, 34, "manifest municipality count");
 eq(manifest.counts.streets, 3710, "manifest street count 3710");
@@ -140,8 +140,8 @@ const t = core.taxMath(config, 1000000);
 eq(t.cgt, 60000, "tax CGT 6% of 1,000,000");
 eq(t.dst, 15000, "tax DST 1.5%");
 eq(t.transfer, 5000, "tax transfer 0.5%");
-eq(t.registration, 1000, "tax registration 0.1%");
-eq(t.total, 81000, "tax total sum");
+eq(t.registration, 5646, "tax registration from the LRA schedule (3,396 + 90 x 25)");
+eq(t.total, 85646, "tax total sum");
 
 /* ---- full dataset sweep: every municipality loads, never throws, honest fail-closed ---- */
 let withData = 0;

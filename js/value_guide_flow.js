@@ -330,7 +330,12 @@
     r.unadjustedTotal = r.total;
     r.marketGuideEstimate = r.total;
     r.marketGuideRatePerSqm = r.perSqm;
-    r.recommendedAskingPrice = r.high;
+    /* The same suggested asking price as the public report: the guide total
+       plus the configured premium (askingPremiumPct, data/zonal-config.json).
+       Until 2026-11 this was r.high, the 130% top of the planning range, so the
+       two surfaces printed different asking figures for one property. */
+    r.askingPremiumPct = Number(base.askingPremiumPct) || 0;
+    r.recommendedAskingPrice = Math.round(r.total * (1 + r.askingPremiumPct / 100));
     r.ownershipAdjustmentPct = 0;
     r.floorsMultiplier = 1;
     r.buildCostPerSqm = rcn;

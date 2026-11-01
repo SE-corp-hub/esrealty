@@ -10,6 +10,43 @@
   "use strict";
   function positive(v) { var n = Number(v); return isFinite(n) && n > 0 ? n : 0; }
   function rate(value, fallback) { return value != null && isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : fallback; }
+
+  /* Registry of Deeds registration fee from the LRA schedule of fees (PD 1529
+     Sec. 111 as adjusted; the LRA's published table, retrieved 2026-11-01 via
+     foreclosurephilippines.com, table dated 2021-11-22). The schedule is a
+     staircase: a fixed fee for each bracket of consideration "or fraction
+     thereof", so every step rounds up. PHP 21 up to 500, then +9 per 500 to
+     6,000; +24 per 2,000 to 30,000; +42 per 5,000 to 100,000; +60 per 10,000 to
+     500,000; +90 per 20,000 above that, which gives the published PHP 8,796 at
+     1,700,000. Entry, IT and certification fees (a few hundred pesos each) are
+     not included; the Registry's own assessment governs. */
+  var LRA_STEPS = [
+    { upTo: 6000, from: 500, step: 500, per: 9, base: 21 },
+    { upTo: 30000, from: 6000, step: 2000, per: 24, base: 120 },
+    { upTo: 100000, from: 30000, step: 5000, per: 42, base: 408 },
+    { upTo: 500000, from: 100000, step: 10000, per: 60, base: 996 },
+    { upTo: Infinity, from: 500000, step: 20000, per: 90, base: 3396 }
+  ];
+  function lraRegistrationFee(value) {
+    var v = positive(value);
+    if (!v) return 0;
+    if (v <= 500) return 21;
+    for (var i = 0; i < LRA_STEPS.length; i++) {
+      var s = LRA_STEPS[i];
+      if (v <= s.upTo) return s.base + s.per * Math.ceil((v - s.from) / s.step);
+    }
+    return 0;
+  }
+  /* Cities may charge up to 0.75% transfer tax against 0.5% for provinces
+     (RA 7160 Secs. 135 and 151); config.tax.cities names the ones to treat as
+     cities and config.tax.cityTransferPct the rate to show for them. */
+  function isCity(t, municipality) {
+    var list = t && Array.isArray(t.cities) ? t.cities : [];
+    var name = String(municipality || "").trim().toUpperCase();
+    if (!name) return false;
+    for (var i = 0; i < list.length; i++) if (String(list[i]).trim().toUpperCase() === name) return true;
+    return false;
+  }
   function transaction(config, total, opts) {
     opts = opts || {}; var t = config && config.tax || {};
     var guide = Object.prototype.hasOwnProperty.call(opts, "marketGuideEstimate") ? positive(opts.marketGuideEstimate) : positive(total);
@@ -30,7 +67,11 @@
     var selected = candidates.reduce(function (a, b) { return b.value > a.value ? b : a; });
     var base = Math.round(selected.value);
     var cgt = Math.round(base * rate(t.cgtPct, .06)), dst = Math.round(base * rate(t.dstPct, .015));
-    var transfer = Math.round(base * rate(t.transferPct, .005)), registration = Math.round(base * rate(t.registrationPct, .001));
+    var transferPct = rate(t.transferPct, .005), transferBasis = "province";
+    if (t.cityTransferPct != null && isCity(t, opts.municipality)) { transferPct = rate(t.cityTransferPct, transferPct); transferBasis = "city"; }
+    var transfer = Math.round(base * transferPct);
+    var registrationMethod = t.registrationMethod === "lra-schedule" ? "lra-schedule" : "percent";
+    var registration = registrationMethod === "lra-schedule" ? lraRegistrationFee(base) : Math.round(base * rate(t.registrationPct, .001));
     var brokerPct = rate(opts.brokerPct, rate(t.brokerPct, .03)), broker = Math.round(projected * brokerPct);
     var notarial = Math.round(positive(opts.notarial));
     var allocation = Object.assign({ cgt: "seller", dst: "buyer", transfer: "buyer", registration: "buyer", broker: "seller", notarial: "seller" }, opts.costAllocation || {});
@@ -39,6 +80,7 @@
     Object.keys(items).forEach(function (key) { if (allocation[key] === "buyer") buyerCosts += items[key]; else sellerCosts += items[key]; });
     var totalCosts = cgt + dst + transfer + registration;
     return { base: base, baseBasis: selected.value ? selected.basis : "No tax base available", cgt: cgt, dst: dst, transfer: transfer, registration: registration,
+      transferPct: transferPct, transferBasis: transferBasis, registrationMethod: registrationMethod,
       broker: broker, brokerPct: brokerPct, notarial: notarial, sellerCosts: sellerCosts, buyerCosts: buyerCosts,
       sellerNetProceeds: sale ? Math.round(sale) - sellerCosts : null, projectedTransactionPrice: projected,
       projectedNetProceeds: projected ? Math.round(projected) - sellerCosts : null,
@@ -54,5 +96,5 @@
     var net = Math.max(0, Math.round(positive(gross)) - Math.round(deductions));
     return { gross: Math.round(positive(gross)), standardDeduction: standard, familyHomeDeduction: Math.round(familyHome), afterDeduction: net, taxable: net, tax: Math.round(net * .06) };
   }
-  return { transaction: transaction, estate: estate };
+  return { transaction: transaction, estate: estate, lraRegistrationFee: lraRegistrationFee, isCity: isCity };
 });

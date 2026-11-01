@@ -36,6 +36,16 @@ const DEFAULT_SITE_CONTACT = {
   hours: "Monday–Saturday, 9:00 AM–6:00 PM",
 };
 
+// The live calculator's own factors (data/zonal-config.json, calculation 2026.11.1). They are the
+// fallbacks when no super-admin has approved an override, so they must equal what the public site
+// computes with; tests/value_guide_phase0_node.js pins them to the config.
+const VALUE_GUIDE_LIVE_FACTORS = {
+  version: "2026.11.1", approvedBy: "", approvedAt: "",
+  proxyFactors: { residential: 1, commercial: 1, agricultural: 1, industrial: 1 },
+  marketBandMid: { residential: 2.5, commercial: 2.5, agricultural: 1.5, industrial: 2 },
+  construction: { wood_prefab: 11000, mixed_chb: 16000, rca_steel: 22000 },
+};
+
 const propertyTypes = new Set([
   "house-and-lot", "condominium", "lot-only", "townhouse", "shophouse", "commercial",
   "industrial", "agricultural", "foreclosed",
@@ -622,12 +632,7 @@ const getSiteSettings = async (admin: SupabaseClient) => {
     .limit(1)
     .maybeSingle();
   if (profileError) throw new Error(profileError.message);
-  if (!adminProfile) return json({ data: { ...DEFAULT_SITE_CONTACT, valueGuide: {
-    version: "2026.09.4", approvedBy: "", approvedAt: "",
-    proxyFactors: { residential: 1, commercial: 1.7, agricultural: 0.5, industrial: 1.35 },
-    marketBandMid: { residential: 2.5, commercial: 2.5, agricultural: 1.5, industrial: 2 },
-    construction: { wood_prefab: 16000, mixed_chb: 25000, rca_steel: 32000 },
-  } } });
+  if (!adminProfile) return json({ data: { ...DEFAULT_SITE_CONTACT, valueGuide: VALUE_GUIDE_LIVE_FACTORS } });
 
   const { data: appState, error: stateError } = await admin
     .from("app_state")
@@ -650,20 +655,21 @@ const getSiteSettings = async (admin: SupabaseClient) => {
     const n = Number(value);
     return Number.isFinite(n) && n >= min && n <= max ? n : fallback;
   };
+  const L = VALUE_GUIDE_LIVE_FACTORS;
   const valueGuide = {
-    version: stringValue(guide.version || "2026.09.4", 40, "valueGuide.version"),
+    version: stringValue(guide.version || L.version, 40, "valueGuide.version"),
     approvedBy: stringValue(guide.approvedBy || "", 160, "valueGuide.approvedBy"),
     approvedAt: stringValue(guide.approvedAt || "", 40, "valueGuide.approvedAt"),
     proxyFactors: {
-      residential: safeNumber(proxy.residential, 1, 0.1, 10), commercial: safeNumber(proxy.commercial, 1.7, 0.1, 10),
-      agricultural: safeNumber(proxy.agricultural, 0.5, 0.1, 10), industrial: safeNumber(proxy.industrial, 1.35, 0.1, 10),
+      residential: safeNumber(proxy.residential, L.proxyFactors.residential, 0.1, 10), commercial: safeNumber(proxy.commercial, L.proxyFactors.commercial, 0.1, 10),
+      agricultural: safeNumber(proxy.agricultural, L.proxyFactors.agricultural, 0.1, 10), industrial: safeNumber(proxy.industrial, L.proxyFactors.industrial, 0.1, 10),
     },
     marketBandMid: {
-      residential: safeNumber(mid.residential, 2.5, 0.1, 10), commercial: safeNumber(mid.commercial, 2.5, 0.1, 10),
-      agricultural: safeNumber(mid.agricultural, 1.5, 0.1, 10), industrial: safeNumber(mid.industrial, 2, 0.1, 10),
+      residential: safeNumber(mid.residential, L.marketBandMid.residential, 0.1, 10), commercial: safeNumber(mid.commercial, L.marketBandMid.commercial, 0.1, 10),
+      agricultural: safeNumber(mid.agricultural, L.marketBandMid.agricultural, 0.1, 10), industrial: safeNumber(mid.industrial, L.marketBandMid.industrial, 0.1, 10),
     },
     construction: {
-      wood_prefab: safeNumber(construction.wood_prefab, 16000, 1000, 200000), mixed_chb: safeNumber(construction.mixed_chb, 25000, 1000, 200000), rca_steel: safeNumber(construction.rca_steel, 32000, 1000, 200000),
+      wood_prefab: safeNumber(construction.wood_prefab, L.construction.wood_prefab, 1000, 200000), mixed_chb: safeNumber(construction.mixed_chb, L.construction.mixed_chb, 1000, 200000), rca_steel: safeNumber(construction.rca_steel, L.construction.rca_steel, 1000, 200000),
     },
   };
   return json({ data: { ...DEFAULT_SITE_CONTACT, ...contact, valueGuide } }, 200, PUBLIC_CACHE);
