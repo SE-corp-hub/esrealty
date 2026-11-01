@@ -209,7 +209,7 @@
       function pageFooter() {
         var y0 = FOOT - 14;
         page.drawRectangle({ x: M, y: y0 + 11, width: W - M * 2, height: 0.5, color: ruleSoft });
-        page.drawText("Planning estimate, not a certified appraisal  ·  prepared " + (meta && meta.generatedOn ? meta.generatedOn : ""),
+        page.drawText("Planning estimate, not a certified appraisal  ·  prepared " + (meta && meta.generatedOn ? meta.generatedOn : "") + (r && r.validity ? "  ·  review after " + r.validity.reviewAfter : ""),
           { x: M, y: y0, size: 7.2, font: font, color: faint });
         var pn = "Page " + pageNo + (pageCount.total ? " of " + pageCount.total : "");
         page.drawText(pn, { x: W - M - font.widthOfTextAtSize(pn, 7.2), y: y0, size: 7.2, font: font, color: faint });
@@ -607,7 +607,7 @@
       y -= 92;
 
       tiles([
-        { label: r.landMethod === "time-indexed" ? "Indexed-reference scenario" : "Market guide estimate", value: fmtMoney(r.marketGuideEstimate), sub: "Planning figure", accent: tan },
+        { label: r.landMethod === "time-indexed" ? "Indexed-reference scenario" : "Market guide estimate", value: fmtMoney(r.marketGuideEstimate), sub: r.validity ? "Planning figure, review after " + r.validity.reviewAfter : "Planning figure", accent: tan },
         { label: "Guide range", value: fmtMoney(r.low) + " - " + fmtMoney(r.high), sub: rangeSub(r), accent: tan, small: true },
         { label: r.birReferenceConfirmed === false ? "Derived locality reference" : "Official BIR zonal reference", value: fmtMoney(r.birZonalValue), sub: fmtMoney(r.birZonalRatePerSqm) + "/sqm, " + (r.birReferenceConfirmed === false ? "derived fallback" : "tax reference"), accent: cool }
       ]);
@@ -626,6 +626,14 @@
         r.fallbackNote ? "Note: " + r.fallbackNote : "Source match level: " + (cov.level || "not supplied") + ".",
         "This is a planning guide, not a certified appraisal, tax determination or lending valuation. " + (r.birReferenceConfirmed === false ? "The locality median is derived, not a confirmed parcel tax floor; it is not interchangeable with the property estimate." : "The BIR reference is not interchangeable with the property estimate.")
       ], tan);
+
+      /* How the figure was checked and how long it holds (accuracy plan items
+         2.4, 2.5 and 3.2). The sentences travel with the result, so this is the
+         same wording the website and the back office show. */
+      if (r.evidence || r.validity || r.trend) {
+        box([r.evidence ? r.evidence.text : "", r.trend ? r.trend.text : "", r.validity ? r.validity.text : ""].filter(function (t) { return t; }),
+          r.evidence && r.evidence.level === "low" ? rgb(0.75, 0.45, 0.2) : cool);
+      }
 
       heading("Valuation summary", { small: true });
       var decisionCosts = finance.transaction({}, r.total, Object.assign({}, r.costOptions || {}, { salePrice: r.salePrice, transactionPrice: r.total, marketGuideEstimate: r.total, birZonalValue: r.taxReferenceValue != null ? r.taxReferenceValue : r.birZonalValue }));
@@ -996,6 +1004,8 @@
         ["Reference schedule used", r.reference ? r.reference.schedule : "-"],
         ["Data version", r.dataVersion],
         ["Calculation version", r.calculationVersion],
+        ["Bank data month", r.validity ? r.validity.dataMonth : "-"],
+        ["Review after", r.validity ? r.validity.reviewAfter + " (data date + " + r.validity.days + " days)" : "-"],
         ["Tax reference version", tax && tax.reference ? tax.reference.version : "-"],
         ["Tax reference checked", tax && tax.reference ? tax.reference.checkedOn : "-"]
       ], [150, 350], { boldFirstCol: true, padY: 4 });
@@ -1011,6 +1021,9 @@
           "Tax figures are illustrative and use published statutory rates; the BIR and the LGU determine what is payable."
         ];
       }
+      limits = limits.slice();
+      if (r.evidence && r.evidence.level !== "checked") limits.push(r.evidence.text);
+      if (r.hazard && r.hazard.text) limits.push(r.hazard.text);
       for (var j = 0; j < limits.length; j++) para("- " + esc(limits[j]), 8, gray);
 
       heading("Disclaimer", { small: true });

@@ -284,6 +284,124 @@
     return out;
   }
 
+  /* ---- Evidence, validity, hazard, trend (accuracy plan items 2.1, 2.3,
+     2.4, 2.5 and 3.2). The monthly bank snapshot, the accuracy report and the
+     trend file are compacted once at load (evidenceContext, kept as
+     config.evidence), so computeEstimate stays a pure function of its config
+     and the back office reads the very same facts. The sentences are built
+     here, once, and every surface (public report, back office, PDF) prints
+     them as they are. */
+  var VALIDITY_DAYS = 90;
+  var EVIDENCE_NEEDED = { agricultural: 20, industrial: 10, commercial: 10 };
+  var HAZARD_HUNTER_URL = "https://hazardhunter.georisk.gov.ph/";
+  /* Towns with barangays inside the 14-km radius PHIVOLCS draws around Taal
+     Volcano's main crater (the 2020 and 2022 eruption advisories), spelled as
+     the BIR index spells them. The guide deducts nothing for it; the reader is
+     pointed at the hazard map for the exact address. */
+  var TAAL_14KM_TOWNS = ["AGONCILLO", "ALITAGTAG", "BALETE", "CUENCA", "LAUREL", "LEMERY", "LIPA CITY", "MALVAR", "MATAAS NA KAHOY", "SAN NICOLAS", "STA. TERESITA", "TAAL", "TALISAY", "TANAUAN CITY"];
+
+  function evidenceContext(snapshot, calibration, accuracy, trend) {
+    var recs = snapshot && !snapshot.unavailable && Array.isArray(snapshot.records) ? snapshot.records : [];
+    var counts = { house_lot: 0, vacant_lot: 0, agricultural: 0, industrial: 0, commercial: 0 };
+    recs.forEach(function (r) {
+      var k = String(r.kind || "").toLowerCase(), t = String(r.propertyType || "").toLowerCase();
+      if (/industrial/.test(k) || /industrial/.test(t)) counts.industrial++;
+      else if (/agri|farm/.test(k) || /agri|farm/.test(t)) counts.agricultural++;
+      else if (/commercial/.test(k) || /commercial/.test(t)) counts.commercial++;
+      else if (k === "vacant_lot") counts.vacant_lot++;
+      else if (k === "house_lot" || k === "townhouse") counts.house_lot++;
+    });
+    var month = snapshot && /^\d{4}-\d{2}$/.test(String(snapshot.month || "")) ? snapshot.month : ((calibration && calibration.houseSize && calibration.houseSize.month) || "");
+    var date = snapshot && /^\d{4}-\d{2}-\d{2}$/.test(String(snapshot.generatedOn || "")) ? snapshot.generatedOn : (month ? month + "-01" : "");
+    var acc = accuracy && !accuracy.unavailable && accuracy.overall ? accuracy : null;
+    return {
+      month: month, date: date, records: recs.length, counts: counts,
+      accuracy: acc ? { month: acc.snapshotMonth || month, calculationVersion: acc.calculationVersion || "", house_lot: acc.overall.house_lot || null, vacant_lot: acc.overall.vacant_lot || null } : null,
+      trend: trend && !trend.unavailable && Array.isArray(trend.towns) ? { generatedOn: trend.generatedOn || "", towns: trend.towns } : null
+    };
+  }
+  function addDays(iso, days) {
+    var d = new Date(String(iso) + "T00:00:00Z");
+    if (isNaN(d.getTime())) return "";
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+  function monthLabel(ym) {
+    if (!/^\d{4}-\d{2}$/.test(String(ym || ""))) return String(ym || "");
+    return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(ym.slice(5)) - 1] + " " + ym.slice(0, 4);
+  }
+  function useWord(use) { return use === "agricultural" ? "farm" : use === "industrial" ? "industrial" : use === "commercial" ? "commercial" : String(use || ""); }
+  /* Validity: the bank data date plus 90 days. After that the reader is told
+     to run the guide again, because the monthly check behind it has moved on. */
+  function validity(cfg) {
+    var ev = cfg && cfg.evidence;
+    if (!ev || !ev.date) return null;
+    var v = { dataMonth: ev.month, dataDate: ev.date, days: VALIDITY_DAYS, reviewAfter: addDays(ev.date, VALIDITY_DAYS) };
+    v.text = "Good as a planning figure until " + v.reviewAfter + " (bank and Pag-IBIG data of " + monthLabel(v.dataMonth) + " plus " + v.days + " days); after that, run it again.";
+    return v;
+  }
+  /* Evidence level: residential houses and lots are checked every month
+     against bank and Pag-IBIG prices (the accuracy report); farm, industrial
+     and commercial land carry a low-evidence mark until the snapshot holds
+     enough prices of that use to check them (20 farm, 10 industrial, 10
+     commercial), and "unmeasured" once it does but the check does not yet
+     cover that use. */
+  function evidenceLevel(cfg, use, typeKey) {
+    var ev = (cfg && cfg.evidence) || null;
+    var u = use || "residential", e;
+    if (u === "residential") {
+      var seg = ev && ev.accuracy && ev.accuracy[typeKey];
+      e = seg
+        ? { level: "checked", use: u, kind: typeKey, month: ev.accuracy.month || ev.month, records: seg.n || 0, projects: seg.projects || 0, medianAbs: seg.medianAbs != null ? seg.medianAbs : null, inBand: seg.inBand != null ? seg.inBand : null, needed: 0 }
+        : { level: "unchecked", use: u, kind: typeKey, month: ev ? ev.month : "", records: 0, projects: 0, medianAbs: null, inBand: null, needed: 0 };
+    } else {
+      var needed = EVIDENCE_NEEDED[u] || 10;
+      var have = ev && ev.counts ? (ev.counts[u] || 0) : 0;
+      e = { level: have < needed ? "low" : "unmeasured", use: u, kind: typeKey, month: ev ? ev.month : "", records: have, projects: 0, medianAbs: null, inBand: null, needed: needed };
+    }
+    e.text = evidenceText(e, false);
+    e.shortText = evidenceText(e, true);
+    return e;
+  }
+  function evidenceText(e, short) {
+    if (!e) return "";
+    var what = e.kind === "vacant_lot" ? "lots" : "houses";
+    if (e.level === "checked") {
+      return "Monthly check (" + monthLabel(e.month) + "): " + what + " were typically within " + Math.round((e.medianAbs || 0) * 100) + "% of bank and Pag-IBIG prices" +
+        (e.inBand != null ? ", and " + Math.round(e.inBand * 100) + "% of those prices fell inside the guide's range" : "") +
+        (short ? "." : " (" + fmt(e.records) + " prices, " + fmt(e.projects) + " developments).");
+    }
+    if (e.level === "low") {
+      return "Low evidence: the monthly bank check holds " + fmt(e.records) + " " + useWord(e.use) + " price" + (e.records === 1 ? "" : "s") + " (" + e.needed + " needed), so this figure has not been checked against sales. Treat it as a starting point for an appraiser.";
+    }
+    if (e.level === "unmeasured") return "The monthly bank check does not yet measure " + useWord(e.use) + " land, so this figure has not been checked against sales.";
+    return "This figure has not yet been checked against bank and Pag-IBIG prices.";
+  }
+  /* A reviewed town trend from data/comparables/trend-latest.json. Proposed
+     rows are never shown: a person marks a row reviewed, and the figure is
+     not indexed by it either way (plan item 2.1: apply only after review). */
+  function trendFor(cfg, municipality, typeKey) {
+    var ev = cfg && cfg.evidence, towns = ev && ev.trend && ev.trend.towns;
+    if (!towns || !towns.length) return null;
+    var town = normKey(municipality), kind = typeKey === "vacant_lot" ? "vacant" : "built";
+    for (var i = 0; i < towns.length; i++) {
+      var t = towns[i];
+      if (t && t.status === "reviewed" && normKey(t.town) === town && t.kind === kind && isFinite(Number(t.changePct))) {
+        var out = { town: town, kind: kind, changePct: Number(t.changePct), months: Number(t.months) || 0, from: t.from || "", to: t.to || "", reviewedBy: t.reviewedBy || "" };
+        var pct = Math.round(out.changePct * 1000) / 10;
+        out.text = "Prices here: " + (pct >= 0 ? "+" : "") + pct + "% over " + out.months + " months (bank and Pag-IBIG " + (kind === "vacant" ? "lot" : "house") + " medians" + (out.from && out.to ? ", " + monthLabel(out.from) + " to " + monthLabel(out.to) : "") + (out.reviewedBy ? ", reviewed by " + out.reviewedBy : "") + "). Shown for context; the figure is not indexed by it.";
+        return out;
+      }
+    }
+    return null;
+  }
+  function hazardContext(municipality) {
+    var m = normKey(municipality);
+    var taal = TAAL_14KM_TOWNS.indexOf(m) >= 0;
+    var note = taal ? "Parts of " + titleCase(m) + " lie within 14 km of Taal Volcano's main crater (PHIVOLCS). Check the hazard map for the exact address before pricing; this guide makes no deduction for it." : "";
+    return { url: HAZARD_HUNTER_URL, taalZone: taal, note: note, text: (note ? note + " " : "") + "Flood, landslide and volcanic hazards at the exact address: HazardHunterPH (" + HAZARD_HUNTER_URL + "), by PHIVOLCS, MGB and PAGASA. The flood answer in this guide is the reader's own and is not checked against the map." };
+  }
+
   /* The suggested asking price sits this far above the guide total. One number
      in data/zonal-config.json (askingPrice.premiumPct) for both surfaces. */
   function askingPremium(cfg) {
@@ -470,6 +588,10 @@
     var total = Math.round(unadjustedTotal * (1 - ownershipAdjustmentPct / 100));
     var rng = rangeFactors(cfg, typeKey, use, hit.depth);
     var rangeLowFactor = rng.lowFactor, rangeHighFactor = rng.highFactor;
+    var val = validity(cfg);
+    var evid = evidenceLevel(cfg, use, typeKey);
+    var hz = hazardContext(muniRow.name);
+    var trend = trendFor(cfg, muniRow.name, typeKey);
     var rangePct = 0.30; // compatibility field; new range is asymmetric
     var low = Math.round(total * rangeLowFactor);
     var high = Math.round(total * rangeHighFactor);
@@ -596,6 +718,10 @@
       rangeHighFactor: rangeHighFactor,
       rangeMethod: rng.method,
       rangeBasis: { measured: rng.measured, widened: rng.widened },
+      validity: val,
+      evidence: evid,
+      hazard: hz,
+      trend: trend,
       low: low,
       high: high,
       salePrice: salePrice,
@@ -692,7 +818,16 @@
     integrityCheck: integrityCheck,
     typicalBarangay: typicalBarangay,
     houseSizeGrade: houseSizeGrade,
-    rangeFactors: rangeFactors
+    rangeFactors: rangeFactors,
+    evidenceContext: evidenceContext,
+    validity: validity,
+    evidenceLevel: evidenceLevel,
+    trendFor: trendFor,
+    hazardContext: hazardContext,
+    VALIDITY_DAYS: VALIDITY_DAYS,
+    EVIDENCE_NEEDED: EVIDENCE_NEEDED,
+    TAAL_14KM_TOWNS: TAAL_14KM_TOWNS,
+    HAZARD_HUNTER_URL: HAZARD_HUNTER_URL
   };
 
   /* ---------------------------------------------------------- */
@@ -805,13 +940,21 @@
          beside the estimate; they never enter computeEstimate(). */
       loadJSON("data/comparables/batangas-latest.json").catch(function () { return { records: [], unavailable: true }; }),
       /* Reviewed town corrections; a missing file simply means none. */
-      loadJSON("data/calibration.json").catch(function () { return null; })
+      loadJSON("data/calibration.json").catch(function () { return null; }),
+      /* The monthly accuracy report (guide vs bank prices) and the town trend
+         proposals: DISPLAY ONLY, compacted into config.evidence so every
+         result can say how it was checked and until when it holds. */
+      loadJSON("data/comparables/accuracy-latest.json").catch(function () { return null; }),
+      loadJSON("data/comparables/trend-latest.json").catch(function () { return null; })
     ]).then(function (parts) {
       DATA = { config: applyGuideSettings(parts[0], parts[2]), index: parts[1], manifest: parts[3], projectEvidence: parts[4] };
       DATA.config.governmentReferenceRegister = parts[5];
       DATA.marketBenchmarks = parts[6];
       DATA.bankComparables = parts[7];
       DATA.config.townCalibration = parts[8];
+      DATA.accuracy = parts[9];
+      DATA.trend = parts[10];
+      DATA.config.evidence = evidenceContext(parts[7], parts[8], parts[9], parts[10]);
       return DATA;
     });
     return dataPromise;
@@ -1401,7 +1544,8 @@ out += "</div>";
       [
         tile("Community", COMMUNITIES.map(function (c) { return { label: c }; }).concat([skip("community")]), "community"),
         tile("Flood risk", FLOOD_RISKS.map(function (c) { return { label: c }; }).concat([skip("floodRisk")]), "floodRisk"),
-        tile("Road access", ROAD_ACCESS.map(function (c) { return { label: c }; }).concat([skip("roadAccess")]), "roadAccess")
+        tile("Road access", ROAD_ACCESS.map(function (c) { return { label: c }; }).concat([skip("roadAccess")]), "roadAccess"),
+        hazardNoteHtml()
       ]) +
     group("Land & access", ["frontage", "lotShape", "rightOfWay"],
       [
@@ -1610,6 +1754,26 @@ out += "</div>";
     }
 
     return out;
+  }
+
+  /* How the figure was checked, the town trend when one is reviewed, and
+     how long the figure holds (plan items 2.1, 2.4, 2.5, 3.2). The sentences
+     come with the result, so the back office and the PDF print the same ones. */
+  function evidenceLinesHtml(r) {
+    var e = r.evidence, out = "";
+    if (e) out += '<p class="' + (e.level === "low" ? "sf-est-result-lowev" : "sf-est-result-check") + '" data-est-evidence="' + esc(e.level) + '">' + esc(e.text) + '</p>';
+    if (r.trend) out += '<p class="sf-est-result-trend" data-est-trend>' + esc(r.trend.text) + '</p>';
+    if (r.validity) out += '<p class="sf-est-result-valid" data-est-valid>' + esc(r.validity.text) + '</p>';
+    return out;
+  }
+  function hazardHtml(r) {
+    var h = r && r.hazard;
+    if (!h) return "";
+    return '<p class="sf-est-rdp" data-est-hazard>' + (h.taalZone ? esc(h.note) + ' ' : '') + 'Flood, landslide and volcanic hazards at the exact address: <a href="' + esc(h.url) + '" target="_blank" rel="noopener">HazardHunterPH</a> (PHIVOLCS, MGB and PAGASA). The flood answer in this guide is the reader\'s own and is not checked against the map.</p>';
+  }
+  function hazardNoteHtml() {
+    var h = core.hazardContext(est.municipality || "");
+    return '<p class="sf-est-hazard-note sf-est-span2" data-est-hazard-note>' + (h.taalZone ? esc(h.note) + ' ' : '') + 'Not sure about flooding? <a href="' + esc(h.url) + '" target="_blank" rel="noopener">HazardHunterPH</a> shows the flood, landslide and volcanic hazard for an address.</p>';
   }
 
   /* One sentence on what the range is, from the result's own basis. */
@@ -1835,6 +1999,7 @@ var displayRange = '';
       displayRange +
       '<p class="sf-est-per">≈ ' + money(displayPerSqm) + " /sqm of lot on " + fmt(r.area) + " sqm" + (r.kind && r.type === "house_lot" ? " · " + fmt(r.floorArea) + " sqm floor area" : "") + "</p>" +
        askingPriceBlock +
+       (r.validity ? '<p class="sf-est-rdp" data-est-valid-note>' + esc(r.validity.text) + '</p>' : '') +
        '<p class="sf-est-rdp">SEA ESTATES is independent of the BIR. BIR schedule values are shown as a tax reference; the estimate is a guide-based starting point. A site and document review can refine it using the property condition and local market evidence.</p>' });
 
     s.push({ t: "Pricing strategy", h: '<div data-est-pricing-body>' + pricingStrategyHtml(r, tax) + '</div>' });
@@ -1909,10 +2074,14 @@ var displayRange = '';
 
     s.push({ t: "Total estimate and range", h:
       "<p class=\"sf-est-rdp\"><b>" + money(r.marketGuideEstimate) + "</b> · guide range <b>" + money(r.low) + " – " + money(r.high) +
-        "</b> (" + esc(rangeNote(r)) + "). ≈ <b>" + money(r.perSqm) + "</b>/sqm.</p>" });
+        "</b> (" + esc(rangeNote(r)) + "). ≈ <b>" + money(r.perSqm) + "</b>/sqm.</p>" +
+        (r.evidence ? '<p class="sf-est-rdp" data-est-check-note>' + esc(r.evidence.text) + '</p>' : '') +
+        (r.trend ? '<p class="sf-est-rdp" data-est-trend-note>' + esc(r.trend.text) + '</p>' : '') });
 
     s.push({ t: "Coverage and limitations", h:
-      "<p class=\"sf-est-rdp\">The BIR figure is matched street-by-street; where a street has no listed rate for a classification the engine falls back to the barangay all-other-streets rate, then municipality and province medians. The numerical estimate uses the BIR base, selected property-use and market-band factors, optional corner adjustment, and— for house-and-lot—replacement-cost and age-depreciation inputs. Comparable listing prices are shown as context and are not currently fed into the formula." + comparableNote + " Rows the BIR masked as “same as above” were resolved only when a municipality-wide rate existed — never guessed.</p>" });
+      "<p class=\"sf-est-rdp\">The BIR figure is matched street-by-street; where a street has no listed rate for a classification the engine falls back to the barangay all-other-streets rate, then municipality and province medians. The numerical estimate uses the BIR base, selected property-use and market-band factors, optional corner adjustment, and— for house-and-lot—replacement-cost and age-depreciation inputs. Comparable listing prices are shown as context and are not currently fed into the formula." + comparableNote + " Rows the BIR masked as “same as above” were resolved only when a municipality-wide rate existed — never guessed.</p>" +
+      (r.evidence && r.evidence.level !== "checked" ? '<p class="sf-est-rdp" data-est-low-evidence-note>' + esc(r.evidence.text) + '</p>' : '') +
+      hazardHtml(r) });
 
     s.push({ t: "Taxes, fees & commissions", h: transactionHtml(r, tax) });
 
@@ -1975,7 +2144,7 @@ var displayRange = '';
   function resultSummaryHtml(r) {
     var bankN = (DATA && DATA.bankComparables && !DATA.bankComparables.unavailable && r.municipality)
       ? evidence.bankNearby(DATA.bankComparables, { municipality: r.municipality, barangay: r.barangay, type: r.type, area: r.area, landPerSqm: r.landPerSqm, total: r.total }).total : 0;
-    var badge = r.marketGuideAvailable ? "Local listing context found" : bankN ? "Factor-based · bank listings for context" : "Factor-based · no comparable listings";
+    var badge = (r.evidence && r.evidence.level === "low" ? "Low evidence · " : "") + (r.marketGuideAvailable ? "Local listing context found" : bankN ? "Factor-based · bank listings for context" : "Factor-based · no comparable listings");
     var context = r.marketGuideAvailable
       ? (r.marketGuide.comparableCount || 0) + " comparable asking listing(s) found for context; listing prices are not direct inputs to this calculation."
       : (bankN ? "No resale asking listings were found to compare; this estimate uses the disclosed BIR-based factors, with bank and Pag-IBIG prices shown for context."
@@ -2003,6 +2172,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
       '<span class="sf-est-result-evidence">' + badge + '</span></div>' +
       '<strong class="sf-est-result-value">' + money(r.marketGuideEstimate) + '</strong>' +
       '<p class="sf-est-scenario-range">Planning range <b>' + money(r.low) + ' – ' + money(r.high) + '</b><span>' + esc(rangeShort(r)) + '</span></p>' +
+      evidenceLinesHtml(r) +
       /* The two numbers that make the estimate, then the bank line; the method
          notes (BIR card, multiple, context, reference status, independence) sit
          under one disclosure so the card reads as an answer, not a document. */
@@ -2044,7 +2214,7 @@ return '<section class="sf-est-result-summary" aria-label="Estimated property va
        the start of an ongoing effectivity and the active re-check cycle is
        stated beside it. Without this the raw 2022 date reads as stale data. */
     out += '<details class="sf-est-result-sources"><summary>Where the numbers come from</summary>' +
-      '<div class="sf-est-result-data"><div><b>BIR source match</b><small>' + esc(r.source.label) + '</small></div><div><b>BIR schedule in effect since</b><small>' + esc(r.effectivityDate) + '</small></div><div><b>Dataset version</b><small>' + esc(r.dataVersion) + '</small></div></div>' +
+      '<div class="sf-est-result-data"><div><b>BIR source match</b><small>' + esc(r.source.label) + '</small></div><div><b>BIR schedule in effect since</b><small>' + esc(r.effectivityDate) + '</small></div><div><b>Dataset version</b><small>' + esc(r.dataVersion) + '</small></div>' + (r.validity ? '<div><b>Bank data as of</b><small>' + esc(monthLabel(r.validity.dataMonth)) + ' · review after ' + esc(r.validity.reviewAfter) + '</small></div>' : '') + '</div>' +
       '<p class="sf-est-result-data-note">BIR zonal values remain in force until a newer Department Order supersedes them.' +
       (lastScheduleCheck ? ' This is the latest schedule we could find (checked ' + esc(lastScheduleCheck) + ') but it is not yet confirmed with BIR.' : '') + (nextScheduleCheck ? ' Batangas schedules are re-checked every 30 days; next review ' + esc(nextScheduleCheck) + '.' : '') + '</p></details>';
     /* Placed here, not at the foot of the page: the user has just seen their
@@ -3179,7 +3349,8 @@ return {
       '<strong class="sf-quick-figure" data-quick-figure data-value="' + quickRound(r.marketGuideEstimate) + '">' + money(quickRound(r.marketGuideEstimate)) + '</strong>' +
       '<div class="sf-quick-range" aria-hidden="true"><span style="left:' + pos.toFixed(1) + '%"></span></div>' +
       '<p class="sf-quick-range-text"><span>' + money(quickRound(r.low)) + '</span><span class="sf-quick-range-mid">Planning range</span><span>' + money(quickRound(r.high)) + '</span></p>' +
-      '<p class="sf-quick-note">Starting figure for a ' + fmt(r.area) + ' sqm lot' + (r.improvement > 0 ? ' with a ' + fmt(r.floorArea) + ' sqm house about 6–10 years old' : '') + (r.typicalBarangay ? ', priced at a typical barangay for ' + esc(titleCase(r.municipality)) + ' (' + esc(titleCase(r.typicalBarangay.name)) + ')' : ' at the town-wide rate') + '. Your barangay, street and house details sharpen it.</p>';
+      '<p class="sf-quick-note">Starting figure for a ' + fmt(r.area) + ' sqm lot' + (r.improvement > 0 ? ' with a ' + fmt(r.floorArea) + ' sqm house about 6–10 years old' : '') + (r.typicalBarangay ? ', priced at a typical barangay for ' + esc(titleCase(r.municipality)) + ' (' + esc(titleCase(r.typicalBarangay.name)) + ')' : ' at the town-wide rate') + '. Your barangay, street and house details sharpen it.</p>' +
+      (r.evidence && r.evidence.level === "checked" ? '<p class="sf-quick-check" data-quick-check>' + esc(r.evidence.shortText) + '</p>' : '');
   }
 
   function quickSay() {

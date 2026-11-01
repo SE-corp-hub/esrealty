@@ -12418,7 +12418,8 @@ function vgMigrateLegacy(f) {
       + '<div class="actions"><button class="btn btn-ghost btn-sm" data-vg-reset>' + icon("edit", 14) + ' Start over</button></div></div>'
       + '<div class="notice-banner">' + icon("shield", 14) + ' <span><b>Planning estimate.</b> This is not a certified appraisal, statutory assessment, tax determination or lending valuation. The BIR zonal reference is shown separately from the market guide estimate.</span></div>'
       + vgStepper(d)
-      + '<div class="mt-16">' + body + '</div>';
+      + '<div class="mt-16">' + body + '</div>'
+      + vgAccuracyLedgerHtml();
   }
 
   /* The four classes the form offers, labelled with the full BIR name so the
@@ -12674,12 +12675,19 @@ function vgQuestionGroups() {
       + "<p>Schedule effectivity, dataset generation and legal applicability are separate. "
       + "Schedule effective " + esc(status.scheduleEffectiveDate || "not recorded")
       + "; last successful verification: " + esc(status.successfullyVerifiedOn || "not verified") + ".</p></div>"
+      /* Accuracy plan items 2.4, 2.5 and 3.2: the same sentences the website
+         prints, carried on the result, so the two surfaces cannot disagree. */
+      + (r.evidence && r.evidence.level === "low" ? '<div class="notice-banner mt-16" data-vg-low-evidence>' + icon("alert", 14) + " <span><b>Low evidence.</b> " + esc(r.evidence.text) + "</span></div>" : "")
       + '<dl class="vg-summary">'
       + '<div class="vg-summary-row"><dt>Guide range</dt><dd>' + C.money(r.low) + " – " + C.money(r.high) + '</dd></div>'
       + '<div class="vg-summary-row"><dt>Price per sqm</dt><dd>' + C.money(r.perSqm) + " /sqm</dd></div>"
       + '<div class="vg-summary-row"><dt>Lot area</dt><dd>' + C.fmtNum(Number(r.area)) + " sqm · " + esc(r.classification) + " · RDO " + esc(r.rdo) + "</dd></div>"
       + '<div class="vg-summary-row"><dt>Data coverage</dt><dd>' + Math.round(r.source.pct * 100) + "% · " + esc(r.source.label) + "</dd></div>"
       + '<div class="vg-summary-row"><dt>Figures built from</dt><dd class="dim">' + esc(r.dataVersion) + " · " + esc(r.calculationVersion) + "</dd></div>"
+      + (r.evidence ? '<div class="vg-summary-row" data-vg-evidence="' + esc(r.evidence.level) + '"><dt>Checked against sales</dt><dd>' + esc(r.evidence.text) + "</dd></div>" : "")
+      + (r.trend ? '<div class="vg-summary-row" data-vg-trend><dt>Town trend</dt><dd>' + esc(r.trend.text) + "</dd></div>" : "")
+      + (r.validity ? '<div class="vg-summary-row" data-vg-valid><dt>Review after</dt><dd>' + esc(r.validity.reviewAfter) + ' <span class="dim">(bank data of ' + esc(r.validity.dataMonth) + " plus " + r.validity.days + " days)</span></dd></div>" : "")
+      + (r.hazard && r.hazard.taalZone ? '<div class="vg-summary-row" data-vg-hazard><dt>Hazard check</dt><dd>' + esc(r.hazard.note) + ' <a href="' + esc(r.hazard.url) + '" target="_blank" rel="noopener">HazardHunterPH</a></dd></div>' : "")
       + "</dl>"
       + '<div class="mt-16 dim small">' + wrap + "</div>"
       + (integrity.ok ? '<div class="notice-banner mt-16">' + icon("check", 14) + " <span>Arithmetic reconciled: land + improvements, range and per-sqm all match.</span></div>"
@@ -15983,6 +15991,59 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     }
     return html + "</div>";
   }
+  /* Accuracy plan item 3.1: the final sale price on a closed deal that came
+     through the Value Guide, so the guide is measured against real sales and
+     not only against bank listings. Stored on the lead (it syncs with the
+     rest of the record); the ledger is at the foot of the Value Guide view. */
+  function leadGuideEstimate(l) {
+    const est = l && l.fullReport && l.fullReport.estimate;
+    return est && Number(est.marketGuideEstimate) > 0 ? Number(est.marketGuideEstimate) : 0;
+  }
+  function leadFinalPriceCard(l, canEdit) {
+    const guide = leadGuideEstimate(l);
+    if (!guide || (l.status !== "closed" && !l.finalSalePrice)) return "";
+    const acc = AT ? AT.guideAccuracy([l]).rows[0] : null;
+    return '<div class="card card-pad mb-24" data-lead-final-price-card>' +
+      '<div class="row spread" style="flex-wrap:wrap;gap:8px"><h3 style="margin:0">' + icon("check", 15) + " Final sale price</h3>" +
+      (acc ? '<span class="badge ' + (Math.abs(acc.error) <= 0.1 ? "green" : "gold") + '">guide ' + (acc.error >= 0 ? "+" : "") + Math.round(acc.error * 100) + "% vs sale</span>" : "") + "</div>" +
+      '<p class="dim tiny mt-8">The website guide said ' + C.money(guide) + ". Record what the property actually sold for, so the guide is measured against real sales.</p>" +
+      (l.finalSalePrice ? '<p class="mt-8"><b>' + C.money(l.finalSalePrice) + '</b> <span class="dim">recorded ' + esc(String(l.finalSaleOn || "").slice(0, 10)) + "</span></p>" : "") +
+      (canEdit ? '<div class="row mt-8" style="gap:8px;flex-wrap:wrap"><input class="input" type="number" min="1" step="1000" inputmode="numeric" placeholder="Final price in pesos" aria-label="Final sale price" data-lead-final-price-input="' + esc(l.id) + '" style="max-width:220px">' +
+        '<button class="btn btn-primary btn-sm" data-lead-final-price="' + esc(l.id) + '">' + icon("check", 13) + " Save final price</button></div>" : "") +
+      "</div>";
+  }
+  function leadRecordFinalPrice(id, value) {
+    const l = (state.leads || []).find(x => x.id === id);
+    if (!l) return;
+    if (!leadCanEdit(l)) { toast("You can only edit leads you created", "err"); return; }
+    const price = Math.round(Number(value));
+    if (!(price > 0)) { toast("Enter the final sale price in pesos", "err"); return; }
+    const guide = leadGuideEstimate(l);
+    l.finalSalePrice = price;
+    l.finalSaleOn = new Date().toISOString();
+    l.updatedAt = l.finalSaleOn;
+    l.activity = l.activity || [];
+    l.activity.push({ date: l.updatedAt, text: "Final sale price recorded: " + C.money(price) + (guide ? " (guide " + C.money(guide) + ", " + (price / guide - 1 >= 0 ? "+" : "") + Math.round((price / guide - 1) * 100) + "%)" : "") });
+    save(); render();
+    syncLead(l);
+    toast("Final sale price saved", "ok");
+  }
+  /* Guide vs final sale prices across closed Value Guide deals (plan item
+     3.1), at the foot of the Value Guide view. Nothing here changes a price. */
+  function vgAccuracyLedgerHtml() {
+    const acc = AT ? AT.guideAccuracy(state.leads || []) : { n: 0, rows: [] };
+    const pct = v => (v >= 0 ? "+" : "") + Math.round(v * 100) + "%";
+    let html = '<div class="card card-pad mt-16" data-vg-ledger><h3>Guide vs final sale prices</h3>';
+    if (!acc.n) {
+      html += '<p class="dim tiny mt-8">No closed deal has a final sale price yet. When a lead that came through the Value Guide closes, record the final price on the lead; the error of the website figure against real sales shows here.</p>';
+      return html + "</div>";
+    }
+    html += '<p class="dim tiny mt-8">' + acc.n + " closed deal" + (acc.n === 1 ? "" : "s") + " with a recorded price: the guide was typically " + pct(acc.median) + " against the sale price (median), off by " + Math.round(acc.medianAbs * 100) + "% either way.</p>" +
+      '<div class="table-wrap mt-8"><table class="data"><thead><tr><th>Lead</th><th>Website guide</th><th>Sold for</th><th>Guide vs sale</th><th>Recorded</th></tr></thead><tbody>' +
+      acc.rows.slice(0, 30).map(x => "<tr><td>" + esc(x.name) + "</td><td>" + C.money(x.guide) + "</td><td>" + C.money(x.price) + "</td><td>" + pct(x.error) + "</td><td>" + esc(String(x.on).slice(0, 10)) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+    return html + "</div>";
+  }
   function vgReportPlace(l) {
     const loc = ((l && l.fullReport) || {}).location || {};
     return [loc.town, loc.barangay, loc.address].filter(Boolean).map(x => titleCaseSafe(x)).join(" · ");
@@ -16273,6 +16334,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         '<div class="table-wrap mt-8"><table class="data"><tbody>' + rows.map(r => leadDetailRow(r[0], String(r[1]))).join("") + "</tbody></table></div></div>";
     }
     html += vgRequestCard(l, can);
+    html += leadFinalPriceCard(l, can);
     const scd = leadScoreOf(l), scb = LEAD_SCORE_BADGE[scd.band];
     if (scb) html += '<div class="card card-pad mb-24 lead-score-card" data-lead-score-card><div class="row spread" style="flex-wrap:wrap;gap:8px"><h3 style="margin:0">Lead score</h3><span class="badge ' + scb[0] + '">' + scb[1] + " " + scd.score + " / 100</span></div>" +
       '<p class="dim tiny mt-8">From what this record shows. It goes up with contact details, a budget, a strong source, progress and a booked viewing, and down when the lead goes quiet.</p>' +
@@ -16903,6 +16965,8 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         if (adv) { leadAdvance(adv.getAttribute("data-lead-advance")); return; }
         const trx = e.target.closest("[data-lead-transact]");
         if (trx) { leadMarkServiceTransacted(trx.getAttribute("data-lead-transact")); return; }
+        const fp = e.target.closest("[data-lead-final-price]");
+        if (fp) { const fpi = document.querySelector('[data-lead-final-price-input="' + fp.getAttribute("data-lead-final-price") + '"]'); leadRecordFinalPrice(fp.getAttribute("data-lead-final-price"), fpi ? fpi.value : ""); return; }
         const lostB = e.target.closest("[data-lead-lost]");
         if (lostB) { leadSetStatus(lostB.getAttribute("data-lead-lost"), "lost"); return; }
         const conv = e.target.closest("[data-tx-convert]");

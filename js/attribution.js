@@ -327,6 +327,27 @@
     return Object.keys(out).map(function (k) { return out[k]; }).sort(function (a, b) { return b.won - a.won || b.offers - a.offers || b.viewings - a.viewings || b.contacted - a.contacted || a.name.localeCompare(b.name); });
   }
 
+  /* Value Guide accuracy against real sales (accuracy plan item 3.1): every
+     lead that carries the website's estimate (fullReport.estimate) and a
+     recorded final sale price. error = sale price / guide - 1, so +5% means
+     the property sold for 5% more than the guide said. */
+  function medianOf(a) {
+    var s = a.slice().sort(function (x, y) { return x - y; }), m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+  function guideAccuracy(leads) {
+    var rows = [];
+    (leads || []).forEach(function (l) {
+      var est = l && l.fullReport && l.fullReport.estimate;
+      var guide = est ? Number(est.marketGuideEstimate) : 0, price = l ? Number(l.finalSalePrice) : 0;
+      if (!(guide > 0) || !(price > 0)) return;
+      rows.push({ id: l.id, name: l.name || l.ref || "", guide: guide, price: price, error: Math.round((price / guide - 1) * 1000) / 1000, on: l.finalSaleOn || l.updatedAt || "" });
+    });
+    rows.sort(function (a, b) { return String(b.on).localeCompare(String(a.on)); });
+    var errs = rows.map(function (r) { return r.error; }), abs = rows.map(function (r) { return Math.abs(r.error); });
+    return { n: rows.length, rows: rows, median: rows.length ? Math.round(medianOf(errs) * 1000) / 1000 : null, medianAbs: rows.length ? Math.round(medianOf(abs) * 1000) / 1000 : null };
+  }
+
   return {
     duplicateGroups: duplicateGroups, pickPrimary: pickPrimary, mergeLeads: mergeLeads, leadScore: leadScore, stageRank: stageRank,
     teamProgress: teamProgress, TARGET_MEASURES: MEASURES,
@@ -341,6 +362,7 @@
     isReservation: isReservation,
     adRoi: adRoi,
     sourceFunnel: sourceFunnel,
-    attributedAd: attributedAd
+    attributedAd: attributedAd,
+    guideAccuracy: guideAccuracy
   };
 });
