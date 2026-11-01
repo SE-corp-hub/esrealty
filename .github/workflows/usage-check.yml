@@ -30,8 +30,8 @@ jobs:
       USAGE_DB_LIMIT_MB: ${{ vars.USAGE_DB_LIMIT_MB }}
       USAGE_STORAGE_LIMIT_MB: ${{ vars.USAGE_STORAGE_LIMIT_MB }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Check database and file storage use
