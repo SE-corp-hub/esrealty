@@ -1,0 +1,21 @@
+{
+ "note": "Town price trend proposals from the monthly bank and Pag-IBIG medians in history.json (market-scan/comparables/trend.js). A row is shown on the site only with status \"reviewed\"; nothing here indexes a price.",
+ "generatedOn": "2026-11-01",
+ "latestMonth": "2026-11",
+ "monthsOfHistory": 2,
+ "rules": {
+  "MIN_MONTHS": 3,
+  "MIN_RECORDS": 5,
+  "WINDOW_MONTHS": 12,
+  "REREVIEW_SHIFT": 0.02
+ },
+ "status": "insufficient-history",
+ "statusNote": "needs 3 months with 5+ prices for a town; 2 month(s) of history so far",
+ "towns": [],
+ "context": {
+  "index": "Residential Property Price Index (RPPI), Bangko Sentral ng Pilipinas",
+  "latest": "2026 Q2 (published 2026-09-25)",
+  "note": "Nationwide index barely rose year on year; Areas Outside NCR fell year on year for the first time in the series; NCR rose; condominium prices up, house prices down. Qualitative only - fill in the published percentages when reviewing.",
+  "where": "bsp.gov.ph > Statistics > Prices > Residential Property Price Index"
+ }
+}

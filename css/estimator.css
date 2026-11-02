@@ -405,12 +405,17 @@
 .sf-est-scroll-cta { display: inline-flex; align-items: center; gap: 10px; border: 1px solid #17647c; border-radius: 999px; padding: 10px 15px; background: #17647c; color: #fff; font-size: 12px; font-weight: 800; cursor: pointer; box-shadow: 0 5px 12px rgba(23, 100, 124, .16); }
 .sf-est-scroll-cta:hover { background: #124e61; }
 .sf-est-scroll-cta span { font-size: 16px; line-height: .8; }
-.sf-est-result-data { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 14px 0 24px; }
+.sf-est-result-data { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 14px 0 24px; }
 .sf-est-result-data > div { display: grid; grid-template-columns: auto 1fr; column-gap: 9px; align-items: center; padding: 12px 14px; border: 1px solid #e0e7e8; border-radius: 10px; background: #fff; }
 .sf-est-data-icon { display: grid; grid-row: span 2; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: #eef8fa; color: #17647c; font-size: 15px; font-style: normal; }
 .sf-est-result-data b { color: #263442; font-size: 12px; }
 .sf-est-result-data small { color: #65737b; font-size: 11px; }
 .sf-est-result-data-note { margin: -14px 0 24px; color: #65737b; font-size: 12px; line-height: 1.55; }
+.sf-est-result-check, .sf-est-result-valid, .sf-est-result-trend { margin: 0; color: #52616c; font-size: 13px; line-height: 1.55; }
+.sf-est-result-lowev { margin: 4px 0 0; padding: 10px 12px; border-left: 3px solid #c0792a; border-radius: 6px; background: #fff7ec; color: #6b4514; font-size: 13px; line-height: 1.55; }
+.sf-est-hazard-note { margin: 2px 0 0; color: #65737b; font-size: 13px; line-height: 1.55; }
+.sf-est-hazard-note a { color: #17647c; text-decoration: underline; }
+.sf-quick-check { margin: 6px 0 0; color: #65737b; font-size: 12px; line-height: 1.5; }
 .sf-est-analysis-summary { display: grid; gap: 14px; margin: 0 0 22px; padding: 16px; border: 1px solid #e2e6e7; border-radius: 12px; background: #fff; }
 .sf-est-analysis-status { display: flex; align-items: center; gap: 10px; }
 .sf-est-analysis-check { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 50%; background: #dcefe2; color: #236c43; font-weight: 900; }

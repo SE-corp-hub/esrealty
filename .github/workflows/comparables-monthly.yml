@@ -73,6 +73,13 @@ jobs:
       - name: Model fit proposals
         run: node market-scan/comparables/fit-model.js
 
+      # Town price trend proposals (accuracy plan item 2.1): from the monthly
+      # medians in history.json once a town has three months of prices. Written
+      # to data/comparables/trend-latest.json; the site shows a town's trend
+      # only after someone marks that row reviewed in the file.
+      - name: Trend proposals
+        run: node market-scan/comparables/trend.js
+
       - name: Test
         run: |
           node tests/comparables_pipeline_node.js
