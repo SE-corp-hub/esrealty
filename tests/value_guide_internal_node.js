@@ -216,18 +216,20 @@ if (txCostSrc) {
   ok(!/Math\.min\(price \* 0\.01,\s*50000\)/.test(body) && !/\+\s*2000\s*;/.test(body),
     "the ad-hoc registration cap and fixed fee are gone",
     "was min(1%, 50000) + 2000");
+  ok(/ESREALTY_FINANCE/.test(body) && /lraRegistrationFee\(price\)/.test(body),
+    "registration defaults to the LRA schedule through the shared owner (value_guide_finance)");
   ok(/C\.num\(t\.registrationPct,\s*0\.1\)/.test(body),
-    "registration defaults to the canonical 0.1% and is overridable per transaction");
-  // 0.1 percent expressed against the config's decimal rate.
-  ok(Math.abs(ZONAL.tax.registrationPct * 100 - 0.1) < 1e-9,
-    "the 0.1% default equals zonal-config registrationPct",
-    "config=" + (ZONAL.tax.registrationPct * 100) + "%");
+    "a per-deal registrationPct still overrides the schedule");
+  // The flat fallback stays the canonical 0.1% in the config.
+  ok(Math.abs(ZONAL.tax.registrationPct * 100 - 0.1) < 1e-9 && ZONAL.tax.registrationMethod === "lra-schedule",
+    "zonal-config keeps the 0.1% fallback and selects the LRA schedule",
+    "config=" + (ZONAL.tax.registrationPct * 100) + "% method=" + ZONAL.tax.registrationMethod);
   // And it must equal what the shared owner computes for the same base.
   const FIN = require("../js/value_guide_finance.js");
   const base = 5000000;
   const shared = FIN.transaction(ZONAL, base, { salePrice: base, brokerPct: 0 }).registration;
-  const local = base * (0.1 / 100);
-  ok(shared === local, "txCostEstimator now agrees with value_guide_finance",
+  const local = FIN.lraRegistrationFee(base);
+  ok(shared === local && local === 3396 + 90 * 225, "txCostEstimator now agrees with value_guide_finance (LRA schedule)",
     "shared=" + shared + " local=" + local);
 }
 

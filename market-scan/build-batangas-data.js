@@ -34,9 +34,10 @@ function check(cond, msg) { if (!cond) errors.push(msg); }
 
 const CONFIG = {
   version: 2,
-  calculationVersion: "2026.10.7",
+  calculationVersion: "2026.11.1",
   riskPolicy: "Answer-led: each site answer moves land by a stated % (net capped -40%/+10%) and each ownership answer deducts a stated % from the total (capped 30%); answers stay unverified until documents are reviewed",
   scenarioRange: { lowFactor: 0.85, highFactor: 1.3, meaning: "Planning scenarios, not statistical accuracy" },
+  askingPrice: { premiumPct: 7, basis: "Suggested asking price = guide total x (1 + premiumPct / 100). Resale asking prices in the 2026-10 Batangas listings sat roughly 5-10% above where deals close, so a seller lists a little above the guide and negotiates down to it. The 130% figure is the top of the planning range, not a price to list at. Read by js/estimator.js and js/value_guide_flow.js so both surfaces print one asking figure." },
   dataVersion: "bir-2022-rdo58-59",
   asOf: "2022-07-23",
   note: "Engine + data versions stamped on every estimate output. Deterministic and reconcilable.",
@@ -119,7 +120,15 @@ const CONFIG = {
     status: "assumption-backed",
     note: "The factor-based guide is separate from official BIR reference values. Comparable asking-listing prices are shown as context and do not directly determine the calculation."
   },
-  tax: { cgtPct: 0.06, dstPct: 0.015, transferPct: 0.005, registrationPct: 0.001, brokerPct: 0.03 },
+  tax: {
+    cgtPct: 0.06, dstPct: 0.015, transferPct: 0.005,
+    cityTransferPct: 0.0075,
+    cities: ["BATANGAS CITY", "LIPA CITY", "TANAUAN CITY", "STO. TOMAS CITY", "CALACA"],
+    transferNote: "Provinces may charge up to 0.5% and cities up to 0.75% of the higher of the price and the fair market value (RA 7160 Secs. 135 and 151). The five Batangas cities are shown at the city ceiling until each city's revenue code is confirmed; the ordinance may set less.",
+    registrationMethod: "lra-schedule",
+    registrationNote: "Registry of Deeds fee from the LRA schedule of fees (js/value_guide_finance.js lraRegistrationFee): a fixed fee per bracket of value or fraction thereof, PHP 8,796 at PHP 1,700,000 plus PHP 90 per PHP 20,000 above it. Entry, IT and certification fees (a few hundred pesos each) are not included. registrationPct is the flat fallback used only when the method is not lra-schedule.",
+    registrationPct: 0.001, brokerPct: 0.03
+  },
   disclaimer: "SEA ESTATES Property Value Guide — a planning estimate using the imported BIR zonal reference, disclosed SEA ESTATES factors, and disclosed improvement-cost assumptions where applicable. Comparable asking-listing prices are reported as context and are not direct calculation inputs. Review the selected schedule, match level, factors, and assumptions; confirm current BIR/LGU references and property details before a transaction. A site and document review can further refine the estimate.",
   labels: {
     reference: "BIR zonal reference",

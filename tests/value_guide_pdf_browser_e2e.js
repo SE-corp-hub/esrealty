@@ -263,7 +263,11 @@ async function pagesOf(bytes) {
     chk("filing deadlines printed: 10 after month / 30 / 60 days", /10 days/.test(all) && /close of the month/.test(all) && /30 days/.test(all) && /60 days/.test(all), "");
     chk("filing steps printed", /Certificate Authorizing Registration/.test(all), "");
     chk("seller and buyer checklists printed", /Certificate of Title/.test(all) && /TIN/.test(all), "");
-    chk("tax reference version recorded", /2026\.10\.1/.test(all), "");
+    /* the version printed is whatever data/tax/ph-estate-tax-reference.json
+       carries, so a reference update does not break this check */
+    var taxRefVersion = "";
+    try { taxRefVersion = String((await (await fetch("data/tax/ph-estate-tax-reference.json", { cache: "no-cache" })).json()).version || ""); } catch (e) { taxRefVersion = ""; }
+    chk("tax reference version recorded", !!taxRefVersion && all.indexOf(taxRefVersion) >= 0, taxRefVersion || "no version in the reference file");
     chk("states the tax figures are not payable", /not a computation of tax payable/i.test(all), "");
     chk("no PVS 105 compliance is ever claimed", !/FMV per PVS|PVS 105 compliant|PVS 105-compliant|compliant methodology|per PVS 105 standards/i.test(all), "");
     chk("the PVS 105 denial is explicit", /makes no claim of PVS 105 compliance|not a certified appraisal/i.test(all), "");

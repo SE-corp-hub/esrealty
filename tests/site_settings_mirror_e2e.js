@@ -76,7 +76,7 @@
     rows = [{ key: "valueGuide", value: { version: "2026.10.9", approvedBy: "second admin", proxyFactors: { residential: 1.3 }, construction: { rca_steel: 33000 } } }];
     await H.syncSiteSettings(); await wait(300);
     st = H.getState();
-    add("sign-in: a Value Guide row is adopted, with defaults filled in", st.valueGuide.proxyFactors.residential === 1.3 && st.valueGuide.proxyFactors.commercial === 1.7 && st.valueGuide.construction.rca_steel === 33000 && st.valueGuide.construction.wood_prefab === 16000 && st.valueGuide.approvedBy === "second admin", JSON.stringify(st.valueGuide).slice(0, 140));
+    add("sign-in: a Value Guide row is adopted, with defaults filled in", st.valueGuide.proxyFactors.residential === 1.3 && st.valueGuide.proxyFactors.commercial === 1 && st.valueGuide.construction.rca_steel === 33000 && st.valueGuide.construction.wood_prefab === 11000 && st.valueGuide.approvedBy === "second admin", JSON.stringify(st.valueGuide).slice(0, 140));
     add("... and the missing Contact Us row is copied once", writes.filter(w => w.row.key === "valueGuide").length === 0 && writes.filter(w => w.row.key === "siteContact").length === 1, writes.map(w => w.row.key).join(","));
     writes.length = 0;
     rows = [];

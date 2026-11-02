@@ -800,14 +800,16 @@
 
         heading("Inheritance: property-only scenarios", { small: true });
         var ih = tax.inheritance;
-        table(["Line", "On BIR zonal basis", "On market basis"],
+        var ihs = ih.onStatutoryBasis || ih.onZonalBasis, ihGross = ih.grossOnStatutoryBasis != null ? ih.grossOnStatutoryBasis : ih.grossOnZonalBasis;
+        table(["Line", "Statutory basis (zonal land + house)", "On market basis"],
           [
-            ["Gross estate value", fmtMoney(ih.grossOnZonalBasis), fmtMoney(ih.grossOnMarketBasis)],
+            ["Gross estate value", fmtMoney(ihGross), fmtMoney(ih.grossOnMarketBasis)],
             ["Standard deduction (Sec. 86(A)(1) NIRC)", "- " + fmtMoney(ih.standardDeduction), "- " + fmtMoney(ih.standardDeduction)],
-            ["Net estate", fmtMoney(ih.onZonalBasis.afterDeduction), fmtMoney(ih.onMarketBasis.afterDeduction)],
-            ["Net taxable estate in this scenario", fmtMoney(ih.onZonalBasis.taxable), fmtMoney(ih.onMarketBasis.taxable)],
-            ["Estate tax at " + ih.taxPct + "%", fmtMoney(ih.onZonalBasis.tax), fmtMoney(ih.onMarketBasis.tax)]
+            ["Net estate", fmtMoney(ihs.afterDeduction), fmtMoney(ih.onMarketBasis.afterDeduction)],
+            ["Net taxable estate in this scenario", fmtMoney(ihs.taxable), fmtMoney(ih.onMarketBasis.taxable)],
+            ["Estate tax at " + ih.taxPct + "%", fmtMoney(ihs.tax), fmtMoney(ih.onMarketBasis.tax)]
           ], [200, 150, 150], { boldFirstCol: true, padY: 4, align: [null, "r", "r"] });
+        para("Statutory basis: the BIR zonal land value plus the house at depreciated cost, standing in for the assessor's value (NIRC Sec. 88(B) uses the higher of the zonal value and the assessor's fair market value). The market column is the upper case, not the basis the BIR applies.", 7.6, faint);
         para(ih.note, 8, gray);
         para("Basis: " + ih.basis, 7.4, faint);
       }

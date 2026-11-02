@@ -228,6 +228,13 @@
     return { factor: f, month: t.month || "", records: t.records || 0, projects: t.projects || 0 };
   }
 
+  /* The suggested asking price sits this far above the guide total. One number
+     in data/zonal-config.json (askingPrice.premiumPct) for both surfaces. */
+  function askingPremium(cfg) {
+    var p = cfg && cfg.askingPrice ? Number(cfg.askingPrice.premiumPct) : NaN;
+    return isFinite(p) && p >= 0 ? p : 7;
+  }
+
   /* Module scope, not scoped to computeEstimate. These are needed by the
      unavailable-results path, which the internal Value Guide also builds, and
      a helper nested inside computeEstimate was unreachable from there. */
@@ -499,8 +506,11 @@
       marketGuideAvailable: comps.count > 0,
       /* A realistic listing price: resale asking prices in the 2026-10 Batangas
          listings sit roughly 5-10% above where deals close. The 130% figure is
-         the top of the uncertainty range, not a price to list at. */
-      recommendedAskingPrice: Math.round(total * 1.07),
+         the top of the uncertainty range, not a price to list at. The premium
+         lives in data/zonal-config.json so the public report and the
+         back-office guide print one asking figure. */
+      recommendedAskingPrice: Math.round(total * (1 + askingPremium(cfg) / 100)),
+      askingPremiumPct: askingPremium(cfg),
       marketGuideRatePerSqm: perSqm,
       landPerSqm: landPerSqm,
       landValue: landValue,
@@ -557,6 +567,7 @@
   function costsFor(result, config) {
     return finance.transaction(config, result.total, Object.assign({}, result.costOptions || {}, {
       salePrice: result.salePrice, transactionPrice: result.marketGuideEstimate, marketGuideEstimate: result.marketGuideEstimate,
+      municipality: result.municipality,
       birZonalValue: result.taxReferenceValue != null ? result.taxReferenceValue : result.birZonalValue
     }));
   }
@@ -1514,18 +1525,22 @@ out += "</div>";
     return out;
   }
 
+  /* Until 2026-11 this box carried the 130% scenario label while showing the
+     +7% figure, so every report printed the wrong pricing advice. */
   function askingPriceHtml(r) {
-    var label = "Upper planning scenario (130%)";
-    var note = r.marketGuideAvailable
-      ? "A guide-based starting point. Comparable asking listings are context only and do not feed this calculation."
-      : "A factor-based starting point. No comparable listings were available for this calculation.";
+    var premium = Number(r.askingPremiumPct);
+    var label = "Suggested asking price" + (isFinite(premium) && premium > 0 ? " (guide + " + fmt(premium) + "%)" : "");
+    var note = "A listing price with room to negotiate down to the guide figure of " + money(r.total) + ". The top of the planning range, " + money(r.high) + ", is a scenario, not a price to list at. "
+      + (r.marketGuideAvailable
+        ? "Comparable asking listings are context only and do not feed this calculation."
+        : "No comparable listings were available for this calculation.");
     return '<div class="sf-est-asking" data-est-asking-block><span>' + label + '</span><b>' + money(r.recommendedAskingPrice) + '</b><small>' + note + '</small></div>';
   }
 
   function amountOrUnknown(value) { return value == null || !isFinite(Number(value)) ? "Not determined" : money(value); }
   function transactionHtml(r, tax) {
     if (tax.quotationRequired) return '<p class="sf-est-rdp"><b>Developer / unclassified transaction.</b> ' + esc(tax.note) + '</p><p class="sf-est-rdp">Quoted charges outside price: <b>' + amountOrUnknown(tax.quotedDeveloperFees) + '</b> · acquisition budget: <b>' + amountOrUnknown(tax.buyerTotal) + '</b>. Other unquoted costs and financing are not included.</p>';
-    return '<div class="sf-est-tax"><span>Illustrative tax base: <b>' + money(tax.base) + '</b> · ' + esc(tax.baseBasis) + '</span><b>CGT 6% ≈ ' + money(tax.cgt) + '</b><b>DST 1.5% ≈ ' + money(tax.dst) + '</b><b>Broker commission ' + fmt(tax.brokerPct * 100) + '% ≈ ' + money(tax.broker) + '</b><b>Transfer ~0.5% ≈ ' + money(tax.transfer) + '</b><b>Registration ~0.1% ≈ ' + money(tax.registration) + '</b></div><p class="sf-est-rdp"><b>Estimated seller costs:</b> ' + money(tax.sellerCosts) + ' · <b>estimated net proceeds:</b> ' + amountOrUnknown(tax.projectedNetProceeds) + ' · <b>Buyer acquisition budget:</b> ' + amountOrUnknown(tax.buyerTotal) + '</p><p class="sf-est-rdp">Qualifying capital-asset resale assumed. CGT, commission and quoted notary are seller-paid; DST, transfer and registration buyer-paid in this illustration. Costs and allocation are negotiable; local rates and exemptions require confirmation. Derived locality medians are not confirmed parcel tax-floor inputs.</p>';
+    return '<div class="sf-est-tax"><span>Illustrative tax base: <b>' + money(tax.base) + '</b> · ' + esc(tax.baseBasis) + '</span><b>CGT 6% ≈ ' + money(tax.cgt) + '</b><b>DST 1.5% ≈ ' + money(tax.dst) + '</b><b>Broker commission ' + fmt(tax.brokerPct * 100) + '% ≈ ' + money(tax.broker) + '</b><b>Transfer ' + (tax.transferBasis === "city" ? "up to " : "~") + fmt(Math.round(tax.transferPct * 10000) / 100) + '% ≈ ' + money(tax.transfer) + '</b><b>Registration (LRA schedule) ≈ ' + money(tax.registration) + '</b></div><p class="sf-est-rdp"><b>Estimated seller costs:</b> ' + money(tax.sellerCosts) + ' · <b>estimated net proceeds:</b> ' + amountOrUnknown(tax.projectedNetProceeds) + ' · <b>Buyer acquisition budget:</b> ' + amountOrUnknown(tax.buyerTotal) + '</p><p class="sf-est-rdp">Qualifying capital-asset resale assumed. CGT, commission and quoted notary are seller-paid; DST, transfer and registration buyer-paid in this illustration. Registration follows the LRA fee schedule; the Registry adds small entry and IT fees. ' + (tax.transferBasis === "city" ? 'City transfer tax is shown at the legal ceiling of 0.75%; the city ordinance may set less. ' : '') + 'Costs and allocation are negotiable; local rates and exemptions require confirmation. Derived locality medians are not confirmed parcel tax-floor inputs.</p>';
   }
   function decisionHtml(r) {
     var tax = costsFor(r, DATA.config), buying = r.purpose === "Buying", offered = r.salePrice > 0;
@@ -1534,7 +1549,16 @@ out += "</div>";
     if (r.askingIndication) comparison += '<p>Qualified asking median: <b>' + money(r.askingIndication.value) + '</b>' + (offered ? ' · price is ' + fmt((r.salePrice / r.askingIndication.value - 1) * 100) + '% relative to this asking indication.' : '.') + ' Advertised prices are not achieved sales.</p>';
     var primaryLabel = buying ? "Total acquisition budget" : "Seller net proceeds", primaryAmount = buying ? tax.buyerTotal : tax.projectedNetProceeds;
     var note = buying ? (tax.quotationRequired ? "Price plus quoted charges outside price; unquoted costs and financing excluded." : "Price plus assumed buyer-paid costs; financing excluded.") : "Price less assumed seller-paid costs; not a guaranteed sale outcome.";
-    if (r.purpose === "Estate") { primaryLabel = "Property-only estate tax scenario"; primaryAmount = finance.estate(r.total).tax; note = "Assumes this property were the entire citizen/resident estate. Actual tax requires all assets, death-date values and deductions; zero does not establish no filing duty."; }
+    if (r.purpose === "Estate") {
+      /* Estate tax values real property at the higher of the BIR zonal value and
+         the assessor's fair market value (NIRC Sec. 88(B)), not at the market
+         guide. The guide has no assessor's value, so the house enters at its
+         depreciated cost; the market figure is shown as the upper case. */
+      var statutoryBase = (Number(r.birZonalValue) || 0) + (Number(r.improvement) || 0);
+      var estateOnStatutory = finance.estate(statutoryBase).tax, estateOnMarket = finance.estate(r.total).tax;
+      primaryLabel = "Property-only estate tax scenario"; primaryAmount = estateOnStatutory;
+      note = "On the BIR zonal land value" + (r.improvement > 0 ? " plus the house at depreciated cost" : "") + " (" + money(statutoryBase) + "), the basis the BIR uses unless the assessor's value is higher. On the market guide instead: " + money(estateOnMarket) + ". Assumes this property were the entire citizen/resident estate; actual tax requires all assets, death-date values and deductions, and zero does not establish no filing duty.";
+    }
     if (r.purpose === "Loan") { primaryLabel = "Financing reference only"; primaryAmount = null; note = "Bank acceptance, loan-to-value, interest and approval are not determined by this guide."; }
     return '<section class="sf-est-decision" data-est-decision><h4>' + esc(title) + '</h4>' + comparison + '<div class="sf-est-decision-grid"><div><span>' + primaryLabel + '</span><b>' + amountOrUnknown(primaryAmount) + '</b><small>' + note + '</small></div><div><span>Underlying property guide</span><b>' + money(r.total) + '</b><small>Same property facts give the same value for Buying and Selling.</small></div></div><p>' + esc(r.conditions) + '</p>' + (r.stage === "ready" ? '<p>Before listing: confirm current price, authority to sell and document readiness.</p>' : '') + '</section>';
   }
@@ -1842,7 +1866,7 @@ var displayRange = '';
   function termsHtml() {
     return '<details class="sf-est-terms"><summary>What do these terms mean?</summary><dl>' +
       '<div><dt>BIR zonal value</dt><dd>The government\'s published land rate per sqm, used to compute taxes. It is a reference, not a selling price.</dd></div>' +
-      '<div><dt>Planning range</dt><dd>Where a sale would usually land: 85% to 130% of the central figure. It is not a guaranteed offer.</dd></div>' +
+      '<div><dt>Planning range</dt><dd>The 85% to 130% scenarios around the central figure. It is a planning band, not a forecast of where a sale will land; the monthly check against bank and Pag-IBIG prices reports how often prices fall inside it.</dd></div>' +
       '<div><dt>Classification</dt><dd>How the BIR groups land by use: residential, commercial, agricultural or industrial.</dd></div>' +
       '<div><dt>All other streets</dt><dd>The BIR rate for streets in a barangay that its list does not name.</dd></div>' +
       '</dl></details>';
@@ -3042,7 +3066,7 @@ return {
       return '<span class="sf-quick-caption">Your starting figure</span>' +
         '<strong class="sf-quick-figure is-idle" aria-hidden="true">₱ —</strong>' +
         '<div class="sf-quick-range is-idle" aria-hidden="true"><span></span></div>' +
-        '<p class="sf-quick-range-text is-idle" aria-hidden="true"><span>₱ —</span><span class="sf-quick-range-mid">Likely range</span><span>₱ —</span></p>' +
+        '<p class="sf-quick-range-text is-idle" aria-hidden="true"><span>₱ —</span><span class="sf-quick-range-mid">Planning range</span><span>₱ —</span></p>' +
         '<p class="sf-quick-note">' + (quick.municipality && !(quick.area >= 20 && quick.area <= 100000) ? "Enter a lot area between 20 and 100,000 sqm." : "Choose your town to see a starting figure for your property.") + '</p>';
     }
     if (r.available === false || !(r.marketGuideEstimate > 0)) {
@@ -3053,14 +3077,14 @@ return {
     return '<span class="sf-quick-caption">Starting figure · ' + esc(titleCase(r.municipality)) + '</span>' +
       '<strong class="sf-quick-figure" data-quick-figure data-value="' + quickRound(r.marketGuideEstimate) + '">' + money(quickRound(r.marketGuideEstimate)) + '</strong>' +
       '<div class="sf-quick-range" aria-hidden="true"><span style="left:' + pos.toFixed(1) + '%"></span></div>' +
-      '<p class="sf-quick-range-text"><span>' + money(quickRound(r.low)) + '</span><span class="sf-quick-range-mid">Likely range</span><span>' + money(quickRound(r.high)) + '</span></p>' +
+      '<p class="sf-quick-range-text"><span>' + money(quickRound(r.low)) + '</span><span class="sf-quick-range-mid">Planning range</span><span>' + money(quickRound(r.high)) + '</span></p>' +
       '<p class="sf-quick-note">Town-wide figure for a ' + fmt(r.area) + ' sqm lot' + (r.improvement > 0 ? ' with a ' + fmt(r.floorArea) + ' sqm house under 5 years old' : '') + '. Your barangay, street and house details sharpen it.</p>';
   }
 
   function quickSay() {
     var r = quick.result;
     if (!quick.municipality || !r || r.available === false || !(r.marketGuideEstimate > 0)) return "";
-    return "Starting figure for " + titleCase(r.municipality) + ": " + money(quickRound(r.marketGuideEstimate)) + ". Likely range " + money(quickRound(r.low)) + " to " + money(quickRound(r.high)) + ".";
+    return "Starting figure for " + titleCase(r.municipality) + ": " + money(quickRound(r.marketGuideEstimate)) + ". Planning range " + money(quickRound(r.low)) + " to " + money(quickRound(r.high)) + ".";
   }
 
   function quickMarkup() {

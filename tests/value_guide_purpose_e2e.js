@@ -13,7 +13,9 @@ const q = selector => document.querySelector(selector), wait = ms => new Promise
     check("seller guidance and net proceeds", /Your selling decision/.test(q("[data-est-decision]").textContent) && /2,730,000/.test(q("[data-est-decision]").textContent));
     const buying = await result({ purpose: "Buying" });
     check("buyer shares underlying valuation", buying.total === selling.total && q(".sf-est-result-value").textContent === "₱2,352,500");
-    check("buyer acquisition budget is distinct", /Your buying decision/.test(q("[data-est-decision]").textContent) && /3,063,000/.test(q("[data-est-decision]").textContent));
+    /* 3,000,000 + DST 45,000 + transfer 15,000 + LRA registration 14,646 (the
+       fee schedule since 2026-11, not the old flat 0.1%). */
+    check("buyer acquisition budget is distinct", /Your buying decision/.test(q("[data-est-decision]").textContent) && /3,074,646/.test(q("[data-est-decision]").textContent));
     check("price comparison is not a fairness guarantee", /does not establish a fair transaction price/.test(q("[data-est-decision]").textContent));
     await result({ purpose: "Buying", saleContext: "developer", developerFees: 100000 });
     check("developer budget uses quote without extra CGT", /3,100,000/.test(q("[data-est-decision]").textContent));

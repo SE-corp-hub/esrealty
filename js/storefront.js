@@ -1325,7 +1325,7 @@
   function guideSummarySection() {
     var points = [
       ["BIR tax reference", "The published zonal rate for your street and classification, shown separately from the estimate."],
-      ["Planning estimate", "A central figure with a likely range and the land and house split. Bank listings are context, never inputs."],
+      ["Planning estimate", "A central figure with a planning range and the land and house split. Bank listings are context, never inputs."],
       ["A practical next step", "Ask our team a question, compare nearby listings or request a formal appraisal."]
     ];
     var sample =
