@@ -31,6 +31,11 @@ const arg = (k, d) => { const i = args.indexOf("--" + k); return i >= 0 ? args[i
 const BANDS = { house_lot: [-0.15, 0.35], vacant_lot: [-0.15, 0.35] };
 const MIN_CLUSTERS = 5;
 const SHIFT_ALERT = 0.15; /* month-over-month move in a headline figure */
+/* The guide aims at a likely sale price, taken as the bank or Pag-IBIG price x
+   (1 + BANK_GAP), the same lift calibrate.js and fit-model.js use. */
+const BANK_GAP = 0.10;
+const SIZE_BANDS = [[30, "under 30 sqm"], [50, "30-49 sqm"], [80, "50-79 sqm"], [150, "80-149 sqm"], [null, "150 sqm and up"]];
+const sizeBand = floor => { let i = 0; while (i < SIZE_BANDS.length - 1 && !(SIZE_BANDS[i][0] > floor)) i++; return SIZE_BANDS[i][1]; };
 
 const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const r3 = x => x == null ? null : Math.round(x * 1000) / 1000;
@@ -50,7 +55,13 @@ function summarise(rows) {
   const clusters = {};
   rows.forEach(x => { (clusters[x.cluster] = clusters[x.cluster] || []).push(x.err); });
   const cm = Object.values(clusters).map(median);
-  return { n: rows.length, projects: cm.length, projectWeightedMedian: r3(median(cm)), median: r3(median(rows.map(x => x.err))), medianAbs: r3(median(rows.map(x => Math.abs(x.err)))) };
+  /* likelySale: error against price x (1 + BANK_GAP), the figure the guide aims
+     at; inBand: share of bank prices inside the guide's own range; within20:
+     share of records within 20% of the likely sale price */
+  const ls = rows.map(x => x.model / (x.r.price * (1 + BANK_GAP)) - 1);
+  return { n: rows.length, projects: cm.length, projectWeightedMedian: r3(median(cm)), median: r3(median(rows.map(x => x.err))), medianAbs: r3(median(rows.map(x => Math.abs(x.err)))),
+    likelySale: { median: r3(median(ls)), medianAbs: r3(median(ls.map(Math.abs))), within20: r3(ls.filter(v => Math.abs(v) <= 0.20).length / (ls.length || 1)) },
+    inBand: r3(rows.filter(x => x.low != null && x.r.price >= x.low && x.r.price <= x.high).length / (rows.length || 1)) };
 }
 
 async function accuracy(opts) {
@@ -70,7 +81,7 @@ async function accuracy(opts) {
       floorArea: r.floorArea || 0, construction: "mixed_chb", floors: "1", ageBand: "6-10"
     });
     if (!e || e.available === false || !(e.total > 0)) { skipped.push({ id: r.id, reason: (e && e.reason) || "no estimate" }); continue; }
-    rows.push({ r, kind: type, err: e.total / r.price - 1, model: e.total, cluster: type + "|" + r.municipality + "|" + projectKey(r, known) });
+    rows.push({ r, kind: type, err: e.total / r.price - 1, model: e.total, low: e.low, high: e.high, cluster: type + "|" + r.municipality + "|" + projectKey(r, known) });
   }
 
   const byKind = {}, byTown = {}, bySource = {}, clusters = {};
@@ -80,14 +91,17 @@ async function accuracy(opts) {
     (bySource[x.r.source] = bySource[x.r.source] || []).push(x);
     (clusters[x.cluster] = clusters[x.cluster] || []).push(x);
   });
+  const bySize = {};
+  (byKind.house_lot || []).forEach(x => { const k = sizeBand(x.r.floorArea || 0); (bySize[k] = bySize[k] || []).push(x); });
   const report = {
-    note: "Value Guide vs this month's bank listings (market-scan/comparables/accuracy.js). error = guide / bank price - 1. Bank 'as is' prices usually sit below resale, so +0% to +25% is expected. Headline = project-weighted median. Report only: nothing here changes a price.",
+    note: "Value Guide vs this month's bank listings (market-scan/comparables/accuracy.js). error = guide / bank price - 1. Bank 'as is' prices usually sit below resale, so +0% to +25% is expected; the guide aims at a likely sale price, taken as the bank price x 1.10 (likelySale). Headline = project-weighted median. inBand = share of bank prices inside the guide's own range. Report only: nothing here changes a price.",
     generatedOn: opts.today || new Date().toISOString().slice(0, 10),
     snapshotMonth: snap.month,
     calculationVersion: null,
     overall: Object.fromEntries(Object.keys(byKind).sort().map(k => [k, summarise(byKind[k])])),
     byTown: Object.keys(byTown).sort().map(k => { const [town, kind] = k.split("|"); return Object.assign({ town, kind }, summarise(byTown[k])); }),
     bySource: Object.fromEntries(Object.keys(bySource).sort().map(k => [k, summarise(bySource[k])])),
+    bySize: SIZE_BANDS.map(b => b[1]).filter(k => bySize[k]).map(k => Object.assign({ band: k }, summarise(bySize[k]))),
     projects: Object.keys(clusters).map(k => {
       const xs = clusters[k], [kind, town, name] = k.split("|");
       return { kind, town, name, n: xs.length, birRate: xs[0].r.birRate, matchLevel: xs[0].r.matchLevel, medianError: r3(median(xs.map(x => x.err))) };
@@ -144,4 +158,4 @@ if (require.main === module) {
   }).catch(e => { console.error(e.stack || e); process.exit(1); });
 }
 
-module.exports = { accuracy, loadEstimator, BANDS, MIN_CLUSTERS, SHIFT_ALERT };
+module.exports = { accuracy, loadEstimator, BANDS, MIN_CLUSTERS, SHIFT_ALERT, BANK_GAP };

@@ -8,5 +8,82 @@
    "projects": 4,
    "basis": "median of project medians of bank/Pag-IBIG lot price x 1.1 / guide land, shrunk by 0.286, from 1"
   }
+ },
+ "houseSize": {
+  "note": "House-size grade on the construction rate, from bank and Pag-IBIG house prices (market-scan/comparables/fit-model.js). Applied by js/estimator.js houseSizeGrade: the rate for a floor-area band is the config rate x factor, blended across band boundaries. Changed only by merging a pull request opened by the monthly comparables workflow.",
+  "month": "2026-11",
+  "bankGap": 0.1,
+  "prior": 5,
+  "basis": "median per development of (price x 1.10 - guide land) / guide building, then the median across developments, shrunk by developments / (developments + 5) toward 1, capped 0.3-2.5",
+  "bands": [
+   {
+    "label": "under 30 sqm",
+    "to": 30,
+    "factor": 0.951,
+    "ratio": 0.937,
+    "records": 72,
+    "projects": 18,
+    "weight": 0.783
+   },
+   {
+    "label": "30-49 sqm",
+    "to": 50,
+    "factor": 1.382,
+    "ratio": 1.433,
+    "records": 152,
+    "projects": 37,
+    "weight": 0.881
+   },
+   {
+    "label": "50-79 sqm",
+    "to": 80,
+    "factor": 1.5,
+    "ratio": 1.593,
+    "records": 88,
+    "projects": 27,
+    "weight": 0.844
+   },
+   {
+    "label": "80-149 sqm",
+    "to": 150,
+    "factor": 1.219,
+    "ratio": 1.328,
+    "records": 17,
+    "projects": 10,
+    "weight": 0.667
+   },
+   {
+    "label": "150 sqm and up",
+    "to": null,
+    "factor": 0.786,
+    "ratio": 0.668,
+    "records": 12,
+    "projects": 9,
+    "weight": 0.643
+   }
+  ]
+ },
+ "range": {
+  "note": "Measured range by segment, from bank and Pag-IBIG prices (market-scan/comparables/fit-model.js). Applied by js/estimator.js rangeFactors to houses and lots on residential land; everything else keeps the 85%-130% planning scenarios. Changed only by merging a pull request opened by the monthly comparables workflow.",
+  "month": "2026-11",
+  "bankGap": 0.1,
+  "basis": "16th to 84th percentile across developments of the median (price x 1.10 / guide) per development, with the house-size grade in force; one development counts once",
+  "derivedMatchWidening": 1.25,
+  "segments": {
+   "house_lot": {
+    "lowFactor": 0.85,
+    "highFactor": 1.26,
+    "records": 341,
+    "projects": 72,
+    "inBand": 0.672
+   },
+   "vacant_lot": {
+    "lowFactor": 0.51,
+    "highFactor": 1.51,
+    "records": 82,
+    "projects": 12,
+    "inBand": 0.683
+   }
+  }
  }
 }

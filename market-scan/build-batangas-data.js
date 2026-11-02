@@ -34,7 +34,7 @@ function check(cond, msg) { if (!cond) errors.push(msg); }
 
 const CONFIG = {
   version: 2,
-  calculationVersion: "2026.11.1",
+  calculationVersion: "2026.11.2",
   riskPolicy: "Answer-led: each site answer moves land by a stated % (net capped -40%/+10%) and each ownership answer deducts a stated % from the total (capped 30%); answers stay unverified until documents are reviewed",
   scenarioRange: { lowFactor: 0.85, highFactor: 1.3, meaning: "Planning scenarios, not statistical accuracy" },
   askingPrice: { premiumPct: 7, basis: "Suggested asking price = guide total x (1 + premiumPct / 100). Resale asking prices in the 2026-10 Batangas listings sat roughly 5-10% above where deals close, so a seller lists a little above the guide and negotiates down to it. The 130% figure is the top of the planning range, not a price to list at. Read by js/estimator.js and js/value_guide_flow.js so both surfaces print one asking figure." },

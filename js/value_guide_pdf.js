@@ -62,6 +62,13 @@
   var M = 46;
   var FOOT = 40;
 
+  /* Sub-label of the range tile: the measured band when one is in force. */
+  function rangeSub(r) {
+    var m = r && r.rangeBasis && r.rangeBasis.measured;
+    if (!m) return "85%-130% planning scenarios";
+    return Math.round(r.rangeLowFactor * 100) + "%-" + Math.round(r.rangeHighFactor * 100) + "% measured band" + (r.rangeBasis.widened ? ", widened" : "");
+  }
+
   function fmtMoney(n) {
     var v = Number(n || 0);
     if (!isFinite(v)) return "PHP 0";
@@ -601,7 +608,7 @@
 
       tiles([
         { label: r.landMethod === "time-indexed" ? "Indexed-reference scenario" : "Market guide estimate", value: fmtMoney(r.marketGuideEstimate), sub: "Planning figure", accent: tan },
-        { label: "Guide range", value: fmtMoney(r.low) + " - " + fmtMoney(r.high), sub: "85%-130% planning scenarios", accent: tan, small: true },
+        { label: "Guide range", value: fmtMoney(r.low) + " - " + fmtMoney(r.high), sub: rangeSub(r), accent: tan, small: true },
         { label: r.birReferenceConfirmed === false ? "Derived locality reference" : "Official BIR zonal reference", value: fmtMoney(r.birZonalValue), sub: fmtMoney(r.birZonalRatePerSqm) + "/sqm, " + (r.birReferenceConfirmed === false ? "derived fallback" : "tax reference"), accent: cool }
       ]);
 
@@ -719,6 +726,8 @@
         table(null, [
           ["Construction", r.constructionLabel || r.construction || "-"],
           ["Construction rate", fmtMoney(r.buildCostPerSqm) + "/sqm"],
+          r.houseSizeGrade ? ["House-size grade", "x " + fmtNum(r.houseSizeGrade.factor, 3) + "  (" + r.houseSizeGrade.band + "; " + r.houseSizeGrade.records + " bank and Pag-IBIG prices, " + r.houseSizeGrade.projects + " developments, " + r.houseSizeGrade.month + ")"] : null,
+          r.houseSizeGrade ? ["Graded rate", fmtMoney(r.gradedBuildCostPerSqm) + "/sqm"] : null,
           ["Floor area", fmtArea(r.floorArea)],
           ["Age band midpoint", r.ageMidpoint + " years"],
           ["Depreciation applied", r.depreciatedPct + "%"],
@@ -726,7 +735,7 @@
             ? fmtMoney(r.featuresTotal) + " across " + ((r.featuresUsed || []).length) + " item(s)"
             : "none selected"],
           ["Improvement value", fmtMoney(r.improvement)]
-        ], [200, 300], { boldFirstCol: true, padY: 4 });
+        ].filter(function (row) { return row; }), [200, 300], { boldFirstCol: true, padY: 4 });
       } else {
         heading("Step 3 - house value", { small: true });
         para("Not applicable. This is a vacant lot, valued on land only with no house component.", 8.4, gray);
@@ -961,7 +970,9 @@
       ]);
       box([
         "The BIR zonal value is a tax floor in practice, not a negotiable one. It is what the BIR assesses against, so a price below it does not reduce the tax base for CGT or DST.",
-        "The 85%-130% guide range expresses planning scenarios, not statistical confidence. Source match quality is reported separately.",
+        (r.rangeBasis && r.rangeBasis.measured
+          ? "The guide range is measured: 68% of " + (r.rangeBasis.measured.month || "") + " bank and Pag-IBIG " + (r.rangeBasis.measured.kind === "house_lot" ? "house" : "lot") + " prices (" + r.rangeBasis.measured.records + " prices, " + r.rangeBasis.measured.projects + " developments, one development counted once) fell between " + Math.round(r.rangeLowFactor * 100) + "% and " + Math.round(r.rangeHighFactor * 100) + "% of the guide" + (r.rangeBasis.widened ? ", widened because the location was matched only at town level" : "") + ". It is a planning band, not statistical confidence."
+          : "The 85%-130% guide range expresses planning scenarios, not statistical confidence.") + " Source match quality is reported separately.",
         "No site inspection or verified title assessment is performed. Unverified inputs apply model adjustments where stated; actual condition, access, flood risk and buyer demand require professional review."
       ], tan);
 
@@ -1075,12 +1086,13 @@
       table(null, [
         ["Construction type", r.constructionLabel || r.construction || "-"],
         ["Replacement cost", fmtMoney(rcn) + "/sqm"],
+        r.houseSizeGrade ? ["House-size grade", "x " + fmtNum(r.houseSizeGrade.factor, 3) + " for " + r.houseSizeGrade.band + ", from " + r.houseSizeGrade.records + " bank and Pag-IBIG prices (" + r.houseSizeGrade.month + "); graded rate " + fmtMoney(r.gradedBuildCostPerSqm) + "/sqm"] : null,
         ["Floor area", r.type === "house_lot" ? fmtArea(r.floorArea) : "vacant land - no improvement"],
         ["Useful life", life + " years"],
         ["Age midpoint", fmtNum(r.ageMidpoint, 1) + " years"],
         ["Depreciation applied", fmtNum(r.depreciatedPct, 2) + "%  (capped at " + fmtNum(depCap * 100, 0) + "%)"],
         ["Escalation", "none - no valuation year, no annual uplift"]
-      ], [200, 300], { boldFirstCol: true, padY: 4 });
+      ].filter(function (row) { return row; }), [200, 300], { boldFirstCol: true, padY: 4 });
       /* The provenance sentence used to claim the rate "sits above the
          permit-declared average" unconditionally. It does not hold for
          wood_prefab (8,000 against a PSA national average of ~14,000), and

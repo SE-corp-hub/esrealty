@@ -346,10 +346,10 @@
     }
    ],
    "accuracy": {
-    "house_lot": -0.026,
+    "house_lot": 0.086,
     "vacant_lot": 0.375
    },
-   "accuracyCalculationVersion": "2026.10.7"
+   "accuracyCalculationVersion": "2026.11.2"
   }
  ]
 }

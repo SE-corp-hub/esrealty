@@ -81,7 +81,10 @@ const q = selector => document.querySelector(selector);
       JSON.stringify(contactCalls.map(c => c.inquiry_type)));
     check("fallback save is confirmed to the customer", /saved/.test(q("[data-est-lead-status]") ? q("[data-est-lead-status]").textContent : document.body.textContent));
 
-    check("posted report keeps central estimate, range and BIR separate", posts[2].data.report.estimate.marketGuideEstimate === 2352500 && posts[2].data.report.estimate.low === 1999625 && posts[2].data.report.estimate.birZonalValue === 1150000);
+    /* The low end is the guide x the range factor the report carries (since
+       2026-11 the residential band is measured, no longer a flat 85%). */
+    const postedEstimate = posts[2].data.report.estimate;
+    check("posted report keeps central estimate, range and BIR separate", postedEstimate.marketGuideEstimate === 2352500 && postedEstimate.rangeLowFactor > 0.5 && postedEstimate.rangeLowFactor < 1 && postedEstimate.low === Math.round(2352500 * postedEstimate.rangeLowFactor) && postedEstimate.low < postedEstimate.marketGuideEstimate && postedEstimate.birZonalValue === 1150000, JSON.stringify({ low: postedEstimate.low, factor: postedEstimate.rangeLowFactor }));
     check("results stay visible after submission", !!q(".sf-est-result-value") && !q(".sf-est-price-lock"));
   } catch (e) { check("runner", false, e.message); }
   finally { window.fetch = oldFetch; window.ESREALTY_API_BASE = oldBase; api.contact = oldContact; }
