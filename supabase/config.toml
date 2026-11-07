@@ -30,6 +30,9 @@ verify_jwt = false
 [functions.notify-dispatch]
 verify_jwt = true
 
+[functions.admin-delete-account]
+verify_jwt = true
+
 # Unused (kept by the owner's decision); live has it behind a login.
 [functions.nearby-scan]
 verify_jwt = true

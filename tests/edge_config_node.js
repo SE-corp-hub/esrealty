@@ -15,10 +15,11 @@ const ok = (name, cond, detail) => { assert.ok(cond, name + (detail ? " — " + 
 
 const open = ["listing-api", "location-report", "seo", "fb-leads", "agent-dispatch", "admin-create-account"];
 ok("public functions check their own secrets or roles (verify_jwt = false)", open.every(f => verifyJwt(toml, f) === false), open.filter(f => verifyJwt(toml, f) !== false).join(","));
-ok("notify-dispatch and nearby-scan stay behind a login", verifyJwt(toml, "notify-dispatch") === true && verifyJwt(toml, "nearby-scan") === true);
+const login = ["notify-dispatch", "nearby-scan", "admin-delete-account"];
+ok("notify-dispatch, nearby-scan and admin-delete-account stay behind a login", login.every(f => verifyJwt(toml, f) === true), login.filter(f => verifyJwt(toml, f) !== true).join(","));
 const entries = (toml.match(/^\[functions\.([A-Za-z0-9_-]+)\]/gm) || []).map(s => s.slice(11, -1));
 ok("every entry has a function folder", entries.every(f => fs.existsSync(path.join(root, "supabase/functions", f, "index.ts"))), entries.join(","));
-ok("a function without an entry can't be deployed", verifyJwt(toml, "admin-delete-account") === null);
+ok("a function without an entry can't be deployed", verifyJwt(toml, "no-such-function") === null);
 ok("the deploy workflow reads the setting from config.toml", /node tools\/fn_verify_jwt\.js "\$fn"/.test(wf) && !/listing-api\|location-report\|seo/.test(wf));
 const versions = new Set();
 fs.readdirSync(path.join(root, "supabase/functions")).forEach(f => {
