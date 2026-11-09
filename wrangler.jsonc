@@ -12,7 +12,7 @@
     "binding": "ASSETS",
     // Only these paths reach the Worker; every other file is served straight from the
     // asset server, with _headers applied, exactly as today.
-    "run_worker_first": ["/listing/*", "/agents/*", "/sitemap.xml", "/photos/*"]
+    "run_worker_first": ["/listing/*", "/agents/*", "/homes/*", "/sitemap.xml", "/photos/*"]
   },
   "vars": {
     // The site's public address. Change it to the brand domain once it is attached.

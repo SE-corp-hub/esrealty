@@ -19,7 +19,7 @@ ok("text filter: _ is matched as a character", likeLiteral("a_b") === "a\\_b");
 ok("text filter: * (the API's wildcard) is dropped", likeLiteral("Li*pa") === "Lipa");
 ok("text filter: a lone % cannot list every row", likeLiteral("%") === "\\%");
 ok("text filter: backslash is escaped first", likeLiteral("a\\b") === "a\\\\b");
-ok("city, region and province filters use it", /ilike\("city", likeLiteral\(city\)\)/.test(api) && /ilike\("region", likeLiteral\(region\)\)/.test(api) && /ilike\("province", likeLiteral\(state\)\)/.test(api));
+ok("city (contains, so Lipa finds Lipa City), region and province filters use it", /ilike\("city", `%\$\{likeLiteral\(city\)\}%`\)/.test(api) && /ilike\("region", likeLiteral\(region\)\)/.test(api) && /ilike\("province", likeLiteral\(state\)\)/.test(api));
 
 const phoneSrc = /const looksLikePhone = [\s\S]*?\n};/.exec(api)[0].replace("(text: string)", "(text)");
 const { looksLikePhone } = new Function(phoneSrc + "\nreturn { looksLikePhone };")();
@@ -28,7 +28,7 @@ const { looksLikePhone } = new Function(phoneSrc + "\nreturn { looksLikePhone };
 ok("both public forms check the phone", /const phone = phoneValue\(body\.phone, true\);/.test(api) && /phoneValue\(body\.phone, kind\.phone\)/.test(api));
 ok("phone errors answer 400", /throw new HttpError\(400, "phone is invalid"\)/.test(api));
 
-ok("public forms read at most 32 KB; listings keep 1 MB", /const MAX_FORM_BODY = 32_000;/.test(api) && /const MAX_LISTING_BODY = 1_000_000;/.test(api) && (api.match(/parseBody\(req, MAX_FORM_BODY\)/g) || []).length === 5);  // contact form, listing inquiry, agent page message, review lookup and review
+ok("public forms read at most 32 KB; listings keep 1 MB", /const MAX_FORM_BODY = 32_000;/.test(api) && /const MAX_LISTING_BODY = 1_000_000;/.test(api) && (api.match(/parseBody\(req, MAX_FORM_BODY\)/g) || []).length === 6);  // contact form, listing inquiry, saved search, agent page message, review lookup and review
 ok("body limit is checked on the header and while reading", /contentLength > maxBytes/.test(api) && /size > maxBytes/.test(api));
 ok("lists and site settings may be kept for a minute", /PUBLIC_CACHE = \{ "Cache-Control": "public, max-age=60" \}/.test(api) && (api.match(/200, PUBLIC_CACHE\)/g) || []).length === 4);  // listings, site settings, agent directory and its count
 ok("a single listing is never cached (view count, price)", !/getListing[\s\S]{0,900}PUBLIC_CACHE/.test(/const getListing = [\s\S]*?\n};/.exec(api)[0]));

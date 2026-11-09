@@ -50,6 +50,10 @@
     mine: function (filters) { return request("/users/me/listings" + queryString(filters)); },
     toggleFavorite: function (id) { return request("/listings/" + encodeURIComponent(id) + "/favorite", { method: "POST" }); },
     favorites: function () { return request("/users/me/favorites"); },
+    // Saved searches with new-listing alerts (migration 0022).
+    savedSearches: function () { return request("/users/me/searches"); },
+    saveSearch: function (search) { return request("/users/me/searches", { method: "POST", body: search }); },
+    deleteSearch: function (id) { return request("/users/me/searches/" + encodeURIComponent(id), { method: "DELETE" }); },
     siteSettings: function () { return request("/site-settings"); },
     inquire: function (id, inquiry) { return request("/listings/" + encodeURIComponent(id) + "/inquiries", { method: "POST", body: inquiry }); },
     contact: function (inquiry) { return request("/contacts", { method: "POST", body: inquiry }); },

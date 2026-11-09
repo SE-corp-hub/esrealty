@@ -1,0 +1,57 @@
+name: Saved searches - new listing alerts
+
+# Every morning: a buyer who saved a search on the website (Properties > Save this search) gets a
+# notification in the app (the bell, and their phone if they turned phone alerts on) when listings
+# published since the last check match it. At most one a day per saved search.
+# Sending is OFF until the repository variable SAVED_SEARCH_ALERTS is set to "on"
+# (Settings -> Secrets and variables -> Actions -> Variables). Until then each run only works it
+# out and logs counts. The log never shows searches, listings or people (this repository is public).
+#
+# Needs migration 0022 (public.saved_search_sweep). Before it is applied the run says so in its log
+# and stops without an alarm.
+
+on:
+  schedule:
+    - cron: "13 1 * * *"   # 09:13 Philippine time
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: saved-search-alerts
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: hdkmvwxgjgzbuycjrbyq
+      SENDING: ${{ vars.SAVED_SEARCH_ALERTS }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Sweep
+        run: |
+          if [ "$SENDING" = "on" ]; then node tools/saved_search_alerts.js --send; else node tools/saved_search_alerts.js; fi
+
+      # A failed scheduled run used to be seen only by whoever opened the Actions tab.
+      # This opens one issue (found again by its title) so the failure reaches the owner.
+      - name: Open an issue when this run fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Scheduled job failed: Saved-search alerts"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body "Failed again. Run: $RUN_URL"; exit 0; fi
+          gh issue create --title "$title" --body "A scheduled run failed. Run log: $RUN_URL
+
+          Close this issue once it is fixed; the next failure opens a new one."

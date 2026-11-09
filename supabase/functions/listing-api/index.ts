@@ -15,8 +15,9 @@ const PUBLIC_LISTING_COLUMNS = [
   "region", "postal_code", "latitude", "longitude", "bedrooms", "bathrooms",
   "floor_area_sqm", "floor_area_sqft", "lot_size_sqm", "lot_size_sqft", "year_built",
   "featured", "agent_id", "agent_name", "views", "inquiries", "published_at",
-  "updated_at", "images",
+  "updated_at", "images", "office_checked", "previous_price",
 ].join(",");
+// office_checked and previous_price come from migration 0022: apply it before deploying this function.
 
 const MANAGED_LISTING_COLUMNS = [
   "id", "ref", "title", "description", "property_type", "offer_type", "status",
@@ -55,6 +56,8 @@ const listingStatuses = new Set([
 ]);
 const offerTypes = new Set(["sale", "rent"]);
 const publisherRoles = new Set(["super-admin", "broker", "agent"]);
+// Who may mark a listing "Checked by SEA ESTATES" (title seen, seller confirmed).
+const officeRoles = new Set(["super-admin", "broker"]);
 
 type JsonRecord = Record<string, unknown>;
 type AuthContext = { id: string; email: string; role: string };
@@ -234,7 +237,8 @@ const authenticate = async (req: Request, admin: SupabaseClient, required = true
   };
 };
 
-const listingInput = (body: JsonRecord, existing: JsonRecord | null, ownerId: string) => {
+// canCheck: the caller may mark the listing "Checked by SEA ESTATES" (a Super Admin or broker).
+const listingInput = (body: JsonRecord, existing: JsonRecord | null, ownerId: string, canCheck = false) => {
   const oldPayload = existing?.payload && typeof existing.payload === "object"
     ? existing.payload as JsonRecord
     : {};
@@ -290,6 +294,17 @@ const listingInput = (body: JsonRecord, existing: JsonRecord | null, ownerId: st
     try { if (new URL(videoUrl).protocol !== "https:") throw new Error(); }
     catch { throw new HttpError(400, "details.video_url must be a valid HTTPS URL"); }
   }
+  // A 360 or 3D tour link (Matterport, Kuula, a 360 photo page...), shown as a button on the listing.
+  const tourUrl = stringValue(details.tour_url ?? oldPayload.tourUrl, 1000, "details.tour_url");
+  if (tourUrl) {
+    try { if (new URL(tourUrl).protocol !== "https:") throw new Error(); }
+    catch { throw new HttpError(400, "details.tour_url must be a valid HTTPS URL"); }
+  }
+  // "Checked by SEA ESTATES": only the office changes it; anyone else's save keeps what is there.
+  const officeChecked = canCheck && details.office_checked !== undefined ? details.office_checked === true : oldPayload.officeChecked === true;
+  const officeCheckedOn = officeChecked
+    ? (oldPayload.officeChecked === true && typeof oldPayload.officeCheckedOn === "string" ? oldPayload.officeCheckedOn : new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10))
+    : "";
 
   const payload = {
     ...oldPayload,
@@ -336,6 +351,9 @@ const listingInput = (body: JsonRecord, existing: JsonRecord | null, ownerId: st
     hoaDues: numberValue(details.hoa_dues, "details.hoa_dues", 0, 99_999_999.99, Number(oldPayload.hoaDues || 0)),
     condoDues: numberValue(details.condo_dues, "details.condo_dues", 0, 99_999_999.99, Number(oldPayload.condoDues || 0)),
     videoUrl,
+    tourUrl,
+    officeChecked,
+    officeCheckedOn,
     createdBy: ownerId,
     createdAt: String(oldPayload.createdAt || existing?.created_at || now),
     updatedAt: now,
@@ -395,7 +413,8 @@ const listListings = async (url: URL, admin: SupabaseClient) => {
   const beds = numberValue(url.searchParams.get("beds"), "beds", 0, 100, null);
   const baths = numberValue(url.searchParams.get("baths"), "baths", 0, 99.9, null);
 
-  if (city) query = query.ilike("city", likeLiteral(city));
+  // "Lipa" finds "Lipa City" too: the place name may appear anywhere in the city field.
+  if (city) query = query.ilike("city", `%${likeLiteral(city)}%`);
   if (region) query = query.ilike("region", likeLiteral(region));
   if (state) query = query.ilike("province", likeLiteral(state));
   if (propertyType) query = query.eq("property_type", enumValue(propertyType, propertyTypes, "", "property_type"));
@@ -406,6 +425,8 @@ const listListings = async (url: URL, admin: SupabaseClient) => {
   if (beds != null) query = query.gte("bedrooms", beds);
   if (baths != null) query = query.gte("bathrooms", baths);
   if (url.searchParams.get("featured") === "true") query = query.eq("featured", true);
+  if (url.searchParams.get("checked") === "true") query = query.eq("office_checked", true);
+  if (url.searchParams.get("reduced") === "true") query = query.not("previous_price", "is", null);
   for (const word of searchWords(url.searchParams.get("q"))) query = query.or(searchFilter(word));
 
   const sort = url.searchParams.get("sort") || "date_desc";
@@ -454,6 +475,28 @@ const publicDetails = async (admin: SupabaseClient, id: string, agentId: string 
     if (typeof p.licenseToSellUntil === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.licenseToSellUntil)) out.license_to_sell_until = p.licenseToSellUntil;
     if (p.exclusive === true) out.exclusive = true;
     if (p.docsChecked === true) out.docs_checked = true;
+    if (p.officeChecked === true) {
+      out.office_checked = true;
+      if (typeof p.officeCheckedOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.officeCheckedOn)) out.office_checked_on = p.officeCheckedOn;
+    }
+    // Video and 360 tour links (HTTPS only, checked when saved), and the financing the seller accepts.
+    for (const [key, out_key] of [["videoUrl", "video_url"], ["tourUrl", "tour_url"]] as const) {
+      const v = typeof p[key] === "string" ? String(p[key]).trim() : "";
+      if (/^https:\/\//i.test(v) && v.length <= 1000) out[out_key] = v;
+    }
+    if (Array.isArray(p.financing)) {
+      const fin = p.financing.map(String).filter((f) => ["cash", "bank", "inhouse", "pagibig", "developer"].includes(f));
+      if (fin.length) out.financing = fin;
+    }
+    // Price history (migration 0022): the last 10 changes, newest first. A failure leaves it out.
+    try {
+      const { data: changes } = await admin.from("listing_price_changes")
+        .select("old_price,new_price,changed_at").eq("listing_id", id)
+        .order("changed_at", { ascending: false }).limit(10);
+      if (Array.isArray(changes) && changes.length) {
+        out.price_history = changes.map((c) => ({ from: Number(c.old_price), to: Number(c.new_price), on: String(c.changed_at).slice(0, 10) }));
+      }
+    } catch (_e) { /* before migration 0022 */ }
     if (agentId) {
       // Both at once: the agent's PRC number, and their page address while the page is public, so
       // "Listed by" links to it (agent websites, Phase 2).
@@ -489,7 +532,7 @@ const createListing = async (req: Request, admin: SupabaseClient) => {
   const auth = await authenticate(req, admin) as AuthContext;
   requirePublisher(auth);
   const body = await parseBody(req);
-  const record = listingInput(body, null, auth.id);
+  const record = listingInput(body, null, auth.id, officeRoles.has(auth.role));
   const { data, error } = await admin.from("shared_listings").insert(record).select(MANAGED_LISTING_COLUMNS).single();
   if (error) {
     console.error(error);
@@ -515,7 +558,7 @@ const updateListing = async (req: Request, id: string, admin: SupabaseClient) =>
     throw new HttpError(403, "Only the listing owner or an administrator can update this listing");
   }
   const body = await parseBody(req);
-  const record = listingInput(body, existing, String(existing.owner_id));
+  const record = listingInput(body, existing, String(existing.owner_id), officeRoles.has(auth.role));
   const { data, error } = await admin
     .from("shared_listings")
     .update(record)
@@ -604,6 +647,59 @@ const getFavorites = async (req: Request, admin: SupabaseClient) => {
   if (error) throw new Error(error.message);
   const byId = new Map((data || []).map((listing) => [listing.id, listing]));
   return json({ data: ids.map((id) => byId.get(id)).filter(Boolean) });
+};
+
+// Saved searches (migration 0022). A signed-in person saves the website's search filters; the daily
+// job (tools/saved_search_alerts.js) tells them about new listings that match. Up to 10 each.
+const SAVED_SEARCH_KEYS = ["q", "city", "state", "property_type", "offer_type", "max_price", "min_price", "beds", "checked"];
+const MAX_SAVED_SEARCHES = 10;
+const savedSearchFilters = (raw: unknown) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new HttpError(400, "filters must be an object");
+  const input = raw as JsonRecord;
+  const out: Record<string, string> = {};
+  for (const key of SAVED_SEARCH_KEYS) {
+    const v = stringValue(input[key], 120, `filters.${key}`);
+    if (!v) continue;
+    if (key === "property_type") out[key] = enumValue(v, propertyTypes, "", "filters.property_type");
+    else if (key === "offer_type") out[key] = enumValue(v, offerTypes, "", "filters.offer_type");
+    else if (key === "max_price" || key === "min_price" || key === "beds") out[key] = String(numberValue(v, `filters.${key}`, 0, 9_999_999_999_999, null));
+    else if (key === "checked") { if (v === "true") out[key] = "true"; }
+    else out[key] = v;
+  }
+  if (!Object.keys(out).length) throw new HttpError(400, "Choose at least one filter before saving a search");
+  return out;
+};
+
+const listSavedSearches = async (req: Request, admin: SupabaseClient) => {
+  const auth = await authenticate(req, admin) as AuthContext;
+  const { data, error } = await admin.from("saved_searches").select("id,label,filters,created_at,last_alert_at")
+    .eq("user_id", auth.id).order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return json({ data: data || [] });
+};
+
+const saveSearch = async (req: Request, admin: SupabaseClient) => {
+  const auth = await authenticate(req, admin) as AuthContext;
+  const body = await parseBody(req, MAX_FORM_BODY);
+  const filters = savedSearchFilters(body.filters);
+  const label = stringValue(body.label, 200, "label") || Object.values(filters).join(", ").slice(0, 200);
+  const { data: existing, error: listError } = await admin.from("saved_searches").select("id,filters").eq("user_id", auth.id);
+  if (listError) throw new Error(listError.message);
+  const same = (existing || []).find((row) => JSON.stringify(row.filters) === JSON.stringify(filters));
+  if (same) return json({ data: { id: same.id, label, filters }, already: true });
+  if ((existing || []).length >= MAX_SAVED_SEARCHES) throw new HttpError(409, "You can keep up to 10 saved searches. Remove one first.");
+  const { data, error } = await admin.from("saved_searches").insert({ user_id: auth.id, label, filters })
+    .select("id,label,filters,created_at").single();
+  if (error) throw new Error(error.message);
+  return json({ data }, 201);
+};
+
+const deleteSavedSearch = async (req: Request, id: string, admin: SupabaseClient) => {
+  const auth = await authenticate(req, admin) as AuthContext;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new HttpError(404, "Saved search not found");
+  const { error } = await admin.from("saved_searches").delete().eq("id", id).eq("user_id", auth.id);
+  if (error) throw new Error(error.message);
+  return json({ ok: true });
 };
 
 // Website settings saved in the site_settings table (migration 0005). Returns {} when the table is
@@ -1008,6 +1104,15 @@ Deno.serve(async (req) => {
     }
     if (parts.join("/") === "users/me/favorites" && req.method === "GET") {
       return await getFavorites(req, admin);
+    }
+    if (parts.join("/") === "users/me/searches" && req.method === "GET") {
+      return await listSavedSearches(req, admin);
+    }
+    if (parts.join("/") === "users/me/searches" && req.method === "POST") {
+      return await saveSearch(req, admin);
+    }
+    if (parts.length === 4 && parts.slice(0, 3).join("/") === "users/me/searches" && req.method === "DELETE") {
+      return await deleteSavedSearch(req, parts[3], admin);
     }
     if (parts.join("/") === "users/me/listings" && req.method === "GET") {
       return await getManagedListings(req, new URL(req.url), admin);

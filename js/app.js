@@ -829,6 +829,17 @@ if (IS_LOCAL_DEV && !(currentUser && currentUser.id)) {
     else if (!navAllowed(state.view)) state.view = firstAllowedView();
   }
   async function completePostAuthIntent() {
+    // A search saved from the website before signing in (Properties > Save this search).
+    let pendingSearch = null;
+    try { pendingSearch = JSON.parse(sessionStorage.getItem("esrealty_post_auth_search") || "null"); } catch (e) {}
+    if (pendingSearch && LISTINGS_API && LISTINGS_API.saveSearch && currentUser && currentUser.id) {
+      sessionStorage.removeItem("esrealty_post_auth_search");
+      try {
+        await LISTINGS_API.saveSearch(pendingSearch);
+        mySavedSearches = null;
+        toast("Search saved. You will get an alert when a new property matches.");
+      } catch (e) { toast("Signed in, but the search could not be saved: " + esc(friendlyErr(e.message)), "err"); }
+    }
     const favoriteId = sessionStorage.getItem("esrealty_post_auth_favorite") || "";
     if (!favoriteId || !LISTINGS_API || !currentUser || !currentUser.id) return;
     sessionStorage.removeItem("esrealty_post_auth_favorite");
@@ -13935,6 +13946,27 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         '<button class="btn btn-danger btn-sm" data-bulk-act="clear">Clear selection</button></div>' : "") +
       "<div class='ls-grid'>" + paginateRows(arr, "listings").map(listingCard).join("") + "</div>" + paginationBar("listings");
   }
+  /* Saved searches (website > Properties > Save this search, migration 0022): listed here so a
+   * person can see what they are alerted about and remove one. Kept out of state (not saved). */
+  let mySavedSearches = null, mySavedSearchesLoading = false;
+  function savedSearchesCard() {
+    if (!LISTINGS_API || !LISTINGS_API.savedSearches || !currentUser) return "";
+    if (mySavedSearches === null) { loadSavedSearches(); return '<div id="ls-saved-searches"></div>'; }
+    if (!mySavedSearches.length) return '<div id="ls-saved-searches"></div>';
+    return '<div class="card card-pad mb-24" id="ls-saved-searches"><h3 class="mb-8">' + icon("bell", 15) + " Your saved searches</h3>" +
+      '<p class="text-muted mb-8">You get a notification here (and on your phone if alerts are on) when a new listing matches. Save more from the website: Properties &gt; Save this search.</p>' +
+      mySavedSearches.map(x => '<div class="row" style="justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)"><span>' + esc(x.label || "Saved search") + "</span>" +
+        '<button class="btn btn-ghost btn-sm" data-ls-search-del="' + esc(x.id) + '">Remove</button></div>').join("") + "</div>";
+  }
+  async function loadSavedSearches() {
+    if (mySavedSearchesLoading) return;
+    mySavedSearchesLoading = true;
+    try { const r = await LISTINGS_API.savedSearches(); mySavedSearches = Array.isArray(r && r.data) ? r.data : []; }
+    catch (e) { mySavedSearches = []; }
+    mySavedSearchesLoading = false;
+    const slot = document.getElementById("ls-saved-searches");
+    if (slot) slot.outerHTML = savedSearchesCard();
+  }
   function renderListings() {
     if (state.listingDetail) {
       const l = (state.listings || []).find(x => x.id === state.listingDetail);
@@ -13952,6 +13984,7 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         '<button class="btn btn-ghost" data-ls-inquiries>' + icon("chat", 15) + ' Inquiries' + (openInquiries ? ' <span class="badge gold">' + openInquiries + "</span>" : "") + "</button>" +
         '<button class="btn btn-ghost" data-ls-export>' + icon("download", 15) + " Export CSV</button>",
         openInquiries ? ' <span class="badge gold" aria-label="' + openInquiries + ' open inquiries">' + openInquiries + "</span>" : "") + "</div></div>";
+    html += savedSearchesCard();
     html += '<div class="card card-pad mb-24 ' + filtersCardClass("ls") + '" id="ls-filters"><div class="grid grid-4">' +
       '<div class="field filter-keep"><label>Search</label><input class="input" id="ls-q" type="text" enterkeyhint="search" value="' + esc(f.q || "") + '" placeholder="Title, city, developer…"></div>' +
       filtersToggle("ls", f) +
@@ -14067,7 +14100,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         lsDetailRow("Access / RROW", l.accessNote || "—") +
         lsDetailRow("Turnover Date", l.turnoverDate) +
         (presell ? lsDetailRow("DHSUD License to Sell", (l.licenseToSell || "Pending") + (l.licenseToSellUntil ? ", valid until " + l.licenseToSellUntil : "")) : "") +
-        (safeHttpsUrl(l.videoUrl) ? '<tr><td>Virtual Tour</td><td><a href="' + esc(safeHttpsUrl(l.videoUrl)) + '" target="_blank" rel="noopener">Watch video</a></td></tr>' : "") +
+        (safeHttpsUrl(l.videoUrl) ? '<tr><td>Video</td><td><a href="' + esc(safeHttpsUrl(l.videoUrl)) + '" target="_blank" rel="noopener">Watch video</a></td></tr>' : "") +
+        (safeHttpsUrl(l.tourUrl) ? '<tr><td>360° tour</td><td><a href="' + esc(safeHttpsUrl(l.tourUrl)) + '" target="_blank" rel="noopener">Open tour</a></td></tr>' : "") +
+        (l.officeChecked ? '<tr><td>Checked by SEA ESTATES</td><td>Yes' + (l.officeCheckedOn ? ", " + esc(l.officeCheckedOn) : "") + "</td></tr>" : "") +
       "</tbody></table></div></div>";
     html += '<div class="card card-pad"><h3>Location</h3><div id="ls-static-map" class="ls-map mt-8"></div></div>';
     html += "</div>";
@@ -14346,11 +14381,16 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         '<div id="ls-photo-previews" class="ls-photo-previews">' + (l.photos || []).map(lsPhotoThumb).join("") + "</div>" +
         '<textarea class="input mt-8" id="ls-photos" rows="3" placeholder="https://… or use the upload button">' + esc((l.photos || []).join("\n")) + "</textarea>" +
         '<div class="field-hint">JPG, PNG or WebP - photos are compressed automatically, so any camera photo works. The first photo is the cover shown on listings and cards. Uploads are public.</div></div>' +
-      '<div class="field col-full mt-8"><label>Virtual tour / video URL</label>' + lsTxt("ls-video", l.videoUrl) + "</div>" +
+      '<div class="field col-full mt-8"><label>Video URL</label>' + lsTxt("ls-video", l.videoUrl) + '<div class="field-hint">A YouTube link plays on the listing page; any other HTTPS link opens as a button.</div></div>' +
+      '<div class="field col-full mt-8"><label>360° / 3D tour URL</label>' + lsTxt("ls-tour", l.tourUrl) + '<div class="field-hint">For example a Matterport, Kuula or 360 photo link (HTTPS). Shown as "Open the 360° tour".</div></div>' +
       '<div class="field col-full mt-8"><label>Featured listing</label><label class="ms-chk"><input type="checkbox" id="ls-feat"' + (l.featured ? " checked" : "") + "> Show as featured</label><div class='field-hint'>Featured slots require at least one photo.</div></div>" +
       '<div class="field col-full mt-8"><label>Shown to buyers</label>' +
         '<label class="ms-chk ls-trust-chk"><input type="checkbox" id="ls-exclusive"' + (l.exclusive ? " checked" : "") + "> Exclusive: we hold a signed authority to sell</label>" +
         '<label class="ms-chk ls-trust-chk"><input type="checkbox" id="ls-docs-checked"' + (l.docsChecked ? " checked" : "") + "> Documents checked: we have seen the title and tax declaration</label>" +
+        // "Checked by SEA ESTATES" (listing function, migration 0022): the office only.
+        (currentUser && (currentUser.role === "super-admin" || currentUser.role === "broker")
+          ? '<label class="ms-chk ls-trust-chk"><input type="checkbox" id="ls-office-checked"' + (l.officeChecked ? " checked" : "") + "> Checked by SEA ESTATES: the office has seen the title and confirmed the seller" + (l.officeCheckedOn ? " (" + esc(l.officeCheckedOn) + ")" : "") + "</label>"
+          : (l.officeChecked ? '<div class="field-hint">✓ Checked by SEA ESTATES' + (l.officeCheckedOn ? " on " + esc(l.officeCheckedOn) : "") + ". Only a broker or Super Admin can change this.</div>" : "")) +
         '<div class="field-hint">These show as badges on the public listing, with the PRC number from your profile. Tick only what is true.</div></div>' +
       '<div class="field col-full mt-8"><label>Publication</label><label class="ms-chk"><input type="checkbox" id="ls-published"' + (l.isPublished ? " checked" : "") + '> Publish on the public property website</label><div class="field-hint">Leave unchecked to keep this listing as a private draft.</div></div>' +
       '<div class="field col-full mt-8"><label>Pin on map</label>' +
@@ -14426,10 +14466,13 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
     rec.description = $v("ls-desc");
     rec.photos = $v("ls-photos").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     rec.videoUrl = $v("ls-video");
+    rec.tourUrl = $("#ls-tour") ? $v("ls-tour") : (rec.tourUrl || "");
+    if (rec.tourUrl && !safeHttpsUrl(rec.tourUrl)) { fieldInErr("ls-tour", "The tour link must start with https://"); return; }
     rec.featured = $("#ls-feat") ? $("#ls-feat").checked : false;
     rec.isPublished = $("#ls-published") ? $("#ls-published").checked : false;
     rec.exclusive = $("#ls-exclusive") ? $("#ls-exclusive").checked : rec.exclusive === true;
     rec.docsChecked = $("#ls-docs-checked") ? $("#ls-docs-checked").checked : rec.docsChecked === true;
+    rec.officeChecked = $("#ls-office-checked") ? $("#ls-office-checked").checked : rec.officeChecked === true;
     // The listing function refuses a published pre-selling listing without these (migration 0017).
     if (rec.status === "pre-selling" && rec.isPublished) {
       if (!rec.licenseToSell) { fieldInErr("ls-lts", "A published pre-selling listing needs its DHSUD License to Sell number"); return; }
@@ -14480,6 +14523,17 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
       document.addEventListener("click", e => {
         const fav = e.target.closest("[data-ls-fav]");
         if (fav) { toggleFavorite(fav.getAttribute("data-ls-fav")); return; }
+        const searchDel = e.target.closest("[data-ls-search-del]");
+        if (searchDel) {
+          const sid = searchDel.getAttribute("data-ls-search-del");
+          searchDel.disabled = true;
+          LISTINGS_API.deleteSearch(sid).then(() => {
+            mySavedSearches = (mySavedSearches || []).filter(x => x.id !== sid);
+            const slot = document.getElementById("ls-saved-searches"); if (slot) slot.outerHTML = savedSearchesCard();
+            toast("Saved search removed");
+          }).catch(err => { searchDel.disabled = false; toast("Could not remove the saved search: " + esc(friendlyErr(err.message)), "err"); });
+          return;
+        }
         const open = e.target.closest("[data-ls-open]");
         if (open) { state.listingDetail = open.getAttribute("data-ls-open"); if (state.view === "dashboard") state.view = "listings"; lsStatBump(state.listingDetail, "views"); lsCarIndex = 0; save(); render(); return; }
         const back = e.target.closest("[data-ls-back]");
@@ -14969,7 +15023,9 @@ window.ESREALTY_VG_FLOW.compute(vgModelOpts(), vgEst()),
         docs_checked: rec.docsChecked === true,
         hoa_dues: Number(rec.hoaDues || 0),
         condo_dues: Number(rec.condoDues || 0),
-        video_url: rec.videoUrl || ""
+        video_url: rec.videoUrl || "",
+        tour_url: rec.tourUrl || "",
+        office_checked: rec.officeChecked === true
       }
     };
   }

@@ -24,6 +24,7 @@
 #
 # connect-src: wss://*.supabase.co is realtime (live notifications);
 # nominatim / overpass are address lookup and nearby places in the back office.
+# frame-src: www.youtube-nocookie.com plays a listing's YouTube video on its page (2026-11-09).
 # img-src / frame-src: OpenStreetMap tiles are served from the bare host
 # tile.openstreetmap.org, and the location pop-ups embed www.openstreetmap.org.
 
@@ -32,7 +33,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co https://tradersgag6.github.io https://images.unsplash.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://esrealty-market-scan.vercel.app https://nominatim.openstreetmap.org https://overpass-api.de https://lz4.overpass-api.de https://overpass.kumi.systems; frame-src https://www.google.com https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co https://tradersgag6.github.io https://images.unsplash.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://esrealty-market-scan.vercel.app https://nominatim.openstreetmap.org https://overpass-api.de https://lz4.overpass-api.de https://overpass.kumi.systems; frame-src https://www.google.com https://www.openstreetmap.org https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
 
 # Fingerprinted, immutable-ish assets. The app shell must never be cached stale.
 /index.html

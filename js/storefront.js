@@ -2,6 +2,10 @@
   "use strict";
 
   var API = window.ESREALTY_LISTINGS_API;
+  /* Payment box, chat links, plain-language search, travel time, price trends, drawn map area and
+   * the English / Filipino switch (js/sf_extras.js, loaded before this file). */
+  var X = (typeof window !== "undefined" && window.ESREALTY_SF_EXTRAS) || null;
+  function T(text) { return X ? X.t(text) : text; }
   var host = null;
   var openAuth = function () {};
   var active = false;
@@ -60,6 +64,9 @@
      * Facebook and Google can read them) open the same page as the #/ route. A #/ route wins. */
     var shared = !raw && location.pathname.match(/^\/(listing|agents)\/([^/?#]+)\/?$/);
     if (shared) raw = shared[1] + "/" + shared[2];
+    /* Town pages (/homes/lipa-city, served by the Worker for Google) open that town's search. */
+    var town = !raw && location.pathname.match(/^\/homes\/([a-z]+(?:-[a-z]+)*)\/?$/);
+    if (town) raw = "search?city=" + encodeURIComponent(town[1].replace(/-city$/, "").replace(/^st[oa]-/, "").split("-").map(function (w) { return w === "na" ? w : w.charAt(0).toUpperCase() + w.slice(1); }).join(" "));
     var split = raw.split("?");
     var path = split[0] || "home";
     return { path: path, params: new URLSearchParams(split.slice(1).join("?")) };
@@ -175,7 +182,7 @@
   }
 
   function navLink(item) {
-    return '<a href="' + esc(item.href) + '"' + (item.cta ? ' class="sf-nav-cta"' : "") + (item.est ? ' data-est-services' : "") + '>' + esc(item.label) + '</a>';
+    return '<a href="' + esc(item.href) + '"' + (item.cta ? ' class="sf-nav-cta"' : "") + (item.est ? ' data-est-services' : "") + '>' + esc(T(item.label)) + '</a>';
   }
 
   function navChevron() {
@@ -224,10 +231,18 @@
       dropDown("Services", SERVICES, "", tourLink("sf-drop-cta")) + dropDown("Project B.T", PROJECT_BT) + '</nav>' +
       /* No public Sign in / Create account: visitors need no account. Agents sign
          in from the footer. */
-      '<div class="sf-header-actions">' +
+      '<div class="sf-header-actions">' + langToggle() +
       '<button class="sf-menu-btn" data-sf-menu aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button></div>' +
       '<div class="sf-menu" data-sf-menu-panel>' + navItems().map(navLink).join("") +
       menuGroup("Services", SERVICES, tourLink("sf-nav-cta")) + menuGroup("Project B.T", PROJECT_BT) + '</div></header>';
+  }
+
+  /* English / Filipino for the public pages (the back office has its own switch in Settings). */
+  function langToggle() {
+    if (!X) return "";
+    var fil = X.lang() === "fil";
+    return '<button type="button" class="sf-lang" data-sf-lang aria-label="' + (fil ? "Switch to English" : "Lumipat sa Filipino") + '">' +
+      '<span' + (fil ? "" : ' class="on"') + '>EN</span><span' + (fil ? ' class="on"' : "") + '>FIL</span></button>';
   }
 
   function footer() {
@@ -235,7 +250,7 @@
       '<p>Browse properties, review a value guide, and plan your next step. <span class="sf-copyright">&copy; SEA ESTATES ' + new Date().getFullYear() + '</span><br><small>Serving Batangas province · Independent of the BIR · BIR values are tax references.</small></p>' +
       '<div>' + (siteContact.phone ? '<a href="tel:' + encodeURIComponent(telHref(siteContact.phone)) + '">' + esc(siteContact.phone) + '</a>' : '') +
       (siteContact.email ? '<a href="mailto:' + encodeURIComponent(siteContact.email) + '">' + esc(siteContact.email) + '</a>' : '') +
-      '<a href="#/search">Browse properties</a><a href="#/privacy">Privacy notice</a><button data-sf-auth="signin">Agent sign in</button></div></footer>';
+      '<a href="#/search">Browse properties</a><a href="#/prices">' + esc(T("Batangas price trends")) + '</a><a href="#/privacy">Privacy notice</a><button data-sf-auth="signin">Agent sign in</button></div></footer>';
   }
 
   function shell(content) {
@@ -966,7 +981,7 @@
       var raw = listing[field[0]];
       if (!detail && field[0] === "floor_area_sqm" && !(Number(raw) > 0)) raw = listing.lot_size_sqm;
       if (raw === null || raw === "" || raw === undefined || !Number.isFinite(Number(raw)) || Number(raw) <= 0) return "";
-      return '<span><b>' + esc(Number(raw)) + '</b> ' + esc(field[1]) + '</span>';
+      return '<span><b>' + esc(Number(raw)) + '</b> ' + esc(T(field[1])) + '</span>';
     }).filter(Boolean);
     return facts.length ? facts.join("") : '<span class="sf-facts-pending">Property details available on request</span>';
   }
@@ -977,17 +992,25 @@
     return '<article class="sf-property-card sf-reveal sf-reveal-up ' + (isListView() ? "is-list" : "") + '">' +
       '<button class="sf-card-open" data-sf-listing="' + esc(listing.id) + '" aria-label="Open ' + esc(listing.title) + '"></button>' +
       '<div class="sf-card-media">' + cardMedia(listing) +
-      '<div class="sf-card-tags"><span>' + esc(listing.offer_type === "rent" ? "For rent" : "For sale") + '</span>' + (listing.featured ? '<span class="featured">Featured</span>' : '') + '</div>' +
-      '<button class="sf-save" data-sf-save="' + esc(listing.id) + '" aria-label="Sign in to save">♡</button></div>' +
-      '<div class="sf-card-copy"><p class="sf-card-type">' + esc(typeLabel(listing.property_type)) + '</p><h3>' + esc(price) + '</h3>' +
+      '<div class="sf-card-tags"><span>' + esc(T(listing.offer_type === "rent" ? "For rent" : "For sale")) + '</span>' + (listing.featured ? '<span class="featured">' + esc(T("Featured")) + '</span>' : '') +
+      (isReduced(listing) ? '<span class="reduced">' + esc(T("Reduced")) + '</span>' : '') + '</div>' +
+      '<button class="sf-save" data-sf-save="' + esc(listing.id) + '" aria-label="' + esc(T("Sign in to save")) + '">♡</button></div>' +
+      '<div class="sf-card-copy"><p class="sf-card-type">' + esc(typeLabel(listing.property_type)) + (listing.office_checked ? ' <span class="sf-checked-mini" title="' + esc(T("Checked by SEA ESTATES")) + '">✓ ' + esc(T("Checked by SEA ESTATES")) + '</span>' : '') + '</p><h3>' + esc(price) +
+      (isReduced(listing) ? ' <s class="sf-was">' + esc(money(listing.previous_price, listing.offer_type === "rent" ? "/mo" : "")) + '</s>' : '') + '</h3>' +
       '<h4>' + esc(listing.title) + '</h4><p class="sf-card-location">' + esc(locationText(listing)) + '</p>' +
       '<div class="sf-card-meta">' + propertyFacts(listing, false) + '</div>' + (route().path === "search" ? compareButton(listing) : "") + '</div></article>';
+  }
+
+  /* "Reduced": the listing's price was cut in the last 90 days (migration 0022, previous_price). */
+  function isReduced(listing) {
+    var was = Number(listing && listing.previous_price), now = Number(listing && listing.display_price);
+    return was > 0 && now > 0 && was > now;
   }
 
   function compareButton(listing) {
     compareRecords[String(listing.id)] = listing;
     var selected = compareIds.indexOf(String(listing.id)) >= 0;
-    return '<button type="button" class="sf-compare-toggle" data-sf-compare="' + esc(listing.id) + '" aria-pressed="' + selected + '" aria-label="' + (selected ? 'Remove from comparison: ' : 'Compare: ') + esc(listing.title || "Property") + '">' + (selected ? "✓ Selected for comparison" : "+ Compare") + '</button>';
+    return '<button type="button" class="sf-compare-toggle" data-sf-compare="' + esc(listing.id) + '" aria-pressed="' + selected + '" aria-label="' + (selected ? 'Remove from comparison: ' : 'Compare: ') + esc(listing.title || "Property") + '">' + (selected ? "✓ Selected for comparison" : T("+ Compare")) + '</button>';
   }
 
   function compareTray() {
@@ -1002,7 +1025,7 @@
     document.querySelectorAll("[data-sf-compare]").forEach(function (button) {
       var selected = compareIds.indexOf(button.getAttribute("data-sf-compare")) >= 0;
       button.setAttribute("aria-pressed", String(selected));
-      button.textContent = selected ? "✓ Selected for comparison" : "+ Compare";
+      button.textContent = selected ? "✓ Selected for comparison" : T("+ Compare");
       var record = compareRecords[button.getAttribute("data-sf-compare")];
       button.setAttribute("aria-label", (selected ? "Remove from comparison: " : "Compare: ") + ((record || {}).title || "Property"));
     });
@@ -1063,7 +1086,9 @@
   var FILTERS = [
     /* Keyword search (H2): the listing API matches every word in the title, description,
        address, barangay, city or reference. It sits on its own full-width row. */
-    { name: "q", label: "Keyword", kind: "text", placeholder: "e.g. pool, corner lot, near school", wide: true },
+    /* Plain-language search (2026-11-09): "3 bedroom house in Lipa under 5M" fills the matching
+       filters on submit (js/sf_extras.js parseQuery); any other words stay as keywords. */
+    { name: "q", label: "Keyword", kind: "text", placeholder: "Try: 3 bedroom house in Lipa under 5M", wide: true },
     { name: "city", label: "Location", kind: "text", placeholder: "City or municipality" },
     { name: "state", label: "State / province", kind: "text", placeholder: "e.g. Batangas" },
     { name: "property_type", label: "Property type", kind: "select", options: [
@@ -1077,8 +1102,15 @@
     { name: "max_price", label: "Budget up to", kind: "select", options: [
       ["", "Any price"], ["3000000", "₱3M"], ["5000000", "₱5M"],
       ["10000000", "₱10M"], ["20000000", "₱20M"]
-    ] }
+    ] },
+    { name: "beds", label: "Bedrooms", kind: "select", options: [
+      ["", "Any"], ["1", "1+"], ["2", "2+"], ["3", "3+"], ["4", "4+"]
+    ] },
+    { name: "min_price", label: "Budget from", kind: "hidden" },
+    { name: "checked", label: "Checked", kind: "check", text: "Checked listings only" }
   ];
+  // Filters that sit under "More filters" on a phone.
+  var ADVANCED = ["state", "property_type", "offer_type", "beds", "checked"];
 
   /* Sort and paging are not filters - they change presentation, not the result
      set, so they stay out of the chip list. */
@@ -1091,9 +1123,14 @@
   }
 
   function filterSummary(f) {
+    if (f.def.kind === "check") return T("Checked by SEA ESTATES");
+    if ((f.def.name === "max_price" || f.def.name === "min_price") && /^\d+$/.test(f.value)) {
+      var hitPrice = (f.def.options || []).filter(function (o) { return o[0] === f.value; })[0];
+      return hitPrice ? hitPrice[1] : money(f.value);
+    }
     if (f.def.kind === "select") {
       var hit = f.def.options.filter(function (o) { return o[0] === f.value; })[0];
-      return hit ? hit[1] : f.value;
+      return hit ? T(hit[1]) : f.value;
     }
     return f.value;
   }
@@ -1124,19 +1161,26 @@
   function searchFields(params, compact) {
     var body = FILTERS.map(function (f) {
       var value = params.get(f.name) || "";
-      if (f.kind === "text") {
-        return '<label' + (f.wide ? ' class="sf-search-wide"' : "") + '><span>' + esc(f.label) + '</span><input name="' + esc(f.name) + '" value="' + esc(value) +
-          '" placeholder="' + esc(f.placeholder || "") + '"' + (f.wide ? ' type="search" maxlength="120"' : "") + '></label>';
+      if (f.kind === "hidden") return value ? '<input type="hidden" name="' + esc(f.name) + '" value="' + esc(value) + '">' : "";
+      if (f.kind === "check") {
+        return '<label class="sf-search-check"><input type="checkbox" name="' + esc(f.name) + '" value="true"' + (value === "true" ? " checked" : "") + '><span>' + esc(T(f.text)) + '</span></label>';
       }
-      var opts = f.options.map(function (o) {
-        return '<option value="' + esc(o[0]) + '"' + (value === o[0] ? " selected" : "") + '>' + esc(o[1]) + '</option>';
+      if (f.kind === "text") {
+        return '<label' + (f.wide ? ' class="sf-search-wide"' : "") + '><span>' + esc(T(f.label)) + '</span><input name="' + esc(f.name) + '" value="' + esc(value) +
+          '" placeholder="' + esc(T(f.placeholder || "")) + '"' + (f.wide ? ' type="search" maxlength="120"' : "") + '></label>';
+      }
+      var options = f.options.slice();
+      // A budget typed in words ("under 4.5M") may not be one of the menu's steps: show it anyway.
+      if (value && !options.some(function (o) { return o[0] === value; })) options.push([value, /^\d+$/.test(value) ? money(value) : value]);
+      var opts = options.map(function (o) {
+        return '<option value="' + esc(o[0]) + '"' + (value === o[0] ? " selected" : "") + '>' + esc(T(o[1])) + '</option>';
       }).join("");
-      return '<label><span>' + esc(f.label) + '</span><select name="' + esc(f.name) + '">' + opts + '</select></label>';
+      return '<label><span>' + esc(T(f.label)) + '</span><select name="' + esc(f.name) + '">' + opts + '</select></label>';
     }).join("");
-    var advancedCount = ["state", "property_type", "offer_type"].filter(function (name) { return !!params.get(name); }).length;
+    var advancedCount = ADVANCED.filter(function (name) { return !!params.get(name); }).length;
     return '<form class="sf-search-form' + (compact ? " compact" : "") + '" data-sf-search>' + body +
-      '<button type="submit">Search properties</button>' +
-      '<details class="sf-search-more" data-sf-more-filters hidden><summary>More filters' +
+      '<button type="submit">' + esc(T("Search properties")) + '</button>' +
+      '<details class="sf-search-more" data-sf-more-filters hidden><summary>' + esc(T("More filters")) +
       (advancedCount ? ' <span class="sf-search-more-count">(' + advancedCount + ' applied)</span>' : "") +
       '</summary><div class="sf-search-more-fields"></div></details></form>';
   }
@@ -1150,15 +1194,18 @@
       var more = form.querySelector("[data-sf-more-filters]");
       if (!more || form._sfFilterNarrow === narrow) return;
       var focused = document.activeElement;
-      var advanced = ["state", "property_type", "offer_type"].map(function (name) { return form.querySelector('[name="' + name + '"]'); }).filter(Boolean);
+      var advanced = ADVANCED.map(function (name) { return form.querySelector('[name="' + name + '"]'); }).filter(Boolean);
       if (narrow) {
         var fields = more.querySelector(".sf-search-more-fields");
         advanced.forEach(function (control) { fields.appendChild(control.closest("label")); });
         more.hidden = false;
-        more.open = advanced.some(function (control) { return !!control.value || control === focused; });
+        more.open = advanced.some(function (control) { return (control.type === "checkbox" ? control.checked : !!control.value) || control === focused; });
       } else {
         var budget = form.querySelector('[name="max_price"]').closest("label");
-        advanced.forEach(function (control) { form.insertBefore(control.closest("label"), budget); });
+        var submit = form.querySelector('button[type="submit"]');
+        // On a wide screen the first three sit before the budget, as before; bedrooms and the
+        // checked box follow it.
+        advanced.forEach(function (control) { form.insertBefore(control.closest("label"), ["beds", "checked"].indexOf(control.name) >= 0 ? submit : budget); });
         more.hidden = true;
         if (focused && more.contains(focused) && advanced.length) focused = advanced[0];
       }
@@ -1173,13 +1220,13 @@
   function activeFilterChips(params) {
     var active = activeFilters(params);
     if (!active.length) return "";
-    return '<div class="sf-active-filters"><span class="sf-active-filters-label">Filtered by</span>' +
+    return '<div class="sf-active-filters"><span class="sf-active-filters-label">' + esc(T("Filtered by")) + '</span>' +
       active.map(function (f) {
         return '<a class="sf-chip" href="' + esc(clearLink([f.def.name])) + '" data-sf-clear-filter="' + esc(f.def.name) + '"' +
-          ' aria-label="Remove filter ' + esc(f.def.label) + ': ' + esc(filterSummary(f)) + '">' + esc(f.def.label) + ': ' + esc(filterSummary(f)) +
+          ' aria-label="Remove filter ' + esc(f.def.label) + ': ' + esc(filterSummary(f)) + '">' + esc(T(f.def.label)) + ': ' + esc(filterSummary(f)) +
           '<b aria-hidden="true">&times;</b></a>';
       }).join("") +
-      '<a class="sf-chip-clear" href="' + esc(clearLink(active.map(function (f) { return f.def.name; }))) + '">Clear all</a>' +
+      '<a class="sf-chip-clear" href="' + esc(clearLink(active.map(function (f) { return f.def.name; }))) + '">' + esc(T("Clear all")) + '</a>' +
       '</div>';
   }
 
@@ -1213,6 +1260,7 @@
   function trustBadges(listing) {
     var d = listing.details || {};
     var badges = [];
+    if (d.office_checked) badges.push('<span class="sf-trust-badge sf-trust-office">✓ ' + esc(T("Checked by SEA ESTATES")) + (d.office_checked_on ? ' <small>(' + esc(d.office_checked_on) + ')</small>' : '') + '</span>');
     if (d.exclusive) badges.push('<span class="sf-trust-badge">Exclusive with SEA ESTATES</span>');
     if (d.docs_checked) badges.push('<span class="sf-trust-badge">Title and tax declaration seen by the agent</span>');
     // The name links to the agent's page while that page is public (agent websites, Phase 2).
@@ -1402,17 +1450,18 @@
       : emptyResults(params);
     var page = Number(result.page || 1), pages = Number(result.total_pages || 0);
     var nothingListed = !viewState.loading && !rows.length && !activeFilters(params).length && !compareIds.length;
-    var pager = pages > 1 ? '<div class="sf-pager"><button data-sf-page="' + (page - 1) + '"' + (page <= 1 ? " disabled" : "") + '>Previous</button><span>Page ' + page + ' of ' + pages + '</span><button data-sf-page="' + (page + 1) + '"' + (page >= pages ? " disabled" : "") + '>Next</button></div>' : "";
-     return shell('<section class="sf-search-page"><div class="sf-search-intro"><p class="sf-eyebrow">PROPERTY SEARCH</p><h1>Find a property that fits.</h1><p>Browse the properties SEA ESTATES has listed for sale or rent. The free Value Guide covers Batangas province.</p></div>' +
-      '<div class="sf-filter-stick">' + searchFields(params, true) + '</div>' + activeFilterChips(params) +
+    var pager = pages > 1 ? '<div class="sf-pager"><button data-sf-page="' + (page - 1) + '"' + (page <= 1 ? " disabled" : "") + '>' + esc(T("Previous")) + '</button><span>' + (X && X.lang() === "fil" ? "Pahina " + page + " sa " + pages : "Page " + page + " of " + pages) + '</span><button data-sf-page="' + (page + 1) + '"' + (page >= pages ? " disabled" : "") + '>' + esc(T("Next")) + '</button></div>' : "";
+     return shell('<section class="sf-search-page"><div class="sf-search-intro"><p class="sf-eyebrow">' + esc(T("PROPERTY SEARCH")) + '</p><h1>' + esc(T("Find a property that fits.")) + '</h1><p>' + esc(T("Browse the properties SEA ESTATES has listed for sale or rent. The free Value Guide covers Batangas province.")) +
+      ' <a href="#/prices">' + esc(T("Batangas price trends")) + ' →</a></p></div>' +
+      '<div class="sf-filter-stick">' + searchFields(params, true) + '</div>' + understoodNote() + activeFilterChips(params) + saveSearchBox(params) +
       /* With nothing listed, compare, sort and view switches have nothing to act
          on: the empty state alone explains the page. */
       (nothingListed ? '' : compareTray()) + '<p class="sf-compare-status" role="status" aria-live="polite" data-sf-compare-status>' + esc(compareMessage) + '</p>' +
-      (nothingListed ? '' : '<div class="sf-results-bar"><p><b>' + esc(total) + '</b> ' + (Number(total) === 1 ? "property" : "properties") + '</p>' +
-      '<div><label class="sf-visually-hidden" for="sf-sort">Sort properties</label><select id="sf-sort" data-sf-sort><option value="date_desc"' + (params.get("sort") === "date_desc" || !params.get("sort") ? " selected" : "") + '>Newest</option><option value="price_asc"' + (params.get("sort") === "price_asc" ? " selected" : "") + '>Price: Low to high</option><option value="price_desc"' + (params.get("sort") === "price_desc" ? " selected" : "") + '>Price: High to low</option></select>' +
-      '<button data-sf-mode="grid" aria-pressed="' + (viewState.mode === "grid") + '" class="' + (viewState.mode === "grid" ? "active" : "") + '">Grid</button><button data-sf-mode="list" aria-pressed="' + (viewState.mode === "list") + '" class="' + (viewState.mode === "list" ? "active" : "") + '">List</button><button data-sf-mode="map" aria-pressed="' + (viewState.mode === "map") + '" class="' + (viewState.mode === "map" ? "active" : "") + '">Map</button></div></div>') +
+      (nothingListed ? '' : '<div class="sf-results-bar"><p><b>' + esc(total) + '</b> ' + esc(T(Number(total) === 1 ? "property" : "properties")) + '</p>' +
+      '<div><label class="sf-visually-hidden" for="sf-sort">Sort properties</label><select id="sf-sort" data-sf-sort><option value="date_desc"' + (params.get("sort") === "date_desc" || !params.get("sort") ? " selected" : "") + '>' + esc(T("Newest")) + '</option><option value="price_asc"' + (params.get("sort") === "price_asc" ? " selected" : "") + '>' + esc(T("Price: Low to high")) + '</option><option value="price_desc"' + (params.get("sort") === "price_desc" ? " selected" : "") + '>' + esc(T("Price: High to low")) + '</option></select>' +
+      '<button data-sf-mode="grid" aria-pressed="' + (viewState.mode === "grid") + '" class="' + (viewState.mode === "grid" ? "active" : "") + '">' + esc(T("Grid")) + '</button><button data-sf-mode="list" aria-pressed="' + (viewState.mode === "list") + '" class="' + (viewState.mode === "list" ? "active" : "") + '">' + esc(T("List")) + '</button><button data-sf-mode="map" aria-pressed="' + (viewState.mode === "map") + '" class="' + (viewState.mode === "map" ? "active" : "") + '">' + esc(T("Map")) + '</button></div></div>') +
       (viewState.mode === "map"
-        ? '<div class="sf-map-wrap"><div id="sf-map"></div><p class="sf-map-hint" id="sf-map-hint">Loading map…</p></div>'
+        ? '<div class="sf-map-wrap"><div class="sf-draw-bar" data-sf-draw-bar>' + drawBar() + '</div><div id="sf-map"></div><p class="sf-map-hint" id="sf-map-hint">Loading map…</p><div class="sf-property-grid sf-area-results" data-sf-area-results></div></div>'
         : '<div class="sf-property-grid ' + (viewState.mode === "list" ? "list" : "") + '">' + cards + '</div>') + pager + '</section>');
   }
   var sfMapRef = null;
@@ -1444,6 +1493,7 @@
       if (!el || !window.L) return;
       var L = window.L;
       if (sfMapRef) { try { sfMapRef.remove(); } catch (e) {} sfMapRef = null; }
+      drawState.markers = []; drawState.layer = null; drawState.line = null;
       sfMapRef = L.map(el, { scrollWheelZoom: true });
       L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors" }).addTo(sfMapRef);
       var items = (viewState.result && viewState.result.data) || [];
@@ -1458,10 +1508,18 @@
         var icon = L.divIcon({ className: "", html: pin, iconSize: null });
         var mk = L.marker([la, ln], { icon: icon }).addTo(sfMapRef);
         mk.bindPopup(sfPopupHtml(l));
+        drawState.markers.push({ id: String(l.id), marker: mk });
+      });
+      sfMapRef.on("click", function (e) {
+        if (!drawState.drawing) return;
+        drawState.points.push([e.latlng.lat, e.latlng.lng]);
+        refreshDraw();
       });
       var hint = document.getElementById("sf-map-hint");
       if (hint) { var missing = items.length - pts.length; hint.textContent = pts.length + " mapped on map" + (missing ? " · " + missing + " listing" + (missing === 1 ? "" : "s") + " without location yet" : ""); }
-      if (pts.length) sfMapRef.fitBounds(pts, { padding: [30, 30] }); else sfMapRef.setView([12.8797, 121.774], 5);
+      if (drawState.polygon) sfMapRef.fitBounds(drawState.polygon, { padding: [30, 30] });
+      else if (pts.length) sfMapRef.fitBounds(pts, { padding: [30, 30] }); else sfMapRef.setView([12.8797, 121.774], 5);
+      refreshDraw();
     }
   }
   function sfPopupHtml(l) {
@@ -1470,6 +1528,255 @@
       + (l.city ? ' · ' + esc(l.city) : '')
        + '<br><a class="btn btn-primary btn-sm" style="margin-top:6px;display:inline-block" href="#/listing/' + encodeURIComponent(l.id) + '">View details</a>' + compareButton(l) + '</div>';
   }
+  /* ------------------------------------------------------------------
+   * Website upgrades (2026-11-09): plain-language search note, saved
+   * searches, drawn map area, payment box, chat buttons, video / 360
+   * tour, price history, travel time and the Batangas price page.
+   * ------------------------------------------------------------------ */
+  var understood = { hash: "", labels: [] };
+  function understoodNote() {
+    if (!understood.labels.length || understood.hash !== location.hash) return "";
+    return '<p class="sf-understood" role="status">' + esc(T("We read this as")) + ': <b>' + understood.labels.map(esc).join(" · ") + '</b></p>';
+  }
+
+  /* Saved searches: the filters in the address, saved to the person's account (listing function,
+   * migration 0022). A visitor who is not signed in is asked to sign in first; the app saves the
+   * search right after (js/app.js completePostAuthIntent). */
+  var SAVE_KEYS = ["q", "city", "state", "property_type", "offer_type", "max_price", "min_price", "beds", "checked"];
+  function searchToSave(params) {
+    var filters = {};
+    SAVE_KEYS.forEach(function (k) { var v = params.get(k); if (v) filters[k] = v; });
+    return filters;
+  }
+  function searchLabel(params) {
+    return activeFilters(params).map(function (f) { return filterSummary(f); }).join(", ").slice(0, 200);
+  }
+  function saveSearchBox(params) {
+    if (!Object.keys(searchToSave(params)).length) return "";
+    return '<div class="sf-save-search"><div><b>' + esc(T("Save this search")) + '</b><span>' + esc(T("Get an alert when a new property matches.")) + '</span></div>' +
+      '<button type="button" class="sf-outline-btn" data-sf-save-search>🔔 ' + esc(T("Save this search")) + '</button>' +
+      '<p class="sf-form-status" role="status" aria-live="polite" data-sf-save-search-status></p></div>';
+  }
+  function saveSearch(button) {
+    var params = route().params;
+    var payload = { filters: searchToSave(params), label: searchLabel(params) };
+    var status = document.querySelector("[data-sf-save-search-status]");
+    var askSignIn = function () {
+      try { sessionStorage.setItem("esrealty_post_auth_search", JSON.stringify(payload)); } catch (e) {}
+      openAuth("signin");
+    };
+    if (!API || !API.saveSearch) { askSignIn(); return; }
+    button.disabled = true;
+    if (status) { status.textContent = "Saving…"; status.className = "sf-form-status"; }
+    API.saveSearch(payload).then(function (result) {
+      if (status) { status.textContent = result && result.already ? "This search is already saved. You will get an alert when a new property matches." : "Saved. You will get an alert in the app (and on your phone if alerts are on) when a new property matches."; status.className = "sf-form-status success"; }
+    }).catch(function (error) {
+      if (error && (error.status === 401 || error.status === 403)) { if (status) status.textContent = ""; askSignIn(); return; }
+      if (status) { status.textContent = (error && error.message) || "Could not save the search."; status.className = "sf-form-status error"; }
+    }).finally(function () { button.disabled = false; });
+  }
+
+  /* Draw an area on the search map: tap the corners, press Done, and only the properties inside
+   * stay lit; the cards for them show under the map. */
+  var drawState = { drawing: false, points: [], polygon: null, layer: null, line: null, markers: [] };
+  function drawBar() {
+    if (drawState.drawing) {
+      return '<p>' + esc(T("Tap the map to mark the corners of the area, then press Done.")) + ' (' + drawState.points.length + ')</p>' +
+        '<button type="button" class="sf-primary-btn" data-sf-draw-done' + (drawState.points.length < 3 ? " disabled" : "") + '>' + esc(T("Done")) + '</button>' +
+        '<button type="button" class="sf-outline-btn" data-sf-draw-clear>' + esc(T("Clear area")) + '</button>';
+    }
+    if (drawState.polygon) {
+      var inside = areaListings().length;
+      return '<p><b>' + inside + '</b> ' + (inside === 1 ? "property" : "properties") + ' in your area.</p>' +
+        '<button type="button" class="sf-outline-btn" data-sf-draw>' + esc(T("Draw an area")) + '</button>' +
+        '<button type="button" class="sf-outline-btn" data-sf-draw-clear>' + esc(T("Clear area")) + '</button>';
+    }
+    return '<button type="button" class="sf-outline-btn" data-sf-draw>✎ ' + esc(T("Draw an area")) + '</button>';
+  }
+  function areaListings() {
+    var items = (viewState.result && viewState.result.data) || [];
+    if (!drawState.polygon || !X) return [];
+    return publicListings({ data: items }).filter(function (l) {
+      var la = Number(l.latitude), ln = Number(l.longitude);
+      return isFinite(la) && isFinite(ln) && (la || ln) && X.inPolygon(la, ln, drawState.polygon);
+    });
+  }
+  function refreshDraw() {
+    var bar = document.querySelector("[data-sf-draw-bar]");
+    if (bar) bar.innerHTML = drawBar();
+    if (!sfMapRef || !window.L) return;
+    var L = window.L;
+    if (drawState.layer) { try { drawState.layer.remove(); } catch (e) {} drawState.layer = null; }
+    if (drawState.line) { try { drawState.line.remove(); } catch (e) {} drawState.line = null; }
+    if (drawState.drawing && drawState.points.length) drawState.line = L.polyline(drawState.points, { color: "#8a5a2b", dashArray: "6 6" }).addTo(sfMapRef);
+    if (drawState.polygon) drawState.layer = L.polygon(drawState.polygon, { color: "#8a5a2b", weight: 2, fillOpacity: 0.08 }).addTo(sfMapRef);
+    var inside = areaListings().map(function (l) { return String(l.id); });
+    drawState.markers.forEach(function (m) {
+      var el = m.marker.getElement && m.marker.getElement();
+      if (el) el.style.opacity = !drawState.polygon || inside.indexOf(m.id) >= 0 ? "1" : "0.25";
+    });
+    var results = document.querySelector("[data-sf-area-results]");
+    if (results) results.innerHTML = drawState.polygon ? areaListings().map(card).join("") : "";
+    var container = sfMapRef.getContainer && sfMapRef.getContainer();
+    if (container) container.classList.toggle("sf-map-drawing", drawState.drawing);
+  }
+
+  /* Payment box on a for-sale listing (example rates, js/sf_extras.js). */
+  function paymentBox(listing) {
+    var price = Number(listing.price || listing.display_price || 0);
+    if (!X || listing.offer_type === "rent" || !(price > 0)) return "";
+    var accepted = (listing.details && listing.details.financing) || [];
+    var first = X.LENDERS.filter(function (l) { return accepted.indexOf(l.id) >= 0; })[0] || X.LENDERS[0];
+    var lenders = X.LENDERS.map(function (l) {
+      return '<button type="button" data-sf-pay-lender="' + esc(l.id) + '" aria-pressed="' + (l.id === first.id) + '"' + (l.id === first.id ? ' class="active"' : "") + '>' + esc(l.label) +
+        (accepted.indexOf(l.id) >= 0 ? '<small>✓ accepted</small>' : "") + '</button>';
+    }).join("");
+    return '<section class="sf-pay" data-sf-pay data-price="' + esc(price) + '" data-lender="' + esc(first.id) + '"><h2>' + esc(T("Estimate your monthly payment")) + '</h2>' +
+      '<div class="sf-pay-lenders" role="group" aria-label="' + esc(T("Lender")) + '">' + lenders + '</div>' +
+      '<div class="sf-pay-fields"><label>' + esc(T("Down payment")) + ' (%)<input type="number" name="down" min="0" max="100" step="1" inputmode="decimal" value="' + esc(first.downPct) + '"></label>' +
+      '<label>' + esc(T("Interest rate (% a year)")) + '<input type="number" name="rate" min="0" max="40" step="0.05" inputmode="decimal" value="' + esc(first.rate) + '"></label>' +
+      '<label>' + esc(T("Years to pay")) + '<input type="number" name="years" min="1" max="30" step="1" inputmode="numeric" value="' + esc(first.years) + '"></label></div>' +
+      '<div class="sf-pay-out" data-sf-pay-out aria-live="polite">' + paymentOut(price, first.downPct, first.rate, first.years, first.id) + '</div>' +
+      '<p class="sf-pay-note">' + esc(T("Example rates only. Each lender sets its own rate and approves the loan. Lenders usually allow about 35% of gross monthly income for the payment.")) + '</p>' +
+      '<a class="sf-primary-btn" href="#/property-value?service=finance&go=form">' + esc(T("Get pre-qualified")) + '</a></section>';
+  }
+  function paymentOut(price, down, rate, years, lender) {
+    var r = X.payment(price, down, rate, years, lender);
+    return '<div><span>' + esc(T("About per month")) + '</span><b>' + esc(money(r.monthly)) + '</b></div>' +
+      '<div><span>' + esc(T("Loan amount")) + '</span><b>' + esc(money(r.loan)) + '</b></div>' +
+      '<div><span>' + esc(T("Down payment")) + '</span><b>' + esc(money(r.downPayment)) + '</b></div>' +
+      '<div><span>' + esc(T("Monthly income usually needed")) + '</span><b>' + esc(money(r.incomeNeeded)) + '</b></div>' +
+      (r.capped ? '<p class="sf-pay-cap">' + esc(T("Pag-IBIG lends up to ₱6,000,000, so the rest is added to the down payment.")) + '</p>' : "");
+  }
+  function updatePayment(box, lenderId) {
+    if (!box || !X) return;
+    if (lenderId) {
+      var preset = X.LENDERS.filter(function (l) { return l.id === lenderId; })[0];
+      if (preset) {
+        box.setAttribute("data-lender", preset.id);
+        box.querySelector('[name="down"]').value = preset.downPct;
+        box.querySelector('[name="rate"]').value = preset.rate;
+        box.querySelector('[name="years"]').value = preset.years;
+        Array.prototype.forEach.call(box.querySelectorAll("[data-sf-pay-lender]"), function (b) {
+          var on = b.getAttribute("data-sf-pay-lender") === preset.id;
+          b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on));
+        });
+      }
+    }
+    var num = function (name, min, max, fallback) { var n = Number(box.querySelector('[name="' + name + '"]').value); return isFinite(n) && n >= min && n <= max ? n : fallback; };
+    var out = box.querySelector("[data-sf-pay-out]");
+    if (out) out.innerHTML = paymentOut(Number(box.getAttribute("data-price")), num("down", 0, 100, 20), num("rate", 0, 40, 7), num("years", 1, 30, 20), box.getAttribute("data-lender"));
+  }
+
+  /* Viber and Messenger: the office's Viber number (Settings > Website contact; the phone when no
+   * Viber number is set) and its Facebook page. */
+  function chatButtons() {
+    if (!X) return "";
+    var viber = X.viberLink(siteContact.viber || siteContact.phone);
+    var messenger = X.messengerLink(siteContact.messenger || siteContact.facebook);
+    if (!viber && !messenger) return "";
+    return '<div class="sf-chat"><p>' + esc(T("Chat with us")) + '</p>' +
+      (viber ? '<a class="sf-chat-btn viber" href="' + esc(viber) + '">' + esc(T("Chat on Viber")) + '</a>' : "") +
+      (messenger ? '<a class="sf-chat-btn messenger" href="' + esc(messenger) + '" target="_blank" rel="noopener">' + esc(T("Chat on Messenger")) + '</a>' : "") + '</div>';
+  }
+
+  /* Video and 360 tour (links saved with the listing; HTTPS only). A YouTube video plays on the
+   * page; anything else opens in a new tab. */
+  function youtubeId(url) {
+    var m = String(url || "").match(/^https:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+    return m ? m[1] : "";
+  }
+  function mediaSection(listing) {
+    var d = listing.details || {};
+    var video = safeImage(d.video_url), tour = safeImage(d.tour_url);
+    if (!video && !tour) return "";
+    var yt = youtubeId(video);
+    return '<section class="sf-media"><h2>' + esc(T("Video and tour")) + '</h2>' +
+      (yt ? '<div class="sf-video"><iframe src="https://www.youtube-nocookie.com/embed/' + esc(yt) + '" title="' + esc(listing.title) + ' video" loading="lazy" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>' : "") +
+      '<div class="sf-media-links">' + (video && !yt ? '<a class="sf-outline-btn" href="' + esc(video) + '" target="_blank" rel="noopener">▶ ' + esc(T("Watch the video")) + '</a>' : "") +
+      (tour ? '<a class="sf-outline-btn" href="' + esc(tour) + '" target="_blank" rel="noopener">⟳ ' + esc(T("Open the 360° tour")) + '</a>' : "") + '</div></section>';
+  }
+
+  function priceHistory(listing) {
+    var rows = ((listing.details && listing.details.price_history) || []).filter(function (r) { return r && Number(r.from) > 0 && Number(r.to) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(r.on || ""); });
+    if (!rows.length) return "";
+    var unit = listing.offer_type === "rent" ? "/mo" : "";
+    return '<section class="sf-price-history"><h2>' + esc(T("Price history")) + '</h2><ul>' + rows.map(function (r) {
+      var down = Number(r.to) < Number(r.from);
+      return '<li><span>' + esc(r.on) + '</span><span>' + esc(money(r.from, unit)) + ' → <b>' + esc(money(r.to, unit)) + '</b></span><span class="' + (down ? "down" : "up") + '">' +
+        (down ? "▼ " : "▲ ") + Math.abs(Math.round((Number(r.to) / Number(r.from) - 1) * 100)) + '%</span></li>';
+    }).join("") + '</ul></section>';
+  }
+
+  /* Travel time from the listing to a few common places and to places the visitor adds (kept in
+   * this browser only). */
+  var PLACES_KEY = "esrealty_sf_places";
+  function myPlaces() {
+    try { var v = JSON.parse(localStorage.getItem(PLACES_KEY) || "[]"); return Array.isArray(v) ? v.filter(function (p) { return p && isFinite(p.lat) && isFinite(p.lng) && typeof p.label === "string"; }).slice(0, 5) : []; } catch (e) { return []; }
+  }
+  function travelRows(listing) {
+    var la = Number(listing.latitude), ln = Number(listing.longitude);
+    var fil = X.lang() === "fil";
+    return myPlaces().map(function (p) { return Object.assign({ mine: true }, p); }).concat(X.PLACES).map(function (p) {
+      var t = X.travel(la, ln, p.lat, p.lng);
+      if (!t) return "";
+      return '<li><span>' + esc(p.label) + (p.mine ? ' <button type="button" class="sf-link-btn" data-sf-place-remove="' + esc(p.label) + '" aria-label="Remove ' + esc(p.label) + '">×</button>' : "") + '</span><b>' + esc(X.minutesLabel(t.minutes, fil)) + '</b><small>' + esc(t.roadKm) + ' km</small></li>';
+    }).join("");
+  }
+  function travelSection(listing) {
+    if (!X || listing.latitude == null || listing.longitude == null || !isFinite(Number(listing.latitude)) || (!Number(listing.latitude) && !Number(listing.longitude))) return "";
+    return '<section class="sf-travel" data-sf-travel><h2>' + esc(T("Travel time")) + '</h2><ul data-sf-travel-list>' + travelRows(listing) + '</ul>' +
+      '<form class="sf-travel-add" data-sf-place-form novalidate><label><span>' + esc(T("Add a place")) + '</span><input name="place" maxlength="120" placeholder="' + esc(T("e.g. your office, school or SM")) + '"></label><button type="submit" class="sf-outline-btn">' + esc(T("Find")) + '</button><p class="sf-form-status" role="status" aria-live="polite"></p></form>' +
+      '<p class="sf-travel-note">' + esc(T("About, by car, from the straight-line distance. Traffic and the road you take can change it.")) + '</p></section>';
+  }
+  function addPlace(form) {
+    var input = form.querySelector('[name="place"]'), status = form.querySelector(".sf-form-status");
+    var q = String(input.value || "").trim();
+    if (q.length < 3) { status.textContent = "Type a place name, for example SM City Lipa."; return; }
+    status.textContent = "Looking it up…";
+    fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ph&q=" + encodeURIComponent(q), { headers: { Accept: "application/json" } })
+      .then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
+      .then(function (rows) {
+        var hit = rows && rows[0];
+        if (!hit) { status.textContent = "Could not find that place. Try adding the town, for example \"SM City Lipa\"."; return; }
+        var places = myPlaces().filter(function (p) { return p.label.toLowerCase() !== q.toLowerCase(); });
+        places.unshift({ label: q.slice(0, 60), lat: Number(hit.lat), lng: Number(hit.lon) });
+        try { localStorage.setItem(PLACES_KEY, JSON.stringify(places.slice(0, 5))); } catch (e) {}
+        input.value = ""; status.textContent = "";
+        refreshTravel();
+      })
+      .catch(function () { status.textContent = "The place search is not available right now. Try again in a moment."; });
+  }
+  function refreshTravel() {
+    var list = document.querySelector("[data-sf-travel-list]");
+    var listing = viewState.result && viewState.result.data;
+    if (list && listing) list.innerHTML = travelRows(listing);
+  }
+
+  /* Batangas price trends (#/prices): monthly medians from bank and Pag-IBIG listings in
+   * data/comparables/history.json, written by the monthly comparables job. */
+  function pricesPage() {
+    var fil = X && X.lang() === "fil";
+    var data = viewState.result && viewState.result.prices;
+    var intro = '<section class="sf-prices"><p class="sf-eyebrow">' + esc(T("Batangas price trends")).toUpperCase() + '</p><h1>' + (fil ? "Presyo ng property sa bawat bayan." : "What property costs in each Batangas town.") + '</h1>' +
+      '<p>' + (fil
+        ? "Median na presyo bawat sqm ng lote, mula sa mga property na ibinebenta ng bangko at ng Pag-IBIG sa Batangas. Ina-update bawat buwan. Hindi ito presyo ng natapos na bentahan, at karaniwang mas mababa ang presyo ng bangko kaysa sa resale."
+        : "Median price per square metre of lot, from the properties banks and Pag-IBIG are selling in Batangas. Updated every month. These are asking and minimum-bid prices, not completed sales, and bank prices usually sit below resale.") + '</p>';
+    if (viewState.loading) return shell(intro + '<p role="status">Loading prices…</p></section>');
+    if (!data || !data.rows.length) return shell(intro + '<p>' + esc(viewState.error || "Prices are not available right now.") + '</p></section>');
+    var pct = function (c) { return c == null ? '<span class="sf-muted">—</span>' : '<span class="' + (c < 0 ? "down" : c > 0 ? "up" : "") + '">' + (c > 0 ? "+" : "") + Math.round(c * 1000) / 10 + '%</span>'; };
+    var cell = function (k) { return k ? '<b>' + esc(money(k.median)) + '</b><small>' + esc(k.n) + (fil ? " presyo" : k.n === 1 ? " price" : " prices") + '</small>' : '<span class="sf-muted">—</span>'; };
+    var rows = data.rows.map(function (r) {
+      var town = X.titleTown(r.town), city = town.replace(/ City$/, "").replace(/^Sto\. /, "");
+      return '<tr><th scope="row">' + esc(town) + '</th><td>' + cell(r.built) + '</td><td>' + pct(r.built && r.built.change) + '</td><td>' + cell(r.vacant) + '</td><td>' + pct(r.vacant && r.vacant.change) + '</td>' +
+        '<td><a href="#/search?city=' + encodeURIComponent(city) + '">' + (fil ? "Tingnan" : "Listings") + ' →</a></td></tr>';
+    }).join("");
+    return shell(intro + '<p class="sf-prices-asof">' + (fil ? "Buwan: " : "Month: ") + esc(data.month) + (data.previous ? (fil ? " · ikinumpara sa " : " · change compared with ") + esc(data.previous) : "") + '</p>' +
+      '<div class="sf-prices-wrap"><table class="sf-prices-table"><thead><tr><th scope="col">' + (fil ? "Bayan" : "Town") + '</th><th scope="col">' + (fil ? "Bahay at lupa, ₱/sqm ng lote" : "House & lot, ₱ per sqm of lot") + '</th><th scope="col">' + (fil ? "Pagbabago" : "Change") + '</th><th scope="col">' + (fil ? "Bakanteng lote, ₱/sqm" : "Vacant lot, ₱ per sqm") + '</th><th scope="col">' + (fil ? "Pagbabago" : "Change") + '</th><th scope="col"><span class="sf-visually-hidden">Listings</span></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="sf-prices-note">' + (fil ? "Ipinapakita lang ang pagbabago kapag may 10 o higit pang presyo sa parehong buwan." : "A change shows only when both months have 10 or more prices; with fewer, one or two properties can swing the median.") + '</p>' +
+      '<div class="sf-empty-actions"><a class="sf-primary-btn" href="#/home" data-est-services>' + (fil ? "Alamin ang halaga ng property mo" : "Check your own property's value") + '</a><a class="sf-outline-btn" href="#/search">' + esc(T("Search properties")) + '</a></div></section>');
+  }
+
   function detailPage(listing) {
     if (viewState.loading) return shell('<section class="sf-detail"><div class="sf-detail-loading">Loading property…</div></section>');
     if (!listing) return shell('<section class="sf-detail">' + empty(viewState.error || "This listing is unavailable.") + '</section>');
@@ -1480,18 +1787,20 @@
       ld.textContent = JSON.stringify({ "@context": "https://schema.org", "@type": "RealEstateListing", name: listing.title, description: (listing.description || "").slice(0, 300), image: images.filter(function (x) { return /^https:/.test(x); }).slice(0, 5), address: { "@type": "PostalAddress", addressLocality: listing.city, addressRegion: listing.province, addressCountry: "PH" }, offers: { "@type": "Offer", priceCurrency: "PHP", price: Number(listing.price || 0), availability: "https://schema.org/InStock" } });
       document.head.appendChild(ld);
     } catch (ldErr) {}
-    return shell('<section class="sf-detail"><button class="sf-back" data-sf-back>← Back to properties</button>' + compareTray() + '<p role="status" aria-live="polite" data-sf-compare-status></p>' + compareButton(listing) + gallery +
+    return shell('<section class="sf-detail"><button class="sf-back" data-sf-back>' + esc(T("← Back to properties")) + '</button>' + compareTray() + '<p role="status" aria-live="polite" data-sf-compare-status></p>' + compareButton(listing) + gallery +
       '<div class="sf-detail-layout"><article class="sf-detail-copy"><p class="sf-eyebrow">' + esc(typeLabel(listing.property_type)) + ' · ' + esc(listing.offer_type === "rent" ? "FOR RENT" : "FOR SALE") + '</p>' +
       '<h1>' + esc(listing.title) + '</h1><p class="sf-detail-location">' + esc(locationText(listing)) + '</p><div class="sf-key-stats">' + propertyFacts(listing, true) + '</div>' +
-      '<section><h2>About this property</h2><p class="sf-description">' + esc(listing.description || "Contact the listing agent for complete property information.") + '</p></section>' +
-      trustBadges(listing) +
+      '<section><h2>' + esc(T("About this property")) + '</h2><p class="sf-description">' + esc(listing.description || "Contact the listing agent for complete property information.") + '</p></section>' +
+      trustBadges(listing) + mediaSection(listing) + paymentBox(listing) + priceHistory(listing) +
       (listing.details && listing.details.license_to_sell ? '<section class="sf-dhsud"><span class="sf-badge">' + esc(listing.details.license_to_sell) + '</span> DHSUD License to Sell number for this property' +
         (/^\d{4}-\d{2}-\d{2}$/.test(listing.details.license_to_sell_until || "") ? ', valid until ' + esc(listing.details.license_to_sell_until) : '') + '.</section>' : '') +
-      '<section><h2>Location</h2><div class="sf-detail-map" id="sf-detail-map"><span>' + esc(locationText(listing)) + '</span></div></section></article>' +
-      '<aside class="sf-contact-card"><p>Listed at</p><h2>' + esc(money(listing.display_price, listing.offer_type === "rent" ? "/mo" : "")) + '</h2>' +
-      '<button class="sf-outline-btn" data-sf-save="' + esc(listing.id) + '">♡ Save this property</button><form novalidate data-sf-inquiry="' + esc(listing.id) + '"' + (listing.offer_type === "rent" ? ' data-sf-rent="1"' : "") + '><h3>Request more information</h3><label>Full name<input name="full_name" required maxlength="160"></label><label>Email<input type="email" name="email" maxlength="254"></label><label>Phone<input name="phone" required maxlength="50"></label>' +
+      '<section><h2>' + esc(T("Location")) + '</h2><div class="sf-detail-map" id="sf-detail-map"><span>' + esc(locationText(listing)) + '</span></div></section>' + travelSection(listing) + '</article>' +
+      '<aside class="sf-contact-card"><p>' + esc(T("Listed at")) + '</p><h2>' + esc(money(listing.display_price, listing.offer_type === "rent" ? "/mo" : "")) + '</h2>' +
+      (isReduced(listing) ? '<p class="sf-reduced-note"><span class="sf-tag-reduced">' + esc(T("Reduced")) + '</span> <s>' + esc(money(listing.previous_price, listing.offer_type === "rent" ? "/mo" : "")) + '</s></p>' : '') +
+      chatButtons() +
+      '<button class="sf-outline-btn" data-sf-save="' + esc(listing.id) + '">' + esc(T("♡ Save this property")) + '</button><form novalidate data-sf-inquiry="' + esc(listing.id) + '"' + (listing.offer_type === "rent" ? ' data-sf-rent="1"' : "") + '><h3>' + esc(T("Request more information")) + '</h3><label>' + esc(T("Full name")) + '<input name="full_name" required maxlength="160"></label><label>' + esc(T("Email")) + '<input type="email" name="email" maxlength="254"></label><label>' + esc(T("Phone")) + '<input name="phone" required maxlength="50"></label>' +
         (listing.offer_type === "rent" ? rentApplicationFields() : "") +
-        '<label>Message<textarea name="message" rows="4" maxlength="5000" placeholder="I would like to know more about this property."></textarea></label><label class="sf-consent"><input type="checkbox" name="consent" required><span>I consent to the processing of my contact details for this inquiry. See our <a href="#/privacy">Privacy Notice</a>.</span></label><button type="submit">Send inquiry</button><p class="sf-form-status" aria-live="polite"></p></form></aside></div></section>');
+        '<label>' + esc(T("Message")) + '<textarea name="message" rows="4" maxlength="5000" placeholder="I would like to know more about this property."></textarea></label><label class="sf-consent"><input type="checkbox" name="consent" required><span>I consent to the processing of my contact details for this inquiry. See our <a href="#/privacy">Privacy Notice</a>.</span></label><button type="submit">' + esc(T("Send inquiry")) + '</button><p class="sf-form-status" aria-live="polite"></p></form></aside></div></section>');
   }
 
   /* document.title was never set anywhere, so every route shipped the same
@@ -1500,6 +1809,7 @@
     "": "SEA ESTATES | Properties & Batangas Value Guide",
     "home": "SEA ESTATES | Properties & Batangas Value Guide",
     "search": "Properties for sale and rent | SEA ESTATES",
+    "prices": "Batangas property price trends by town | SEA ESTATES",
     "compare": "Compare two properties | SEA ESTATES",
     "property-value": "Talk to our team | SEA ESTATES",
     "privacy": "Privacy Notice | SEA ESTATES",
@@ -1583,6 +1893,11 @@
         var service = String((params && params.get("service")) || "").toLowerCase();
         if (PV_SERVICES[service] && PV_SERVICES[service].title) next = PV_SERVICES[service].title;
       }
+      // A search for one town gets its own title ("Property for sale in Lipa"), for Google and tabs.
+      if (key === "search" && params && params.get("city")) {
+        var kind = params.get("offer_type") === "rent" ? "for rent" : "for sale";
+        next = "Property " + kind + " in " + String(params.get("city")).slice(0, 60) + " | SEA ESTATES";
+      }
       if (document.title !== next) document.title = next;
     } catch (e) { /* noop */ }
   }
@@ -1622,6 +1937,7 @@
     else if (current.path.indexOf("review/") === 0) host.innerHTML = shell(AGENT_DIR ? AGENT_DIR.reviewHtml(viewState, current.path.slice(7)) : "");
     else if (current.path === "search") host.innerHTML = searchPage(current.params);
     else if (current.path === "compare") host.innerHTML = comparisonPage();
+    else if (current.path === "prices") host.innerHTML = pricesPage();
     else host.innerHTML = home();
     setTitle(current.path, current.params);
     if (current.path.indexOf("agents/") === 0) bindAgentPage();
@@ -1709,6 +2025,15 @@
     if (current.path === "project-bt" || current.path === "property-value" || current.path === "privacy") {
       viewState.loading = false; viewState.error = ""; viewState.result = null; renderCurrent(); return;
     }
+    if (current.path === "prices") {
+      var pricesRequest = ++requestId;
+      viewState.loading = true; viewState.error = ""; viewState.result = null; renderCurrent();
+      fetch("data/comparables/history.json", { headers: { Accept: "application/json" } })
+        .then(function (r) { if (!r.ok) throw new Error("Prices are not available right now."); return r.json(); })
+        .then(function (history) { if (pricesRequest !== requestId) return; viewState.loading = false; viewState.result = { prices: X ? X.trends(history, 10) : null }; renderCurrent(); })
+        .catch(function (error) { if (pricesRequest !== requestId) return; viewState.loading = false; viewState.error = error.message; renderCurrent(); });
+      return;
+    }
     var id = ++requestId;
     viewState.loading = true; viewState.error = ""; viewState.result = null;
     renderCurrent();
@@ -1727,7 +2052,8 @@
     else if (current.path === "search") {
       var filters = {};
       current.params.forEach(function (value, name) { filters[name] = value; });
-      filters.per_page = filters.per_page || 12;
+      // The map shows up to 50 at once, so a drawn area has more to choose from.
+      filters.per_page = filters.per_page || (viewState.mode === "map" ? 50 : 12);
       pending = API.list(filters);
     } else pending = API.list({ featured: true, per_page: 6, sort: "date_desc" });
     pending.then(function (result) {
@@ -1923,12 +2249,33 @@
       if (event.target.closest("[data-sf-compare-open]") && compareIds.length === 2) { compareFocused = false; go("compare"); return; }
       if (event.target.closest("[data-sf-compare-retry]")) { loadCurrent(true); return; }
       if (listing) { go("listing/" + encodeURIComponent(listing.getAttribute("data-sf-listing"))); return; }
+      var langBtn = event.target.closest("[data-sf-lang]");
+      if (langBtn && X) { X.setLang(X.lang() === "fil" ? "en" : "fil"); renderCurrent(); return; }
+      var saveSearchBtn = event.target.closest("[data-sf-save-search]");
+      if (saveSearchBtn) { saveSearch(saveSearchBtn); return; }
+      var payLender = event.target.closest("[data-sf-pay-lender]");
+      if (payLender) { updatePayment(payLender.closest("[data-sf-pay]"), payLender.getAttribute("data-sf-pay-lender")); return; }
+      if (event.target.closest("[data-sf-draw]")) { drawState.drawing = true; drawState.points = []; drawState.polygon = null; refreshDraw(); return; }
+      if (event.target.closest("[data-sf-draw-done]")) { if (drawState.points.length >= 3) { drawState.polygon = drawState.points.slice(); drawState.drawing = false; drawState.points = []; refreshDraw(); } return; }
+      if (event.target.closest("[data-sf-draw-clear]")) { drawState.drawing = false; drawState.points = []; drawState.polygon = null; refreshDraw(); return; }
+      var placeRemove = event.target.closest("[data-sf-place-remove]");
+      if (placeRemove) {
+        var gone = placeRemove.getAttribute("data-sf-place-remove");
+        try { localStorage.setItem(PLACES_KEY, JSON.stringify(myPlaces().filter(function (p) { return p.label !== gone; }))); } catch (e) {}
+        refreshTravel(); return;
+      }
       var save = event.target.closest("[data-sf-save]");
       if (save) { sessionStorage.setItem("esrealty_post_auth_favorite", save.getAttribute("data-sf-save")); openAuth("signin"); return; }
       var back = event.target.closest("[data-sf-back]");
       if (back) { history.length > 1 ? history.back() : go("search"); return; }
       var mode = event.target.closest("[data-sf-mode]");
-      if (mode) { viewState.mode = mode.getAttribute("data-sf-mode"); renderCurrent(); return; }
+      if (mode) {
+        var wasMap = viewState.mode === "map";
+        viewState.mode = mode.getAttribute("data-sf-mode");
+        // The map asks for up to 50 properties; the grid and list go back to pages of 12.
+        if ((viewState.mode === "map") !== wasMap && route().path === "search") loadCurrent(true); else renderCurrent();
+        return;
+      }
       var page = event.target.closest("[data-sf-page]");
       if (page && !page.disabled) { var r = route(); r.params.set("page", page.getAttribute("data-sf-page")); go("search?" + r.params.toString()); }
     });
@@ -1973,6 +2320,10 @@
       rerender: renderCurrent, reload: function () { loadCurrent(true); }
     });
     document.addEventListener("input", function (event) {
+      var payBox = event.target && event.target.closest && event.target.closest("[data-sf-pay]");
+      if (payBox) updatePayment(payBox);
+    });
+    document.addEventListener("input", function (event) {
       var el = event.target;
       if (!el || !el.getAttribute || el.getAttribute("aria-invalid") !== "true") return;
       if (el.closest && el.closest("[data-ag-form], .site-editor")) return; // agent pages and My website check their own fields
@@ -1998,8 +2349,25 @@
       if (search) {
         event.preventDefault(); var params = new URLSearchParams(new FormData(search));
         Array.from(params.keys()).forEach(function (key) { if (!params.get(key)) params.delete(key); });
-        go("search?" + params.toString()); return;
+        /* Plain-language search: "3 bedroom house in Lipa under 5M" becomes the matching filters.
+         * A filter the visitor picked themselves wins; leftover words stay as keywords. */
+        understood = { hash: "", labels: [] };
+        var typed = params.get("q");
+        if (typed && X) {
+          var parsed = X.parseQuery(typed);
+          if (parsed.understood.length) {
+            Object.keys(parsed.filters).forEach(function (k) { if (k !== "q" && !params.get(k)) params.set(k, parsed.filters[k]); });
+            if (parsed.filters.q) params.set("q", parsed.filters.q); else params.delete("q");
+            understood.labels = parsed.understood;
+          }
+        }
+        params.delete("page");
+        var nextSearch = "search?" + params.toString();
+        understood.hash = "#/" + nextSearch;
+        go(nextSearch); return;
       }
+      var placeForm = event.target.closest("[data-sf-place-form]");
+      if (placeForm) { event.preventDefault(); addPlace(placeForm); return; }
       var inquiry = event.target.closest("[data-sf-inquiry]");
       if (inquiry) {
         event.preventDefault();
