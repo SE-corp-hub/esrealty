@@ -3,6 +3,9 @@
 \pset tuples_only on
 \pset format unaligned
 begin;
+-- The sweeps count days in Philippine time, so current_date must too (CI runs in UTC,
+-- which is a day behind from 16:00 to midnight UTC).
+set local timezone = 'Asia/Manila';
 create or replace function pg_temp.fails(q text) returns text language plpgsql as $$
 begin execute q; return 'ran'; exception when insufficient_privilege then return 'refused'; when others then return 'error: ' || sqlerrm; end $$;
 -- A calendar entry starting `mins` minutes from now, Philippine time.
