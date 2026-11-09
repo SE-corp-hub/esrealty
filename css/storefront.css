@@ -3664,3 +3664,100 @@ textarea.ag-input { min-height: 96px; resize: vertical; }
    (css/styles.css) so their own heading colours apply without !important; headings with no colour
    of their own keep that same ink. */
 :is(.sf-site.ag, .sf-site .agd) :is(h1, h2, h3, h4, h5, h6) { color: var(--text); }
+
+/* ---------------------------------------------------------------------
+   Website upgrades (2026-11-09): language switch, plain-language note,
+   saved searches, Reduced / Checked tags, drawn map area, payment box,
+   chat buttons, video and tour, price history, travel time, price page.
+   ------------------------------------------------------------------- */
+.sf-site .sf-lang { display: inline-flex; align-items: center; gap: 2px; min-height: 40px; padding: 4px; margin-right: 8px; border: 1px solid var(--sf-line); border-radius: 999px; background: var(--sf-paper); color: var(--sf-ink-mute); font: 600 13px var(--sf-font); cursor: pointer; }
+.sf-site .sf-lang span { padding: 4px 9px; border-radius: 999px; }
+.sf-site .sf-lang span.on { background: var(--sf-ink); color: #fff; }
+.sf-site .sf-lang:focus-visible { outline: 3px solid var(--sf-accent-line); outline-offset: 2px; }
+
+.sf-site p.sf-understood { margin: 10px 0 0; font-size: 15px; color: var(--sf-ink-soft); }
+.sf-site .sf-search-check { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; min-height: 48px; font-weight: 600; }
+.sf-site .sf-search-check input { width: 22px; height: 22px; margin: 0; }
+
+.sf-save-search { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin: 16px 0; padding: 14px 18px; border: 1px solid var(--sf-line); border-radius: var(--sf-r); background: var(--sf-paper-warm); }
+.sf-save-search > div { display: flex; flex-direction: column; gap: 2px; flex: 1 1 260px; }
+.sf-save-search > div span { color: var(--sf-ink-mute); font-size: 15px; }
+.sf-save-search .sf-form-status { flex: 1 1 100%; margin: 0; }
+.sf-save-search .sf-form-status:empty { display: none; }
+
+.sf-card-tags span.reduced { background: var(--sf-ok); color: #fff; }
+.sf-site .sf-checked-mini { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: #E6F2EC; color: var(--sf-ok); font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: none; }
+.sf-site .sf-was { margin-left: 6px; color: var(--sf-ink-mute); font-size: 0.7em; font-weight: 500; }
+.sf-site .sf-trust-badge.sf-trust-office { background: #E6F2EC; border-color: #B9DCC9; color: var(--sf-ok); }
+.sf-site .sf-trust-badge small { margin-left: 4px; font-weight: 500; }
+.sf-site p.sf-reduced-note { margin: -4px 0 12px; color: var(--sf-ink-mute); }
+.sf-site .sf-tag-reduced { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--sf-ok); color: #fff; font-size: 13px; font-weight: 700; }
+
+.sf-draw-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.sf-site .sf-draw-bar p { margin: 0; flex: 1 1 220px; font-size: 15px; }
+.sf-map-drawing { cursor: crosshair !important; }
+.sf-area-results:empty { display: none; }
+.sf-area-results { margin-top: 18px; }
+
+.sf-pay, .sf-media, .sf-price-history, .sf-travel { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--sf-line); }
+.sf-pay-lenders { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+.sf-pay-lenders button { display: inline-flex; flex-direction: column; align-items: flex-start; min-height: 48px; padding: 8px 16px; border: 1.5px solid var(--sf-line); border-radius: var(--sf-r); background: var(--sf-paper); color: var(--sf-ink); font: 600 15px var(--sf-font); cursor: pointer; }
+.sf-pay-lenders button small { font-size: 12px; font-weight: 600; color: var(--sf-ok); }
+.sf-pay-lenders button.active { border-color: var(--sf-accent); background: var(--sf-accent-soft); }
+.sf-pay-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.sf-pay-fields label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 15px; }
+.sf-pay-fields input { min-height: 48px; padding: 8px 12px; border: 1.5px solid #8C8279; border-radius: var(--sf-r); font: 16px var(--sf-font); background: #fff; color: var(--sf-ink); }
+.sf-pay-out { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 16px 0 8px; }
+.sf-pay-out > div { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: var(--sf-r); background: var(--sf-paper-sunk); }
+.sf-pay-out > div:first-child { background: var(--sf-ink); color: #fff; }
+.sf-pay-out > div:first-child span { color: rgba(255, 255, 255, .8); }
+.sf-pay-out span { font-size: 14px; color: var(--sf-ink-mute); }
+.sf-pay-out b { font-size: 1.25rem; }
+.sf-site .sf-pay-cap, .sf-site .sf-pay-note { grid-column: 1 / -1; margin: 0 0 12px; font-size: 14px; color: var(--sf-ink-mute); }
+.sf-pay .sf-primary-btn { display: inline-flex; align-items: center; min-height: 48px; text-decoration: none; }
+
+.sf-chat { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.sf-site .sf-chat p { flex: 1 1 100%; margin: 0; font-size: 14px; color: var(--sf-ink-mute); }
+.sf-chat-btn { display: inline-flex; flex: 1 1 140px; align-items: center; justify-content: center; min-height: 48px; padding: 8px 14px; border-radius: var(--sf-r); color: #fff; font-weight: 700; text-decoration: none; }
+.sf-chat-btn.viber { background: #6F3FAF; }
+.sf-chat-btn.messenger { background: #0866FF; }
+.sf-chat-btn:focus-visible { outline: 3px solid var(--sf-accent-line); outline-offset: 2px; }
+
+.sf-video { position: relative; aspect-ratio: 16 / 9; margin: 12px 0; border-radius: var(--sf-r); overflow: hidden; background: #000; }
+.sf-video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.sf-media-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.sf-media-links a { text-decoration: none; }
+
+.sf-price-history ul, .sf-travel ul { list-style: none; margin: 12px 0 0; padding: 0; }
+.sf-price-history li, .sf-travel li { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--sf-line-soft); }
+.sf-price-history li span:first-child, .sf-travel li span:first-child { flex: 1 1 160px; }
+.sf-price-history .down { color: var(--sf-ok); font-weight: 700; }
+.sf-price-history .up { color: var(--sf-err); font-weight: 700; }
+.sf-travel li small { color: var(--sf-ink-mute); min-width: 56px; text-align: right; }
+.sf-travel-add { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-top: 14px; }
+.sf-travel-add label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 220px; font-weight: 600; font-size: 15px; }
+.sf-travel-add input { min-height: 48px; padding: 8px 12px; border: 1.5px solid #8C8279; border-radius: var(--sf-r); font: 16px var(--sf-font); }
+.sf-travel-add .sf-form-status { flex: 1 1 100%; margin: 0; }
+.sf-site p.sf-travel-note { font-size: 14px; color: var(--sf-ink-mute); }
+.sf-link-btn { border: 0; background: none; color: var(--sf-ink-mute); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 6px; }
+
+.sf-prices { max-width: var(--sf-maxw); margin: 0 auto; padding: var(--sf-stack) var(--sf-gutter); }
+.sf-site p.sf-prices-asof { font-weight: 600; }
+.sf-prices-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--sf-line); border-radius: var(--sf-r); }
+.sf-prices-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.sf-prices-table th, .sf-prices-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--sf-line-soft); vertical-align: top; }
+.sf-prices-table thead th { background: var(--sf-paper-sunk); font-size: 14px; }
+.sf-prices-table td b { display: block; }
+.sf-prices-table td small { color: var(--sf-ink-mute); }
+.sf-prices-table .down { color: var(--sf-err); font-weight: 700; }
+.sf-prices-table .up { color: var(--sf-ok); font-weight: 700; }
+.sf-muted { color: var(--sf-ink-mute); }
+.sf-site p.sf-prices-note { font-size: 14px; color: var(--sf-ink-mute); }
+
+@media (max-width: 600px) {
+  .sf-pay-fields { grid-template-columns: 1fr; }
+  .sf-pay-out { grid-template-columns: 1fr; }
+  .sf-site .sf-lang { margin-right: 4px; }
+  .sf-prices-table { font-size: 14px; }
+  .sf-prices-table th, .sf-prices-table td { padding: 10px; }
+}

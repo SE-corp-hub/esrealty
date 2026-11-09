@@ -50,7 +50,7 @@ function setup(mode) {
     if (/\/listings\/L-77$/.test(u.pathname)) return new Response(JSON.stringify({ data: LISTING }), { status: 200 });
     if (/\/listings\/[^/]+$/.test(u.pathname)) return new Response(JSON.stringify({ error: "Listing not found" }), { status: 404 });
     if (/\/listings$/.test(u.pathname)) {
-      const page = Number(u.searchParams.get("page"));
+      const page = Number(u.searchParams.get("page") || 1);
       return new Response(JSON.stringify({ data: page === 1 ? [LISTING, { id: "B 2", updated_at: "2026-10-01" }] : [{ id: "C3" }], total_pages: 2 }), { status: 200 });
     }
     return new Response("?", { status: 500 });
@@ -151,6 +151,27 @@ function setup(mode) {
   c("once indexing is on, every published agent page is in the sitemap (well-formed addresses only)",
     body.includes("<loc>https://sea.example/agents/maria-santos</loc>") && !body.includes("Bad Slug") && !body.includes("Bad%20Slug"), body);
 
+  // Town pages (/homes/<town>, 2026-11-09).
+  c("sitemap has a town page for each Batangas town with a listing", body.includes("<loc>https://sea.example/homes/lipa-city</loc>") && (body.match(/\/homes\//g) || []).length === 1, body);
+  s = setup("ok");
+  res = await worker.fetch(new Request("https://sea.example/homes/lipa-city"), s.env);
+  body = await res.text();
+  c("a town page has its own title, description and canonical address",
+    res.status === 200 && body.includes("<title>Property for sale and rent in Lipa City, Batangas | SEA ESTATES</title>")
+    && body.includes('<link rel="canonical" href="https://sea.example/homes/lipa-city">') && /<meta name="description" content="[^"]*Lipa City, Batangas/.test(body), body.slice(0, 600));
+  c("a town page asks the listing function for that town by its short name", s.calls.some((u) => /\/listings\?per_page=24&city=Lipa$/.test(u)), s.calls.join(" "));
+  c("a town page lists the town's properties for crawlers, escaped", body.includes('<a href="/listing/L-77">Corner lot &lt;/script&gt;&lt;b&gt;near&lt;/b&gt; Lipa</a>') && !body.includes("Corner lot </script>"));
+  c("a town page still loads the site", body.includes("js/app.min.js") && body.includes('<base href="/">'));
+  s = setup("ok");
+  res = await worker.fetch(new Request("https://sea.example/homes/manila"), s.env);
+  c("a town that is not in Batangas goes to the asset server", s.assets.includes("/homes/manila") && s.calls.length === 0);
+  s = setup("down");
+  res = await worker.fetch(new Request("https://sea.example/homes/tanauan-city"), s.env);
+  body = await res.text();
+  c("a town page still answers when the listing function is down", res.status === 200 && body.includes("Tanauan City, Batangas") && body.includes("js/app.min.js"));
+  const towns = await import(path.join(ROOT, "worker/index.js"));
+  c("town names from listings find their page", towns.townSlug("Lipa City") === "lipa-city" && towns.townSlug("Santo Tomas") === "sto-tomas-city" && towns.townSlug("Batangas City") === "batangas-city" && towns.townSlug("Quezon City") === "");
+
   // Photos through R2.
   const r2 = () => {
     const kept = new Map();
@@ -195,7 +216,7 @@ function setup(mode) {
   const ignore = read(".assetsignore").split(/\r?\n/).map((l) => l.trim());
   c("the Worker's code and settings are never served as files", ["worker", "wrangler.jsonc", ".git", ".assetsignore"].every((x) => ignore.includes(x)));
   const cfg = read("wrangler.jsonc");
-  c("only share pages, the sitemap and photos reach the Worker; everything else is plain files", /"run_worker_first": \["\/listing\/\*", "\/agents\/\*", "\/sitemap\.xml", "\/photos\/\*"\]/.test(cfg) && /"main": "worker\/index\.js"/.test(cfg));
+  c("only share pages, town pages, the sitemap and photos reach the Worker; everything else is plain files", /"run_worker_first": \["\/listing\/\*", "\/agents\/\*", "\/homes\/\*", "\/sitemap\.xml", "\/photos\/\*"\]/.test(cfg) && /"main": "worker\/index\.js"/.test(cfg));
   c("robots.txt points to the site's own sitemap", /^Sitemap: https:\/\/esrealty\.extraricestore\.workers\.dev\/sitemap\.xml$/m.test(read("robots.txt")));
 
   const sf = read("js/storefront.js");

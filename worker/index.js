@@ -41,7 +41,7 @@ export const SECURITY_HEADERS = {
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "DENY",
   "Permissions-Policy": "geolocation=(self), camera=(), microphone=(), payment=(), usb=()",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co https://tradersgag6.github.io https://images.unsplash.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://esrealty-market-scan.vercel.app https://nominatim.openstreetmap.org https://overpass-api.de https://lz4.overpass-api.de https://overpass.kumi.systems; frame-src https://www.google.com https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co https://tradersgag6.github.io https://images.unsplash.com https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://esrealty-market-scan.vercel.app https://nominatim.openstreetmap.org https://overpass-api.de https://lz4.overpass-api.de https://overpass.kumi.systems; frame-src https://www.google.com https://www.openstreetmap.org https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
 };
 
 const esc = (s) => String(s == null ? "" : s)
@@ -209,6 +209,63 @@ async function agentRoute(request, env, slug) {
   return html(withBase(shell).replace(/<\/head>/i, '<meta name="robots" content="noindex">\n</head>'), 200); // slow or down
 }
 
+// Town pages (/homes/<town>, 2026-11-09): one address per Batangas town that Google can index,
+// e.g. "Property for sale in Lipa City, Batangas". People get the site's search for that town.
+export const BATANGAS_TOWNS = ["agoncillo", "alitagtag", "balayan", "balete", "batangas-city", "bauan", "calaca", "calatagan",
+  "cuenca", "ibaan", "laurel", "lemery", "lian", "lipa-city", "lobo", "mabini", "malvar", "mataas-na-kahoy", "nasugbu",
+  "padre-garcia", "rosario", "san-jose", "san-juan", "san-luis", "san-nicolas", "san-pascual", "sta-teresita",
+  "sto-tomas-city", "taal", "talisay", "tanauan-city", "taysan", "tingloy", "tuy"];
+// What the listing search is asked for: the town's distinctive name ("Lipa" also finds "Lipa City").
+export const townQuery = (slug) => townName(slug).replace(/ City$/, "").replace(/^Sto\. /, "").replace(/^Sta\. /, "");
+export const townSlug = (city) => {
+  const c = String(city || "").toLowerCase().replace(/\bcity of\b/, "").replace(/\./g, "").replace(/ñ/g, "n").trim();
+  return BATANGAS_TOWNS.find((slug) => {
+    const name = townName(slug).toLowerCase().replace(/\./g, "").replace(/ city$/, "");
+    return c === name || c === name + " city" || (name === "sto tomas" && /^(santo|sto) tomas( city)?$/.test(c)) || (name === "sta teresita" && /^(santa|sta) teresita$/.test(c));
+  }) || "";
+};
+
+export function townPage(page, slug, listings, siteUrl) {
+  const name = townName(slug);
+  const url = siteUrl + "/homes/" + slug;
+  const title = "Property for sale and rent in " + name + ", Batangas | SEA ESTATES";
+  const live = (listings || []).filter((l) => l && l.id);
+  const desc = live.length
+    ? live.length + " propert" + (live.length === 1 ? "y" : "ies") + " for sale or rent in " + name + ", Batangas: houses and lots, lots and more, with photos, prices and a free Value Guide."
+    : "Houses, lots and other property in " + name + ", Batangas, from SEA ESTATES, with a free Value Guide for your own property.";
+  let out = withBase(page);
+  out = setTag(out, /<title>[\s\S]*?<\/title>/i, "<title>" + esc(title) + "</title>");
+  out = setTag(out, /<meta name="description"[^>]*>/i, '<meta name="description" content="' + esc(desc) + '">');
+  out = setTag(out, /<meta property="og:title"[^>]*>/i, '<meta property="og:title" content="' + esc("Property in " + name + ", Batangas") + '">');
+  out = setTag(out, /<meta property="og:description"[^>]*>/i, '<meta property="og:description" content="' + esc(desc) + '">');
+  const img = live.map((l) => imageUrls(l)[0]).find(Boolean) || "";
+  const ld = {
+    "@context": "https://schema.org", "@type": "ItemList", name: "Property in " + name + ", Batangas", url,
+    itemListElement: live.slice(0, 24).map((l, i) => ({ "@type": "ListItem", position: i + 1, url: siteUrl + "/listing/" + encodeURIComponent(l.id), name: l.title || "Property" })),
+  };
+  const extra = [
+    '<link rel="canonical" href="' + esc(url) + '">',
+    '<meta property="og:url" content="' + esc(url) + '">',
+    img ? '<meta property="og:image" content="' + esc(img) + '">' : "",
+    '<script type="application/ld+json">' + JSON.stringify(ld).replace(/</g, "\\u003c") + "</script>",
+  ].filter(Boolean).join("\n");
+  out = out.replace(/<\/head>/i, extra + "\n</head>");
+  const items = live.slice(0, 24).map((l) => '<li><a href="/listing/' + esc(encodeURIComponent(l.id)) + '">' + esc(l.title || "Property") + "</a> "
+    + esc([money(listPrice(l)) + (l.offer_type === "rent" && listPrice(l) ? " a month" : ""), place(l)].filter(Boolean).join(" · ")) + "</li>").join("");
+  const summary = "<noscript><h1>Property in " + esc(name) + ", Batangas</h1><p>" + esc(desc) + "</p>" + (items ? "<ul>" + items + "</ul>" : "") + "</noscript>";
+  return out.replace(/<body([^>]*)>/i, (m) => m + "\n" + summary);
+}
+
+async function townRoute(request, env, slug) {
+  const siteUrl = (env.SITE_URL || DEFAULT_SITE_URL).replace(/\/$/, "");
+  const api = (env.LISTING_API || DEFAULT_API).replace(/\/$/, "");
+  const [shell, found] = await Promise.all([
+    appShell(request, env),
+    getJson(api + "/listings?per_page=24&city=" + encodeURIComponent(townQuery(slug))),
+  ]);
+  return html(townPage(shell, slug, (found.body && found.body.data) || [], siteUrl), 200);
+}
+
 async function sitemapRoute(env) {
   const siteUrl = (env.SITE_URL || DEFAULT_SITE_URL).replace(/\/$/, "");
   const api = (env.LISTING_API || DEFAULT_API).replace(/\/$/, "");
@@ -228,6 +285,9 @@ async function sitemapRoute(env) {
   const urls = [
     "  <url><loc>" + esc(siteUrl + "/") + "</loc><changefreq>daily</changefreq></url>",
     ...agents.map((a) => "  <url><loc>" + esc(siteUrl + "/agents/" + a.slug) + "</loc></url>"),
+    // A town page for each Batangas town that has a listing on the site.
+    ...[...new Set(rows.map((x) => x && townSlug(x.city)).filter(Boolean))].sort()
+      .map((slug) => "  <url><loc>" + esc(siteUrl + "/homes/" + slug) + "</loc><changefreq>daily</changefreq></url>"),
     ...rows.filter((x) => x && x.id).map((x) => "  <url><loc>" + esc(siteUrl + "/listing/" + encodeURIComponent(x.id)) + "</loc>"
       + (x.updated_at ? "<lastmod>" + esc(String(x.updated_at).slice(0, 10)) + "</lastmod>" : "") + "</url>"),
   ].join("\n");
@@ -275,6 +335,8 @@ export default {
       }
       const a = url.pathname.match(/^\/agents\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/);
       if (a) return agentRoute(request, env, a[1]);
+      const t = url.pathname.match(/^\/homes\/([a-z]+(?:-[a-z]+)*)\/?$/);
+      if (t && BATANGAS_TOWNS.includes(t[1])) return townRoute(request, env, t[1]);
       if (url.pathname === "/sitemap.xml") return sitemapRoute(env);
       const p = url.pathname.match(PHOTO_PATH);
       if (p) return photoRoute(request, env, p[1]);

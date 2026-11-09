@@ -81,6 +81,10 @@ credit an agent, and saving a licence check in one call) follows `0017`.
 `0019_agent_sites_followup.sql` (agent websites, follow-up with no new behaviour: the Super Admin's
 review list read through `agent_reviews_admin`, licence checks written only through
 `licence_check_save`, and one "next in turn" for lead routing) follows `0018`.
+`0022_site_upgrades.sql` (website upgrades, 2026-11-09: price-change history and the "Reduced" tag,
+the "Checked by SEA ESTATES" flag, `office_checked` and `previous_price` at the end of
+`public_listing_catalog`, and saved searches with the daily `saved_search_sweep` job) follows `0021`.
+Apply it **before** deploying the `listing-api` function that reads the two new catalog columns.
 
 ## What the tests run on
 `tests/db/00_supabase_stub.sql` stands in for the Supabase parts the schema uses
