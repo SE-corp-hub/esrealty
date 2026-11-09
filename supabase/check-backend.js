@@ -100,9 +100,9 @@ const FUNCTIONS = [
     // NOTE: the app computes nearby amenities locally and does not call this
     // function, so a miss here is informational, not a live outage.
     skipBlocking: true,
-    deployHint: "OPTIONAL / UNUSED by the app (nearby is computed locally). Can be left as-is or re-deployed with --no-verify-jwt.",
+    deployHint: "OPTIONAL / UNUSED by the app (nearby is computed locally). Kept behind a login (verify_jwt = true in supabase/config.toml).",
     probes: [
-      { path: "/nearby-scan", method: "POST", expect: 400, note: "rejects missing coords", body: {} },
+      { path: "/nearby-scan", method: "POST", expect: 401, note: "rejects a visitor (login required)", body: {} },
     ],
   },
 ];
@@ -200,9 +200,9 @@ const REST_RPCS = [
   { fn: "pms_tenant_request_repair", note: "tenant repair request (migrations/0001)", body: { p_lease: "x", p_title: "x", p_details: "", p_category: "Other" } },
   { fn: "pms_my_repair_requests", note: "tenant's own requests (migrations/0001)" },
   { fn: "listing_stale_sweep", note: "stale-listing alerts, server only (migrations/0005)", pending: "0005" },
-  { fn: "admin_announce", note: "staff announcements, Super Admin only (migrations/0007)", pending: "0007" },
+  { fn: "admin_announce", note: "staff announcements, Super Admin only (migrations/0007)", pending: "0007", body: { p_title: "x", p_body: "x", p_roles: ["agent"] } },
   { fn: "lead_response_sweep", note: "lead response alerts, server only (migrations/0008)", pending: "0008" },
-  { fn: "admin_records_owned", note: "account handover check, Super Admin only (migrations/0010)", pending: "0010" },
+  { fn: "admin_records_owned", note: "account handover check, Super Admin only (migrations/0010)", pending: "0010", body: { p_user: "00000000-0000-0000-0000-000000000000" } },
   { fn: "viewing_reminder_sweep", note: "viewing reminders, server only (migrations/0011)", pending: "0011", body: { p_dry_run: true } },
   { fn: "compliance_expiry_sweep", note: "licence renewal reminders, server only (migrations/0011)", pending: "0011", body: { p_dry_run: true } },
   { fn: "admin_person_find", note: "find a person, Super Admin only (migrations/0013)", pending: "0013", body: { p_query: "0917 000 0000" } },
