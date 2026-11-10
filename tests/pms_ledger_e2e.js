@@ -35,7 +35,8 @@ const tab = async name => { const t = q('[data-pmtab="' + name + '"]'); if (t) t
     await tab("leases");
     const row = Array.from(document.querySelectorAll("#content tr")).find(tr => /Katrina Reyes/.test(tr.textContent));
     const owed = led().overdue;
-    check("lease row shows the ledger's overdue amount", !!row && (owed > 0 ? row.textContent.indexOf("Overdue") >= 0 && row.textContent.replace(/[^0-9]/g, "").indexOf(String(owed)) >= 0 : /Paid to date/.test(row.textContent)), (row ? row.textContent.replace(/\s+/g, " ").slice(0, 160) : "no row") + " owed=" + owed);
+    // Nothing overdue reads "Paid to date", or "Payment due" in the days just before the next due date.
+    check("lease row shows the ledger's overdue amount", !!row && (owed > 0 ? row.textContent.indexOf("Overdue") >= 0 && row.textContent.replace(/[^0-9]/g, "").indexOf(String(owed)) >= 0 : /Paid to date|Payment due/.test(row.textContent)), (row ? row.textContent.replace(/\s+/g, " ").slice(0, 160) : "no row") + " owed=" + owed);
 
     await tab("payments");
     const thisMonth = today.slice(0, 7);
