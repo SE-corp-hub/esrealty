@@ -3678,6 +3678,19 @@ textarea.ag-input { min-height: 96px; resize: vertical; }
 .sf-site p.sf-understood { margin: 10px 0 0; font-size: 15px; color: var(--sf-ink-soft); }
 .sf-site .sf-search-check { display: inline-flex; flex-direction: row; align-items: center; gap: 8px; min-height: 48px; font-weight: 600; }
 .sf-site .sf-search-check input { width: 22px; height: 22px; margin: 0; }
+/* Wide screens: the tick box and the search button share the row under the
+   fields. Without a place of its own the button fell into one narrow field
+   column and its label was cut off between 901px and about 1100px. */
+@media (min-width: 901px) {
+  .sf-site .sf-search-form .sf-search-check { grid-column: 1 / span 4; border-right: 0; }
+  .sf-site .sf-search-form button[type="submit"] { grid-column: 5 / -1; }
+}
+/* Smallest phones: the EN/FIL switch gives up a little width so the
+   SEA ESTATES name beside it is not cut off. */
+@media (max-width: 340px) {
+  .sf-site .sf-lang { padding: 3px; margin-right: 2px; }
+  .sf-site .sf-lang span { padding: 4px 6px; }
+}
 
 .sf-save-search { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin: 16px 0; padding: 14px 18px; border: 1px solid var(--sf-line); border-radius: var(--sf-r); background: var(--sf-paper-warm); }
 .sf-save-search > div { display: flex; flex-direction: column; gap: 2px; flex: 1 1 260px; }
