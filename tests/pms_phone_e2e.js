@@ -39,7 +39,9 @@ const setRole = async role => { const rs = q("#user-role-select"); if (rs) { rs.
     // P1: the header
     check("four summary figures", qa(".pms-kpis .kpi").length === 4, qa(".pms-kpis .kpi").length);
     const owe = q('[data-pms-goto="payments:owed"]');
-    check("needs-attention shows who owes rent", !!owe && /lease owes rent|leases owe rent/.test(owe.textContent), owe ? owe.textContent : "none");
+    // The sample lease has nothing overdue for a day or two each time its start date falls just after a due day.
+    const behind = S.pms.leases.some(l => !l.archived && L.ledger(l, S.pms.payments, L.today()).overdue > 0);
+    check("needs-attention shows who owes rent", behind ? !!owe && /lease owes rent|leases owe rent/.test(owe.textContent) : !owe, (owe ? owe.textContent : "none") + " behind=" + behind);
     if (phone) {
       check("phone: section list instead of ten tabs", visible(q("#pms-section")) && !visible(q(".pms-tabs")));
     } else {
@@ -49,8 +51,9 @@ const setRole = async role => { const rs = q("#user-role-select"); if (rs) { rs.
     const sel = q("#pms-section");
     sel.value = "tenants"; sel.dispatchEvent(new Event("change", { bubbles: true })); await wait(450);
     check("choosing a section opens it", S.pmsTab === "tenants" && !!q('.pms-tabs .tab.active[data-pmtab="tenants"]'));
-    q('[data-pms-goto="payments:owed"]').click(); await wait(500);
-    check("the attention chip opens the rent that is owed", S.pmsTab === "payments" && S.pmsStatusFilter === "owed" && qa("[data-pms-markpaid]").length > 0 && qa("#pms-list [data-pms-edit]").length === 0);
+    if (behind) { q('[data-pms-goto="payments:owed"]').click(); await wait(500); }
+    else { await tab("payments"); const f = q("#pms-filter-status"); f.value = "owed"; f.dispatchEvent(new Event("change", { bubbles: true })); await wait(400); }
+    check("the attention chip opens the rent that is owed", !behind || S.pmsTab === "payments" && S.pmsStatusFilter === "owed" && qa("[data-pms-markpaid]").length > 0 && qa("#pms-list [data-pms-edit]").length === 0);
 
     // P1: filters fold on a phone, with chips for what is active
     const statusSel = q("#pms-filter-status");
